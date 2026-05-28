@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document id="root_doc">
+<Schema name="site" id="site">
+  <SimpleField name="PROJECT" type="string"></SimpleField>
+  <SimpleField name="SITE ID" type="string"></SimpleField>
+  <SimpleField name="OPTION" type="string"></SimpleField>
+  <SimpleField name="SITE STATUS" type="string"></SimpleField>
+  <SimpleField name="LATI" type="string"></SimpleField>
+  <SimpleField name="LONGI" type="string"></SimpleField>
+</Schema>
+<Schema name="road" id="road">
+  <SimpleField name="Property" type="string"></SimpleField>
+</Schema>
+<Schema name="lessor" id="lessor">
+  <SimpleField name="fid" type="string"></SimpleField>
+  <SimpleField name="Lessor Name" type="string"></SimpleField>
+  <SimpleField name="Lessor Cagegory" type="string"></SimpleField>
+  <SimpleField name="Relationship" type="string"></SimpleField>
+</Schema>
+
+<Style id="point-green">
+  <IconStyle>
+    <color>FFFFFFFF</color>
+    <scale>1.2</scale>
+    <Icon>
+      <href>http://maps.google.com/mapfiles/kml/pushpin/grn-pushpin.png</href>
+    </Icon>
+  </IconStyle>
+</Style>
+<Style id="point-yellow">
+  <IconStyle>
+    <color>FFFFFFFF</color>
+    <scale>1.2</scale>
+    <Icon>
+      <href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+    </Icon>
+  </IconStyle>
+</Style>
+<Style id="point-red">
+  <IconStyle>
+    <color>FFFFFFFF</color>
+    <scale>1.2</scale>
+    <Icon>
+      <href>http://maps.google.com/mapfiles/kml/pushpin/red-pushpin.png</href>
+    </Icon>
+  </IconStyle>
+</Style>
+<Style id="poly-green">
+  <LineStyle><color>FF00FF00</color><width>2</width></LineStyle>
+  <PolyStyle><color>9900FF00</color><fill>1</fill><outline>1</outline></PolyStyle>
+</Style>
+<Style id="poly-yellow">
+  <LineStyle><color>FF00FFFF</color><width>2</width></LineStyle>
+  <PolyStyle><color>9900FFFF</color><fill>1</fill><outline>1</outline></PolyStyle>
+</Style>
+<Style id="poly-red">
+  <LineStyle><color>FF0000FF</color><width>2</width></LineStyle>
+  <PolyStyle><color>990000FF</color><fill>1</fill><outline>1</outline></PolyStyle>
+</Style>
+<Style id="line-brown">
+  <LineStyle><color>FF8B4513</color><width>4</width></LineStyle>
+  <PolyStyle><fill>0</fill></PolyStyle>
+</Style>
+<Folder><name>Site Library</name>
+  <Folder><name>Positive</name>
+    <Placemark id="site.1.1">
+      <styleUrl>#point-green</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#site">
+        <SimpleData name="PROJECT">Smart SAQR</SimpleData>
+        <SimpleData name="SITE ID">G2231</SimpleData>
+        <SimpleData name="OPTION">1</SimpleData>
+        <SimpleData name="SITE STATUS">Positive</SimpleData>
+        <SimpleData name="LATI">14.554032</SimpleData>
+        <SimpleData name="LONGI">121.047346</SimpleData>
+      </SchemaData></ExtendedData>
+      <Point><coordinates>121.047346,14.554032</coordinates></Point>
+    </Placemark>
+    <Placemark id="site.1.2">
+      <styleUrl>#point-green</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#site">
+        <SimpleData name="PROJECT">Smart SAQR</SimpleData>
+        <SimpleData name="SITE ID">G2249</SimpleData>
+        <SimpleData name="OPTION">1</SimpleData>
+        <SimpleData name="SITE STATUS">Positive</SimpleData>
+        <SimpleData name="LATI">14.557563</SimpleData>
+        <SimpleData name="LONGI">121.053285</SimpleData>
+      </SchemaData></ExtendedData>
+      <Point><coordinates>121.053285,14.557563</coordinates></Point>
+    </Placemark>
+    <Placemark id="site.1.3">
+      <styleUrl>#point-green</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#site">
+        <SimpleData name="PROJECT">Smart SAQR</SimpleData>
+        <SimpleData name="SITE ID">M2682</SimpleData>
+        <SimpleData name="OPTION">1</SimpleData>
+        <SimpleData name="SITE STATUS">Positive</SimpleData>
+        <SimpleData name="LATI">6.802069</SimpleData>
+        <SimpleData name="LONGI">126.330748</SimpleData>
+      </SchemaData></ExtendedData>
+      <Point><coordinates>126.330748,6.802069</coordinates></Point>
+    </Placemark>
+    <Placemark id="site.1.4">
+      <styleUrl>#point-green</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#site">
+        <SimpleData name="PROJECT">Smart SAQR</SimpleData>
+        <SimpleData name="SITE ID">M7031</SimpleData>
+        <SimpleData name="OPTION">Candidate number 9</SimpleData>
+        <SimpleData name="SITE STATUS">Positive</SimpleData>
+        <SimpleData name="LATI">7177416</SimpleData>
+        <SimpleData name="LONGI">125.466296</SimpleData>
+      </SchemaData></ExtendedData>
+      <Point><coordinates>125.466296,7177416</coordinates></Point>
+    </Placemark>
+    <Placemark id="site.1.5">
+      <styleUrl>#point-green</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#site">
+        <SimpleData name="PROJECT">Smart SAQR</SimpleData>
+        <SimpleData name="SITE ID">V2082</SimpleData>
+        <SimpleData name="OPTION">13</SimpleData>
+        <SimpleData name="SITE STATUS">Positive</SimpleData>
+        <SimpleData name="LATI">10.743269</SimpleData>
+        <SimpleData name="LONGI">122.566795</SimpleData>
+      </SchemaData></ExtendedData>
+      <Point><coordinates>122.566795,10.743269</coordinates></Point>
+    </Placemark>
+  </Folder>
+  <Folder><name>Unknown</name>
+    <Placemark id="site.2.1">
+      <styleUrl>#point-red</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#site">
+        <SimpleData name="PROJECT">Smart SAQR</SimpleData>
+        <SimpleData name="SITE ID">V2152</SimpleData>
+        <SimpleData name="OPTION"></SimpleData>
+        <SimpleData name="SITE STATUS"></SimpleData>
+        <SimpleData name="LATI">10.341766</SimpleData>
+        <SimpleData name="LONGI">123.897100</SimpleData>
+      </SchemaData></ExtendedData>
+      <Point><coordinates>123.897100,10.341766</coordinates></Point>
+    </Placemark>
+    <Placemark id="site.2.2">
+      <styleUrl>#point-red</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#site">
+        <SimpleData name="PROJECT">Smart SAQR</SimpleData>
+        <SimpleData name="SITE ID">V2152</SimpleData>
+        <SimpleData name="OPTION"></SimpleData>
+        <SimpleData name="SITE STATUS"></SimpleData>
+        <SimpleData name="LATI">10.341974</SimpleData>
+        <SimpleData name="LONGI">123.8969</SimpleData>
+      </SchemaData></ExtendedData>
+      <Point><coordinates>123.8969,10.341974</coordinates></Point>
+    </Placemark>
+  </Folder>
+</Folder>
+<Folder><name>Road Library</name>
+  <Placemark id="road.1">
+    <styleUrl>#line-brown</styleUrl>
+    <ExtendedData><SchemaData schemaUrl="#road">
+      <SimpleData name="Property">Philippine Reclamation Authority（PRA）</SimpleData>
+    </SchemaData></ExtendedData>
+    <MultiGeometry xmlns="http://www.opengis.net/kml/2.2"><LineString><coordinates>120.977999388369,14.5126016322181 120.978046013659,14.5132109889312 120.979001832118,14.5153775769908 120.979841087349,14.5163254525971 120.981053344906,14.5171604825055 120.98247541627,14.5190336462419 120.983081545049,14.5202297545481 120.985575998098,14.5223285704739 120.984177239379,14.5369971578832 120.983780924408,14.5397276643706 120.982661917433,14.5440377340258 120.982288915108,14.5448275282474 120.982032476009,14.5467230228543 120.9820791013,14.5481897634664 120.982930012854,14.5496282880634 120.983268046211,14.5504067798185</coordinates></LineString></MultiGeometry>
+  </Placemark>
+</Folder>
+<Folder><name>Lessor Library</name>
+  <Folder><name>Unfriendly</name>
+    <Placemark id="lessor.Unfriendly.1">
+      <styleUrl>#poly-red</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#lessor">
+        <SimpleData name="fid">1</SimpleData>
+        <SimpleData name="Lessor Name">Adella Hidalgo Village</SimpleData>
+        <SimpleData name="Lessor Cagegory">HOA</SimpleData>
+        <SimpleData name="Relationship">Unfriendly</SimpleData>
+      </SchemaData></ExtendedData>
+      <MultiGeometry xmlns="http://www.opengis.net/kml/2.2"><Polygon><outerBoundaryIs><LinearRing><coordinates>121.002723528501,14.5504653645142 121.002701930852,14.5499183511823 121.002860313614,14.5495107034229 121.002914307737,14.5492737795929 121.0039042,14.5495559976556 121.003832207835,14.5497406586618 121.004199367874,14.5498277628564 121.004397346327,14.5500368127832 121.004235363957,14.5503608397785 121.004260561214,14.5505315634879 121.004667316944,14.5507824225766 121.004069781978,14.5510472179719 121.004170571009,14.5512945923306 121.003407454065,14.5516186174796 121.003295866209,14.5513607910556 121.003249071303,14.5512249094407 121.003285067385,14.5510367655281 121.003231073261,14.5507510652061 121.003205876004,14.5506360881429 121.002723528501,14.5504653645142</coordinates></LinearRing></outerBoundaryIs></Polygon></MultiGeometry>
+    </Placemark>
+    <Placemark id="lessor.Unfriendly.2">
+      <styleUrl>#poly-red</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#lessor">
+        <SimpleData name="fid">4</SimpleData>
+        <SimpleData name="Lessor Name">Embassy of Japan</SimpleData>
+        <SimpleData name="Lessor Cagegory">Goverment</SimpleData>
+        <SimpleData name="Relationship">Unfriendly</SimpleData>
+      </SchemaData></ExtendedData>
+      <MultiGeometry xmlns="http://www.opengis.net/kml/2.2"><Polygon><outerBoundaryIs><LinearRing><coordinates>120.9924649,14.5407094 120.9925807,14.5399437 120.9939492,14.5401677 120.9938135,14.5409301 120.9934547,14.5408762 120.9929476,14.5407952 120.9924649,14.5407094</coordinates></LinearRing></outerBoundaryIs></Polygon></MultiGeometry>
+    </Placemark>
+  </Folder>
+  <Folder><name>Normal</name>
+    <Placemark id="lessor.Normal.1">
+      <styleUrl>#poly-yellow</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#lessor">
+        <SimpleData name="fid">2</SimpleData>
+        <SimpleData name="Lessor Name">Mall of Asia</SimpleData>
+        <SimpleData name="Lessor Cagegory">Mall</SimpleData>
+        <SimpleData name="Relationship">Normal</SimpleData>
+      </SchemaData></ExtendedData>
+      <MultiGeometry xmlns="http://www.opengis.net/kml/2.2"><Polygon><outerBoundaryIs><LinearRing><coordinates>120.9797489,14.5370866 120.9798889,14.533408 120.9799431,14.5330932 120.9799642,14.5330444 120.9841757,14.5332217 120.9841996,14.5332441 120.9842102,14.5332735 120.9842054,14.5333306 120.9841129,14.5344223 120.9840965,14.5344518 120.9840672,14.5344812 120.9840283,14.5345045 120.9839986,14.5345129 120.9838613,14.5345331 120.9837018,14.534585 120.9836555,14.534624 120.9835709,14.5347044 120.983504,14.5347943 120.9834487,14.5348929 120.9834043,14.5350195 120.9833786,14.5351464 120.9833763,14.5352172 120.9833746,14.5352713 120.9833863,14.5353881 120.9834126,14.5355014 120.9834611,14.5356191 120.98354,14.5357407 120.9836321,14.5358383 120.9837386,14.5359053 120.9839183,14.5359854 120.9839637,14.536034 120.9839519,14.5361775 120.983869,14.5371401 120.9838612,14.5372313 120.9838396,14.5372587 120.9838029,14.5372783 120.9836432,14.5372725 120.9797987,14.5371333 120.9797673,14.5371147 120.9797489,14.5370866</coordinates></LinearRing></outerBoundaryIs></Polygon></MultiGeometry>
+    </Placemark>
+    <Placemark id="lessor.Normal.2">
+      <styleUrl>#poly-yellow</styleUrl>
+      <ExtendedData><SchemaData schemaUrl="#lessor">
+        <SimpleData name="fid">3</SimpleData>
+        <SimpleData name="Lessor Name">Blue Bay Walk</SimpleData>
+        <SimpleData name="Lessor Cagegory">Mall</SimpleData>
+        <SimpleData name="Relationship">Normal</SimpleData>
+      </SchemaData></ExtendedData>
+      <MultiGeometry xmlns="http://www.opengis.net/kml/2.2"><Polygon><outerBoundaryIs><LinearRing><coordinates>120.9887184,14.5393629 120.9888566,14.5384096 120.9888637,14.5383596 120.9889564,14.5378222 120.9890708,14.536962 120.9891055,14.5367192 120.989118,14.5366625 120.9891337,14.5366415 120.9891627,14.5366209 120.9892063,14.5366167 120.9894542,14.5366688 120.9909576,14.5370127 120.9907887,14.5380714 120.9907365,14.5385328 120.9907192,14.5386455 120.9907073,14.538723 120.9905568,14.5396894 120.9897913,14.5395714 120.9898023,14.5395184 120.9887184,14.5393629</coordinates></LinearRing></outerBoundaryIs></Polygon></MultiGeometry>
+    </Placemark>
+  </Folder>
+</Folder>
+</Document>
+</kml>

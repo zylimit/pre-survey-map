@@ -1,0 +1,863 @@
+/* V1.x Mint Tech 全局样式（#8 反转）
+ * 任何硬编码色必须只在 theme.css 里出现，本文件只引用 var(--*)
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-app);
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+.app {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 56px 1fr auto;
+  grid-template-columns: 20% 55% 25%;
+  grid-template-areas:
+    "toolbar toolbar toolbar"
+    "tree    map     attr"
+    "output  output  output";
+}
+
+.app.no-attr {
+  grid-template-columns: 20% 80% 0;
+}
+
+.app.no-attr .attr {
+  display: none;
+}
+
+/* ============ Toolbar ============ */
+
+.toolbar {
+  grid-area: toolbar;
+  background: var(--bg-panel);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-panel);
+  z-index: 10;
+}
+
+.toolbar button {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color var(--transition-fast), color var(--transition-fast),
+              background var(--transition-fast);
+}
+
+.toolbar button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toolbar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toolbar button.active {
+  background: var(--accent);
+  color: var(--bg-app);
+  border-color: var(--accent);
+}
+
+.toolbar .dropdown {
+  position: relative;
+}
+
+.toolbar .dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  min-width: 160px;
+  z-index: 200;
+}
+
+.toolbar .dropdown-item {
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 13px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.toolbar .dropdown-item:hover:not(.disabled) {
+  background: var(--accent-10);
+  color: var(--accent);
+}
+
+.toolbar .dropdown-item.disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.toolbar .dropdown-item.danger {
+  color: var(--error);
+  border-top: 1px solid var(--border);
+}
+
+.toolbar .search {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar .search input {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  width: 220px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  transition: border-color var(--transition-fast);
+}
+
+.toolbar .search input::placeholder {
+  color: var(--text-muted);
+}
+
+.toolbar .search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.toolbar .search button {
+  padding: 6px 12px;
+}
+
+/* ============ Layer Tree ============ */
+
+.tree {
+  grid-area: tree;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 8px;
+  color: var(--text);
+  box-shadow: var(--shadow-panel);
+}
+
+.tree > input {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  transition: border-color var(--transition-fast);
+}
+
+.tree > input::placeholder {
+  color: var(--text-muted);
+}
+
+.tree > input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.tree h3,
+.tree .folder-row {
+  margin: 10px 4px 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 4px;
+  border-radius: var(--radius);
+  transition: background var(--transition-fast);
+}
+
+.tree .folder-row:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.tree .folder-disclose {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  border-radius: 3px;
+  transition: color var(--transition-fast), background var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.tree .folder-disclose:hover {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.tree .folder-title {
+  flex: 1;
+}
+
+.tree .folder-count {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.tree .folder-cb-native {
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.tree .node {
+  padding: 3px 8px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  border-left: 2px solid transparent;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tree .node.muted {
+  font-family: var(--font-ui);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.tree .node:hover {
+  background: var(--accent-bg);
+}
+
+.tree .node.selected {
+  background: var(--accent-bg);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+
+.tree .node.hidden-node .node-label {
+  color: var(--text-disabled);
+  text-decoration: line-through;
+}
+
+.tree .node input[type="checkbox"] {
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.tree .node .node-label {
+  flex: 1;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============ Map ============ */
+
+.map {
+  grid-area: map;
+  position: relative;
+  background: var(--bg-app);
+}
+
+.map .ol-map {
+  width: 100%;
+  height: 100%;
+}
+
+.map.drawing .ol-map,
+.map.drawing canvas {
+  cursor: crosshair !important;
+}
+
+.draw-hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: var(--bg-app);
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: none;
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+}
+
+.map-ctrls {
+  position: absolute;
+  top: 70px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 90;
+}
+
+.map-ctrls .map-ctrl-btn {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-ui);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.map-ctrls .map-ctrl-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.map-ctrls .map-ctrl-btn.active {
+  background: var(--accent);
+  color: var(--bg-app);
+  border-color: var(--accent);
+}
+
+.basemap-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* OpenLayers 默认控件适配 Dark */
+.ol-control button {
+  background: var(--bg-panel) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.ol-control button:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+.ol-attribution,
+.ol-scale-line,
+.ol-mouse-position {
+  background: var(--ol-control-bg) !important;
+  color: var(--text) !important;
+  border: none !important;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.ol-attribution a {
+  color: var(--accent) !important;
+}
+
+.ol-scale-line-inner {
+  border-color: var(--text) !important;
+  color: var(--text) !important;
+}
+
+/* ============ Attribute Panel ============ */
+
+.attr {
+  grid-area: attr;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 0;
+  color: var(--text);
+  box-shadow: var(--shadow-panel);
+}
+
+.attr h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.attr-head {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.attr-head h3 {
+  flex: 1;
+  font-family: var(--font-mono);
+}
+
+.attr-head .close {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+
+.attr-head .close:hover {
+  color: var(--accent);
+}
+
+.attr .placeholder {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 16px 12px;
+}
+
+.attr-section {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.attr-section-title {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.attr-row {
+  display: flex;
+  padding: 3px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.attr-row .k {
+  flex: 0 0 40%;
+  color: var(--text-muted);
+  padding-right: 8px;
+  word-break: break-word;
+  font-family: var(--font-ui);
+}
+
+.attr-row .v {
+  flex: 1;
+  color: var(--text);
+  word-break: break-all;
+  font-family: var(--font-mono);
+}
+
+.attr-row.highlight {
+  background: var(--error-bg);
+  border-left: 2px solid var(--error);
+  padding-left: 4px;
+  margin-left: -6px;
+}
+
+.warn-banner {
+  margin: 8px 12px;
+  padding: 8px 10px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  color: var(--warn);
+  font-size: 12px;
+}
+
+/* ============ Output Panel ============ */
+
+.output {
+  grid-area: output;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+  box-shadow: var(--shadow-panel);
+}
+
+.output .bar {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.output .phase-label {
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.output .progress {
+  flex: 1;
+  max-width: 220px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.output .progress .bar-inner {
+  position: absolute;
+  height: 100%;
+  background: var(--accent);
+}
+
+.output .progress.indeterminate .bar-inner {
+  width: 30%;
+  animation: indet 1.4s ease-in-out infinite;
+}
+
+.output .progress.paused .bar-inner {
+  width: 70%;
+  background: var(--warn);
+}
+
+@keyframes indet {
+  0% { left: -30%; }
+  100% { left: 100%; }
+}
+
+.output .status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.output .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-disabled);
+}
+
+.output .dot.ok {
+  background: var(--success);
+}
+
+.output .dot.err {
+  background: var(--error);
+}
+
+.output .body {
+  height: 200px;
+  border-top: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.output .body-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.output .body-head .muted {
+  color: var(--text-muted);
+  flex: 1;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.output .body-head .clear-btn {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 2px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.output .body-head .clear-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.output .body-head .clear-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.output .body .row {
+  padding: 2px 0;
+  color: var(--text);
+}
+
+.output .body .row.muted {
+  color: var(--text-muted);
+}
+
+.output .body .row.warn {
+  color: var(--warn);
+}
+
+.output .body .row.error {
+  color: var(--error);
+}
+
+/* ============ Drop overlay ============ */
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--accent-bg);
+  border: 3px dashed var(--accent);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--accent);
+  font-weight: 500;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* ============ Modal / Conflict Dialog ============ */
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: var(--mask-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  max-width: 92vw;
+  max-height: 86vh;
+}
+
+.conflict-modal {
+  width: 1100px;
+}
+
+.modal-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-actions button {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.batch-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.batch-actions .counts {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.batch-actions .counts b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.modal-body {
+  flex: 1;
+  overflow: auto;
+  padding: 0 18px;
+}
+
+.conflict-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.conflict-table th,
+.conflict-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.conflict-table th {
+  background: var(--bg-elevated);
+  position: sticky;
+  top: 0;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-strong);
+  font-family: var(--font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+}
+
+.conflict-table td {
+  font-family: var(--font-mono);
+}
+
+.conflict-table tr.act-overwrite {
+  background: var(--row-overwrite);
+}
+
+.conflict-table tr.act-ignore {
+  background: var(--row-ignore);
+}
+
+.conflict-table td button {
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 3px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 11px;
+  margin-right: 4px;
+  font-family: var(--font-ui);
+  transition: border-color var(--transition-fast), color var(--transition-fast),
+              background var(--transition-fast);
+}
+
+.conflict-table td button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.conflict-table td button.active {
+  background: var(--accent);
+  color: var(--bg-app);
+  border-color: var(--accent);
+}
+
+.modal-footer {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.modal-footer button {
+  padding: 7px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-ui);
+  transition: border-color var(--transition-fast), background var(--transition-fast),
+              color var(--transition-fast);
+}
+
+.modal-footer .primary {
+  background: var(--accent);
+  color: var(--bg-app);
+  border-color: var(--accent);
+  font-weight: 500;
+}
+
+.modal-footer .primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.modal-footer .cancel {
+  color: var(--error);
+  border-color: var(--border);
+}
+
+.modal-footer .cancel:hover {
+  border-color: var(--error);
+}

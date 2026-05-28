@@ -1,0 +1,78 @@
+/* V1.x · Mint Tech 主题变量（#8 反转，替换 #7 Dark Pro）
+ *
+ * 唯一允许出现硬编码色值的文件。所有组件颜色必须引用这里。
+ * 主色板逐项对齐 Product-Spec.md「V1.x 视觉皮肤 · Mint Tech」节。
+ *
+ * 键名保留 #7 已建立的 CSS Variables 体系（--bg-app/--accent/--row-* 等），
+ * 仅换值；新增 3 个键：--accent-bg / --shadow-panel / --radius。
+ */
+
+:root {
+  /* ---- 主色板（Spec Mint Tech 节）---- */
+  --bg-app: #fafafa;              /* 应用底色，柔和不刺眼 */
+  --bg-panel: #ffffff;            /* 面板背景：toolbar / 树 / 属性 / 输出 */
+  --bg-elevated: #ffffff;         /* 弹窗、下拉，跟面板同色靠阴影区分 */
+  --bg-input: #ffffff;            /* 输入框 */
+  --border: #e5e7eb;              /* slate-200，极细分隔线 */
+  --border-strong: #cbd5e1;       /* slate-300 */
+  --text: #0f172a;                /* slate-900，深蓝灰主文字 */
+  --text-muted: #64748b;          /* slate-500，次文字 / 占位 */
+  --text-disabled: #94a3b8;       /* slate-400 */
+
+  --accent: #10b981;              /* emerald-500（薄荷绿 accent） */
+  --accent-hover: #34d399;        /* emerald-400 hover 亮一点 */
+  --accent-10: rgba(16, 185, 129, 0.10);  /* 半透明叠加（dropdown hover / 选区填充） */
+  --accent-20: rgba(16, 185, 129, 0.18);
+  --accent-bg: #ecfdf5;           /* 新增：emerald-50 实底（选中态底色 / 拖放层） */
+
+  --warn: #f59e0b;                /* amber-500 */
+  --warn-bg: #fef3c7;             /* amber-100 实底，warning banner */
+  --error: #ef4444;               /* red-500 */
+  --error-bg: #fee2e2;            /* red-100 */
+  --success: #10b981;             /* 同 accent，Spec 明示 */
+
+  --row-overwrite: #fef3c7;       /* amber-100 暖黄，冲突列表覆盖行 */
+  --row-ignore: #ffffff;          /* 同面板，冲突列表忽略行 */
+
+  /* ---- 要素颜色（Spec 中间地图节，Mint Tech 下与主色板同 Tailwind 系协调）---- */
+  --feat-site-positive: #10b981;          /* 与 accent / success 一致 */
+  --feat-site-negative: #f59e0b;          /* 与 warn 一致 */
+  --feat-site-unknown: #ef4444;           /* 与 error 一致 */
+  --feat-site-stroke: #ffffff;            /* 浅底 pin 白描边 */
+
+  --feat-lessor-friendly: #10b981;
+  --feat-lessor-friendly-fill: rgba(16, 185, 129, 0.30);
+  --feat-lessor-normal: #f59e0b;
+  --feat-lessor-normal-fill: rgba(245, 158, 11, 0.30);
+  --feat-lessor-unfriendly: #ef4444;
+  --feat-lessor-unfriendly-fill: rgba(239, 68, 68, 0.30);
+
+  --feat-road: #92400e;           /* amber-800，深棕色线，在浅底图上清晰 */
+
+  /* 选区（框选模式临时几何） */
+  --selection-stroke: var(--accent);
+  --selection-fill: var(--accent-10);
+
+  /* 选中要素描边 */
+  --feat-selected-stroke: var(--accent);
+
+  /* ---- 字体 ----（#7 已确定，本轮不动） */
+  --font-ui: 'Inter', 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont,
+             'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Iosevka', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ---- 几何（Spec Mint Tech 新增）---- */
+  --radius: 6px;
+  --shadow-panel: 0 1px 3px rgba(0, 0, 0, 0.05);
+
+  /* ---- 阴影 / 遮罩（Mint Tech 浅底 → 全部调淡）---- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.10);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
+  --mask-modal: rgba(15, 23, 42, 0.40);   /* slate-900 半透明遮罩 */
+  --ol-control-bg: rgba(255, 255, 255, 0.92);
+
+  /* ---- 过渡 ---- */
+  --transition-fast: 80ms ease;
+}

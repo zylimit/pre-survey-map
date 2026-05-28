@@ -1,0 +1,40 @@
+# 系统
+.DS_Store
+Thumbs.db
+
+# 环境与凭证
+.env
+.env.local
+.env.*.local
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# 前端
+web/node_modules/
+web/dist/
+web/.vite/
+
+# 后端临时
+api/__pycache__/
+api/*.log
+
+# 数据库 / Docker 持久化
+*.dump
+*.sql.gz
+
+# 临时 / 生产 KMZ 输出（demo 文件例外，见下）
+data/*.kmz
+data/*.tmp
+!data/exports/export_full_demo.kmz
+!data/exports/export_region_demo.kmz
+!data/exports/conflicts_demo.xlsx
+
+# IDE
+.idea/
+.vscode/
+*.swp
