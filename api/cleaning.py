@@ -59,19 +59,17 @@ async def classify_points(conn, points: list[dict[str, Any]],
     if not points:
         return {}
 
-    # 单次往返：用 VALUES 子句把所有点喂进 PostGIS LATERAL 关联到 countries
-    values_sql = ",".join(
-        f"(${i*3+1}::text, ${i*3+2}::float8, ${i*3+3}::float8)"
-        for i in range(len(points))
-    )
-    args = []
-    for p in points:
-        args.extend([p["row_id"], p["lng"], p["lat"]])
+    row_ids = [p["row_id"] for p in points]
+    lngs = [p["lng"] for p in points]
+    lats = [p["lat"] for p in points]
 
-    # 取距离最近的国家（即使在海里也取一个最近的，方便展示；in_sea 由 0.01 buffer 内是否有命中判定）
     rows = await conn.fetch(
         f"""
-        WITH pts(row_id, lng, lat) AS (VALUES {values_sql}),
+        WITH pts AS (
+            SELECT unnest($1::text[]) AS row_id,
+                   unnest($2::float8[]) AS lng,
+                   unnest($3::float8[]) AS lat
+        ),
         pts_geom AS (
             SELECT row_id, ST_SetSRID(ST_MakePoint(lng, lat), 4326) AS g FROM pts
         )
@@ -89,7 +87,7 @@ async def classify_points(conn, points: list[dict[str, Any]],
             ) AS country_name_zh
         FROM pts_geom p
         """,
-        *args,
+        row_ids, lngs, lats,
     )
 
     out: dict[str, dict[str, Any]] = {}

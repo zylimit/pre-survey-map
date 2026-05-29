@@ -71,10 +71,10 @@ def parse_xlsx(data: bytes) -> ParseResult:
         lati = _to_float(row[lati_idx]) if lati_idx is not None and lati_idx < len(row) else None
         longi = _to_float(row[longi_idx]) if longi_idx is not None and longi_idx < len(row) else None
 
-        # 50 列全量进 extras
+        _CORE = {"SITE ID", "OPTION", "PROJECT", "SITE STATUS", "LATI", "LONGI"}
         extras: dict[str, str] = {}
         for h, v in zip(headers, row):
-            if not h:
+            if not h or h in _CORE:
                 continue
             sv = _norm(v)
             if sv:

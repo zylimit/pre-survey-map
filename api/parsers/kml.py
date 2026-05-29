@@ -124,6 +124,11 @@ def _to_float(v: Optional[str]) -> Optional[float]:
         return None
 
 
+_SITE_CORE = {"SITE ID", "OPTION", "PROJECT", "SITE STATUS", "LATI", "LONGI"}
+_ROAD_CORE = {"Property"}
+_LESSOR_CORE = {"fid", "Lessor Name", "Lessor Category", "Lessor Cagegory", "Relationship"}
+
+
 def parse_kml(data: bytes) -> ParseResult:
     """解析 KML 字节流。"""
     root = etree.fromstring(data)
@@ -159,7 +164,7 @@ def parse_kml(data: bytes) -> ParseResult:
                     site_status=simple.get("SITE STATUS") or None,
                     lati=_to_float(simple.get("LATI")),
                     longi=_to_float(simple.get("LONGI")),
-                    extras={k: v for k, v in simple.items() if v != ""},
+                    extras={k: v for k, v in simple.items() if v != "" and k not in _SITE_CORE},
                     wkt=wkt,
                 )
             )
@@ -170,7 +175,7 @@ def parse_kml(data: bytes) -> ParseResult:
             result.roads.append(
                 RoadRow(
                     property=simple.get("Property") or None,
-                    extras={k: v for k, v in simple.items() if v != ""},
+                    extras={k: v for k, v in simple.items() if v != "" and k not in _ROAD_CORE},
                     wkt=wkt,
                 )
             )
@@ -189,7 +194,7 @@ def parse_kml(data: bytes) -> ParseResult:
                     lessor_name=simple.get("Lessor Name") or None,
                     lessor_category=category,
                     relationship=simple.get("Relationship") or None,
-                    extras={k: v for k, v in simple.items() if v != ""},
+                    extras={k: v for k, v in simple.items() if v != "" and k not in _LESSOR_CORE},
                     wkt=wkt,
                 )
             )
