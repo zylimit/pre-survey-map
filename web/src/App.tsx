@@ -7,6 +7,7 @@ import OutputPanel from "./components/OutputPanel";
 import ConflictDialog from "./components/ConflictDialog";
 import CleaningDialog from "./components/CleaningDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
+import BaselineStatusBar from "./components/BaselineStatusBar";
 import { useAppState } from "./state";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
 
   useEffect(() => {
     s.refresh().catch(err => s.log("error", `首次加载失败：${err.message ?? err}`));
+    s.refreshBaselineState();  // F15：启动时拉一次主基准状态
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -44,7 +46,7 @@ export default function App() {
 
   const selectedId = s.selected?.id ?? null;
 
-  // Spec V1.x #11：三面板尺寸 → grid 模板
+  // Spec V1.x #11/#15：四行 grid（toolbar / baseline 状态栏 / 内容 / 输出）
   const gridStyle: React.CSSProperties = useMemo(() => {
     const left = s.panelSizes.left != null ? `${s.panelSizes.left}px` : "20%";
     const right = !s.selected
@@ -55,7 +57,8 @@ export default function App() {
     const bottom = outputOpen ? `${s.panelSizes.bottom ?? 200}px` : "28px";
     return {
       gridTemplateColumns: `${left} 1fr ${right}`,
-      gridTemplateRows: `56px 1fr ${bottom}`,
+      // 56px toolbar + 28px baseline + 1fr 内容 + 28~500px 输出
+      gridTemplateRows: `56px 28px 1fr ${bottom}`,
     };
   }, [s.panelSizes, s.selected, outputOpen]);
 
@@ -74,6 +77,8 @@ export default function App() {
         onSearch={onSearch}
         onClearBaseline={() => setConfirmingClear(true)}
       />
+      {/* F15 全局基线状态栏（Spec V1.x #15）*/}
+      <BaselineStatusBar state={s.baselineState} />
       <LayerTree
         sites={s.sites}
         roads={s.roads}
@@ -126,6 +131,7 @@ export default function App() {
           baselineRegion={s.importSession.baselineRegion}
           summary={s.importSession.phase1Summary}
           initial={s.importSession.cleaningDecisions}
+          warnAllOutsideBaseline={s.importSession.warnAllOutsideBaseline}
           onProceed={s.goToConflicts}
           onCancel={s.abortImport}
         />

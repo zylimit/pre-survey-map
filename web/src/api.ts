@@ -79,6 +79,7 @@ export interface Phase1Response {
   summary: Phase1Summary;
   baseline_region: BaselineRegion | null;
   cleanings: CleaningRow[];
+  warn_all_outside_baseline?: boolean;  // Spec #15 雷 29
 }
 
 export interface Phase2Response {
@@ -97,6 +98,12 @@ export interface CommitStat {
 export interface CommitResponse {
   stats: { site: CommitStat; road: CommitStat; lessor: CommitStat };
   cleaning_stats: { auto_fixed: number; kept: number; discarded: number };
+  baseline_established: {
+    iso_a2: string;
+    name_zh: string | null;
+    coverage_pct: number | null;
+    points_used: number | null;
+  } | null;
 }
 
 // 单文件上传（Spec F1 #12）
@@ -155,11 +162,27 @@ export async function cancelImport(sessionId: string): Promise<void> {
   await fetch(`/api/import/${sessionId}`, { method: "DELETE" });
 }
 
-// F14 清除基线
+// F14 清除基线（Spec #15：truncate 范围扩到 4 张表，含 baseline_state）
 export async function clearBaseline(): Promise<{
-  deleted: { site: number; road: number; lessor: number };
+  deleted: { site: number; road: number; lessor: number; baseline_state: number };
 }> {
   const res = await fetch("/api/baseline", { method: "DELETE" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// F15 全局基线状态栏数据
+export interface BaselineState {
+  established: boolean;
+  iso_a2?: string;
+  name_zh?: string;
+  coverage_pct?: number;
+  points_used?: number;
+  established_at?: string;
+}
+
+export async function fetchBaselineState(): Promise<BaselineState> {
+  const res = await fetch("/api/baseline-state");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

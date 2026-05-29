@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 import session_store
 from cleaning import (
+    _country_dist_in_db,
     classify_points,
     compute_baseline_region,
     detect_swap_or_missing_decimal,
@@ -254,7 +255,9 @@ async def import_file(file: UploadFile):
                 "issue": "not_in_baseline",
                 "current_coord": coord,
                 "fixed_coord_preview": None,
-                "default_action": "keep",
+                # Spec V1.x #15：野蛮粗暴版，默认 [丢弃] 强约束"先入为主"
+                # 用户要保留某个跨境点可显式点 [强制保留]
+                "default_action": "discard",
                 "country_iso_a2": cls["country_iso_a2"],
                 "country_name_zh": cls["country_name_zh"],
             })
@@ -275,6 +278,16 @@ async def import_file(file: UploadFile):
         "cleanings_count": len(cleanings),
     }
 
+    # Spec V1.x #15 雷 29：基线已确立 + 本文件 0 点在基线国家 → 前端弹红 banner
+    warn_all_outside = False
+    if baseline and baseline.get("source") == "baseline" and baseline.get("country_iso_a2"):
+        b_iso = baseline["country_iso_a2"]
+        inside = sum(
+            1 for cls in classified.values()
+            if cls.get("country_iso_a2") == b_iso
+        )
+        warn_all_outside = (len(geo_points) > 0 and inside == 0)
+
     sid = session_store.create(
         {
             "file_name": file.filename,
@@ -293,6 +306,7 @@ async def import_file(file: UploadFile):
         "summary": summary,
         "baseline_region": baseline,
         "cleanings": cleanings,
+        "warn_all_outside_baseline": warn_all_outside,
     }
 
 
@@ -527,8 +541,43 @@ async def commit_import(sid: str, body: CommitBody):
                 else:
                     stats[c["kind"]]["ignored"] += 1
 
+            # Spec V1.x #15：第一次 commit 成功 + site 新增 > 0 + baseline_state 空 → 固化主基准
+            # 在同一事务内，确保入库 + 固化原子性
+            baseline_established = None
+            site_added = stats["site"]["inserted"] + stats["site"]["updated"]
+            if site_added > 0:
+                exists = await conn.fetchval(
+                    "SELECT 1 FROM baseline_state WHERE id = 1"
+                )
+                if not exists:
+                    country = await _country_dist_in_db(conn)
+                    if country and country.get("country_iso_a2"):
+                        await conn.execute(
+                            """
+                            INSERT INTO baseline_state
+                                (id, iso_a2, name_zh, coverage_pct, points_used)
+                            VALUES (1, $1, $2, $3, $4)
+                            ON CONFLICT (id) DO NOTHING
+                            """,
+                            country["country_iso_a2"],
+                            country.get("country_name_zh"),
+                            country.get("coverage_pct"),
+                            country.get("points_used"),
+                        )
+                        baseline_established = {
+                            "iso_a2": country["country_iso_a2"],
+                            "name_zh": country.get("country_name_zh"),
+                            "coverage_pct": country.get("coverage_pct"),
+                            "points_used": country.get("points_used"),
+                        }
+                    # country=None（全在海里）→ 不固化，下次 commit 再尝试（Spec 雷 30）
+
     session_store.drop(sid)
-    return {"stats": stats, "cleaning_stats": s.get("cleaning_stats", {})}
+    return {
+        "stats": stats,
+        "cleaning_stats": s.get("cleaning_stats", {}),
+        "baseline_established": baseline_established,  # None = 未触发或未成功
+    }
 
 
 # =====================================================================

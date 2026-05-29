@@ -9,6 +9,7 @@ interface Props {
   baselineRegion: BaselineRegion | null;
   summary: Phase1Summary;
   initial: Record<string, CleaningAction>;
+  warnAllOutsideBaseline?: boolean;  // Spec #15 雷 29
   onProceed: (decisions: Record<string, CleaningAction>) => void;
   onCancel: () => void;
 }
@@ -55,7 +56,8 @@ function bannerLine2(summary: Phase1Summary): string {
 }
 
 export default function CleaningDialog({
-  fileName, cleanings, baselineRegion, summary, initial, onProceed, onCancel,
+  fileName, cleanings, baselineRegion, summary, initial,
+  warnAllOutsideBaseline, onProceed, onCancel,
 }: Props) {
   const [decisions, setDecisions] = useState<Record<string, CleaningAction>>(initial);
 
@@ -95,6 +97,13 @@ export default function CleaningDialog({
         <div className="modal-header">
           <ImportStepper current="cleaning" />
           <h2>步骤 1：数据清洗 · {fileName}</h2>
+          {warnAllOutsideBaseline && (
+            <div className="banner banner-danger">
+              ⚠️ 本文件 <b>0</b> 个点位在基线国家
+              <b>{baselineRegion?.country_name_zh ?? baselineRegion?.country_iso_a2}</b>
+              内，按当前决策导入将一无所获。要换基线请点 [🗑️ 清除基线]。
+            </div>
+          )}
           <div className="banner banner-baseline">{bannerLine1(baselineRegion)}</div>
           <div className="banner banner-summary">{bannerLine2(summary)}</div>
           <div className="batch-actions">
@@ -151,7 +160,7 @@ export default function CleaningDialog({
                         <button
                           className={a === "keep" ? "active" : ""}
                           onClick={() => setOne(c.row_id, "keep")}
-                        >{canAutoFix ? "原样保留" : "保留"}</button>
+                        >{canAutoFix ? "原样保留" : "强制保留"}</button>
                         <button
                           className={a === "discard" ? "active" : ""}
                           onClick={() => setOne(c.row_id, "discard")}

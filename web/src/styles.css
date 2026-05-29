@@ -23,12 +23,13 @@ button, input, select, textarea {
 .app {
   height: 100vh;
   display: grid;
-  grid-template-rows: 56px 1fr auto;
+  grid-template-rows: 56px 28px 1fr auto;
   grid-template-columns: 20% 55% 25%;
   grid-template-areas:
-    "toolbar toolbar toolbar"
-    "tree    map     attr"
-    "output  output  output";
+    "toolbar  toolbar  toolbar"
+    "baseline baseline baseline"
+    "tree     map      attr"
+    "output   output   output";
 }
 
 .app.no-attr {
@@ -164,6 +165,46 @@ button, input, select, textarea {
 
 .toolbar .search button {
   padding: 6px 12px;
+}
+
+/* ============ 全局基线状态栏（Spec V1.x #15 · F15）============ */
+
+.baseline-bar {
+  grid-area: baseline;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--accent);
+  z-index: 9;
+}
+
+.baseline-bar.pending {
+  color: var(--text-muted);
+  border-bottom-color: var(--border);
+}
+
+.baseline-bar.established {
+  color: var(--accent);
+}
+
+.baseline-bar.established b {
+  font-weight: 600;
+}
+
+.baseline-bar .baseline-icon {
+  font-size: 14px;
+}
+
+.baseline-bar .baseline-iso,
+.baseline-bar .baseline-date,
+.baseline-bar .baseline-meta {
+  color: var(--text-muted);
+  font-weight: normal;
 }
 
 /* ============ Layer Tree ============ */
@@ -1004,6 +1045,20 @@ button, input, select, textarea {
   background: var(--bg-app);
   color: var(--text-muted);
   font-family: var(--font-mono);
+}
+
+/* Spec #15 雷 29：基线已确立 + 本文件 0 点在基线国家 → 红色警告 banner */
+.banner-danger {
+  background: var(--error-bg);
+  color: var(--error);
+  border: 1px solid var(--error);
+  font-weight: 500;
+  font-family: var(--font-ui);
+}
+
+.banner-danger b {
+  font-weight: 700;
+  margin: 0 4px;
 }
 
 .empty {

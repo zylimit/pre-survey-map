@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import {
   backToCleaning,
   BaselineRegion,
+  BaselineState,
   cancelImport,
   CleaningAction,
   CleaningRow,
@@ -15,6 +16,7 @@ import {
   Feature,
   FeatureCollection,
   fetchAll,
+  fetchBaselineState,
   GeoJSONPolygon,
   Phase1Summary,
   proceedToConflicts,
@@ -90,6 +92,7 @@ export interface ImportSession {
   cleaningDecisions: Record<string, CleaningAction>;
   baselineRegion: BaselineRegion | null;
   phase1Summary: Phase1Summary;
+  warnAllOutsideBaseline: boolean;  // Spec #15 雷 29
   // 步骤 2（proceed-to-conflicts 后填）
   conflicts: ConflictRow[];
   conflictDecisions: Record<string, Decision>;
@@ -111,6 +114,8 @@ export function useAppState() {
   const [selectionPolygon, setSelectionPolygon] = useState<GeoJSONPolygon | null>(null);
   // 被显式隐藏的要素 id（左树/全局都看这同一份）
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  // F15 全局基线状态栏
+  const [baselineState, setBaselineState] = useState<BaselineState>({ established: false });
   // 触发地图调用 fit-all 的 epoch
   const [fitAllEpoch, setFitAllEpoch] = useState(0);
   // 三面板尺寸；null = 用 CSS 默认百分比，number = 用户拖拽过的 px
@@ -134,6 +139,17 @@ export function useAppState() {
     setLessors(lessors);
     return { sites, roads, lessors };
   }, []);
+
+  const refreshBaselineState = useCallback(async () => {
+    try {
+      const bs = await fetchBaselineState();
+      setBaselineState(bs);
+    } catch (e: unknown) {
+      // 不挡正常流程，只 log
+      const msg = e instanceof Error ? e.message : String(e);
+      log("warn", `获取基线状态失败：${msg}`);
+    }
+  }, [log]);
 
   const importFiles = useCallback(
     async (files: File[]) => {
@@ -174,6 +190,7 @@ export function useAppState() {
           cleanings: resp.cleanings,
           cleaningDecisions: decisions,
           baselineRegion: resp.baseline_region,
+          warnAllOutsideBaseline: Boolean(resp.warn_all_outside_baseline),
           phase1Summary: sm,
           conflicts: [],
           conflictDecisions: {},
@@ -260,7 +277,13 @@ export function useAppState() {
           `road ${s.road.inserted}/-，` +
           `lessor ${s.lessor.inserted}+${s.lessor.updated}/-${s.lessor.ignored}`
         );
+        // Spec #15：commit 后刷基线状态栏（可能本次刚固化）
+        if (resp.baseline_established) {
+          const bs = resp.baseline_established;
+          log("info", `✅ 主基准已固化：${bs.name_zh ?? bs.iso_a2} (${bs.iso_a2}) · ${bs.coverage_pct}% 覆盖`);
+        }
         await refresh();
+        await refreshBaselineState();
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         log("error", `入库失败：${msg}`);
@@ -303,13 +326,17 @@ export function useAppState() {
     try {
       const resp = await clearBaseline();
       const d = resp.deleted;
-      log("error", `基线已清空：site -${d.site} / road -${d.road} / lessor -${d.lessor}`);
+      log("error",
+        `基线已清空：site -${d.site} / road -${d.road} / lessor -${d.lessor}` +
+        (d.baseline_state ? `（主基准已重置）` : "")
+      );
       await refresh();
+      await refreshBaselineState();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       log("error", `清除基线失败：${msg}`);
     }
-  }, [log, refresh]);
+  }, [log, refresh, refreshBaselineState]);
 
   const selectFeature = useCallback((f: Feature | null) => {
     setSelected(f);
@@ -479,6 +506,8 @@ export function useAppState() {
     confirmConflicts,
     abortImport,
     doClearBaseline,
+    baselineState,
+    refreshBaselineState,
     selectFeature,
     flyTo,
     startDraw,

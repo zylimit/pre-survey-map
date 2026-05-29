@@ -66,3 +66,15 @@ CREATE TABLE IF NOT EXISTS countries (
 
 CREATE INDEX IF NOT EXISTS countries_geom_idx ON countries USING GIST (geom);
 CREATE INDEX IF NOT EXISTS countries_iso_a2_idx ON countries (iso_a2);
+
+-- baseline_state: 主基准固化（Spec V1.x #15）
+-- 单行约束 id=1，第一次 commit 时由 imports.py 写入，F14 时清空。
+-- compute_baseline_region 先读这张表 → 有就返回（~1ms），完全避开 site 全表 KNN 扫描。
+CREATE TABLE IF NOT EXISTS baseline_state (
+    id              INT         PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    iso_a2          TEXT        NOT NULL,
+    name_zh         TEXT,
+    coverage_pct    INT,
+    points_used     INT,
+    established_at  TIMESTAMP   DEFAULT now()
+);

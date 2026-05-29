@@ -115,30 +115,28 @@ async def classify_points(conn, points: list[dict[str, Any]],
 async def compute_baseline_region(conn,
                                   current_points: Optional[list[dict[str, Any]]] = None
                                   ) -> Optional[dict[str, Any]]:
-    """先入为主：基线有 ≥ 1 个 site 用基线，否则用 current_points。
+    """主基准查询（Spec V1.x #15 · 野蛮粗暴版）。
 
-    返回 {country_iso_a2, country_name_zh, source, coverage_pct, points_used, points_total}
-    或 None（基线为空且 current_points 也为空）。
+    新规则：
+      - baseline_state 表有行（已固化）→ 直接读，~1ms 单行 SELECT
+      - baseline_state 空 + current_points → 算 current_points 70%，仅用于 banner 展示（不固化）
+      - 都没有 → None
+
+    **完全不再扫 site 全表**。固化由 imports.py commit 路径在事务末尾触发一次。
     """
-    # 基线模式
-    total = await conn.fetchval("SELECT count(*) FROM site")
-    if total and total >= 1:
-        country = await _country_dist_in_db(conn)
-        if country is None:
-            # 库里有点但全在海里 / 全无 geom → 退化
-            return {
-                "country_iso_a2": None,
-                "country_name_zh": None,
-                "source": "baseline",
-                "coverage_pct": 0,
-                "points_used": 0,
-                "points_total": total,
-            }
-        country["source"] = "baseline"
-        country["points_total"] = total
-        return country
+    row = await conn.fetchrow("SELECT * FROM baseline_state WHERE id = 1")
+    if row is not None:
+        return {
+            "country_iso_a2": row["iso_a2"],
+            "country_name_zh": row["name_zh"],
+            "source": "baseline",
+            "coverage_pct": row["coverage_pct"],
+            "points_used": row["points_used"],
+            "points_total": row["points_used"],  # 已固化的快照，不随后续导入变化
+            "established_at": row["established_at"].isoformat() if row["established_at"] else None,
+        }
 
-    # current_file 模式
+    # baseline_state 空 → 用本次文件预览（不固化）
     if not current_points:
         return None
     country = await _country_dist_in_current(conn, current_points)
