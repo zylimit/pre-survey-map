@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { ConflictRow, Decision } from "../api";
 import { formatCount } from "../utils";
+import ImportStepper from "./ImportStepper";
 
 interface Props {
   conflicts: ConflictRow[];
   initial: Record<string, Decision>;
   onConfirm: (decisions: Record<string, Decision>) => void;
   onCancel: () => void;
+  onBack?: () => void;
 }
 
 // 把库里现状 / 新数据浓缩成一行展示字符串
@@ -25,7 +27,7 @@ function summarize(row: Record<string, unknown>, kind: "site" | "lessor"): strin
   ].join(" · ");
 }
 
-export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel }: Props) {
+export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel, onBack }: Props) {
   const [decisions, setDecisions] = useState<Record<string, Decision>>(initial);
 
   const setOne = (key: string, action: Decision) =>
@@ -53,7 +55,8 @@ export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel
     <div className="modal-mask">
       <div className="modal conflict-modal">
         <div className="modal-header">
-          <h2>⚠️ 冲突列表（共 {formatCount(conflicts.length)} 条）</h2>
+          {onBack && <ImportStepper current="conflicts" />}
+          <h2>{onBack ? "步骤 2：" : ""}⚠️ 冲突列表（共 {formatCount(conflicts.length)} 条）</h2>
           <div className="batch-actions">
             <button onClick={() => setAll("overwrite")}>全部覆盖</button>
             <button onClick={() => setAll("ignore")}>全部忽略</button>
@@ -104,6 +107,7 @@ export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel
         </div>
 
         <div className="modal-footer">
+          {onBack && <button onClick={onBack}>← 返回步骤 1</button>}
           <button className="cancel" onClick={onCancel}>
             取消（下载冲突 Excel）
           </button>

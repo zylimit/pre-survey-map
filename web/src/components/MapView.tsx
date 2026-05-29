@@ -43,6 +43,7 @@ interface Props {
   selectionPolygon: GeoJSONPolygon | null;
   hiddenIds: Set<string>;
   fitAllEpoch: number;
+  layoutEpoch: number;
   onDropFiles: (files: File[]) => void;
   onSelectFeature: (f: Feature | null) => void;
   onSelectionDrawn: (polygon: GeoJSONPolygon) => void;
@@ -133,7 +134,7 @@ function lessorStyle(feature: FeatureLike, selected: boolean): Style {
 
 export default function MapView({
   sites, roads, lessors, selectedId, flyTarget,
-  drawMode, selectionPolygon, hiddenIds, fitAllEpoch,
+  drawMode, selectionPolygon, hiddenIds, fitAllEpoch, layoutEpoch,
   onDropFiles, onSelectFeature, onSelectionDrawn, onFitAll,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
@@ -308,6 +309,12 @@ export default function MapView({
     bm.esri.setVisible(basemap === "esri");
   }, [basemap]);
 
+  // 面板拖拽中通知 OL 重算视口尺寸，否则地图渲染会错位
+  useEffect(() => {
+    if (layoutEpoch === 0 || !mapRef.current) return;
+    mapRef.current.updateSize();
+  }, [layoutEpoch]);
+
   // 定位按钮：fit bounds 到全部数据
   useEffect(() => {
     if (fitAllEpoch === 0 || !mapRef.current) return;
@@ -404,7 +411,7 @@ export default function MapView({
     e.preventDefault();
     setDragOver(false);
     const files = Array.from(e.dataTransfer.files ?? []);
-    if (files.length) onDropFiles(files);
+    if (files.length) onDropFiles(files);  // 多文件 warn 在 state.importFiles 统一处理（Spec F1）
   };
 
   return (

@@ -50,3 +50,19 @@ CREATE TABLE IF NOT EXISTS lessor (
 
 CREATE INDEX IF NOT EXISTS lessor_geom_idx ON lessor USING GIST (geom);
 CREATE INDEX IF NOT EXISTS lessor_relationship_idx ON lessor (relationship);
+
+-- Countries: Natural Earth ne_10m_admin_0_countries（Spec V1.x #12 底层地理数据）
+-- 用于在海里 / 不在主基准 两类清洗判定 + 主基准区域计算
+-- 数据由 api 启动时从 /app/geo_data/ne_10m_admin_0_countries.geojson 一次性加载
+CREATE TABLE IF NOT EXISTS countries (
+    iso_a2   TEXT,
+    iso_a3   TEXT,
+    name     TEXT,
+    name_en  TEXT,
+    name_zh  TEXT,
+    admin    TEXT,
+    geom     GEOMETRY(MultiPolygon, 4326)
+);
+
+CREATE INDEX IF NOT EXISTS countries_geom_idx ON countries USING GIST (geom);
+CREATE INDEX IF NOT EXISTS countries_iso_a2_idx ON countries (iso_a2);

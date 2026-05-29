@@ -12,12 +12,13 @@ interface Props {
   onExportSelection: () => void;
   onRefresh: () => void;
   onSearch: (query: string) => void;
+  onClearBaseline: () => void;
 }
 
 export default function Toolbar({
   onImport, busy, drawMode, hasSelection,
   onStartDraw, onClearSelection, onExportAll, onExportSelection,
-  onRefresh, onSearch,
+  onRefresh, onSearch, onClearBaseline,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [openMenu, setOpenMenu] = useState<"export" | "draw" | null>(null);
@@ -55,7 +56,6 @@ export default function Toolbar({
       <input
         ref={inputRef}
         type="file"
-        multiple
         accept=".kml,.kmz,.xlsx"
         style={{ display: "none" }}
         onChange={onChange}
@@ -130,6 +130,14 @@ export default function Toolbar({
           搜
         </button>
       </div>
+
+      {/* F14 清除基线（调试 / 主基准误固化后兜底）*/}
+      <button
+        className="danger"
+        disabled={busy}
+        onClick={onClearBaseline}
+        title="清空 site / road / lessor 三表 + 重置主基准"
+      >🗑️ 清除基线</button>
     </div>
   );
 }

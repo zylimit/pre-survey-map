@@ -12,9 +12,11 @@ export type FeatureCollection = {
   features: Feature[];
 };
 
-// ---------- Import 协议（两阶段） ----------
+// ---------- Import 协议（三阶段，Spec #12）----------
 
 export type Decision = "overwrite" | "ignore";
+export type CleaningAction = "auto_fix" | "keep" | "discard";
+export type CleaningIssue = "swap_latlong" | "missing_decimal" | "in_sea" | "not_in_baseline";
 
 export interface ConflictRow {
   key: string;
@@ -23,6 +25,28 @@ export interface ConflictRow {
   existing: Record<string, unknown>;
   incoming: Record<string, unknown>;
   source_file: string;
+}
+
+export interface CleaningRow {
+  row_id: string;
+  kind: "site" | "road" | "lessor";
+  name: string;
+  file_name: string;
+  issue: CleaningIssue;
+  current_coord: { lat: number | null; lng: number | null };
+  fixed_coord_preview: { lat: number; lng: number } | null;
+  default_action: CleaningAction;
+  country_iso_a2?: string | null;
+  country_name_zh?: string | null;
+}
+
+export interface BaselineRegion {
+  country_iso_a2: string | null;
+  country_name_zh: string | null;
+  source: "baseline" | "current_file";
+  coverage_pct: number;
+  points_used: number;
+  points_total: number;
 }
 
 export interface FileReport {
@@ -37,19 +61,31 @@ export interface ImportSummaryRow {
   conflict: number;
 }
 
-export interface CoordWarning {
-  key: string;
-  name: string;
-  source_file: string;
-  message: string;
+export interface Phase1Summary {
+  total_parsed: number;
+  intra_file_duplicates: {
+    site_groups: number;
+    site_discarded: number;
+    lessor_groups: number;
+    lessor_discarded: number;
+  };
+  after_dedup: { site: number; road: number; lessor: number };
+  cleanings_count: number;
 }
 
-export interface ImportSessionResponse {
+export interface Phase1Response {
   session_id: string;
-  files: FileReport[];
+  file: FileReport;
+  summary: Phase1Summary;
+  baseline_region: BaselineRegion | null;
+  cleanings: CleaningRow[];
+}
+
+export interface Phase2Response {
+  session_id: string;
   summary: { site: ImportSummaryRow; road: ImportSummaryRow; lessor: ImportSummaryRow };
   conflicts: ConflictRow[];
-  warnings: CoordWarning[];
+  cleaning_stats: { auto_fixed: number; kept: number; discarded: number };
 }
 
 export interface CommitStat {
@@ -60,12 +96,44 @@ export interface CommitStat {
 
 export interface CommitResponse {
   stats: { site: CommitStat; road: CommitStat; lessor: CommitStat };
+  cleaning_stats: { auto_fixed: number; kept: number; discarded: number };
 }
 
-export async function uploadFiles(files: File[]): Promise<ImportSessionResponse> {
+// 单文件上传（Spec F1 #12）
+export async function uploadFile(file: File): Promise<Phase1Response> {
   const fd = new FormData();
-  for (const f of files) fd.append("files", f);
+  fd.append("file", file);
   const res = await fetch("/api/import", { method: "POST", body: fd });
+  if (!res.ok) {
+    if (res.status === 413) {
+      throw new Error("服务端拒绝：文件超过 100MB 上限");
+    }
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function proceedToConflicts(
+  sessionId: string,
+  decisions: { row_id: string; action: CleaningAction }[]
+): Promise<Phase2Response> {
+  const res = await fetch(`/api/import/${sessionId}/proceed-to-conflicts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decisions }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function backToCleaning(sessionId: string): Promise<{
+  session_id: string;
+  cleanings: CleaningRow[];
+  baseline_region: BaselineRegion | null;
+  cleaning_decisions: Record<string, CleaningAction>;
+}> {
+  const res = await fetch(`/api/import/${sessionId}/back-to-cleaning`, { method: "POST" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -85,6 +153,15 @@ export async function commitImport(
 
 export async function cancelImport(sessionId: string): Promise<void> {
   await fetch(`/api/import/${sessionId}`, { method: "DELETE" });
+}
+
+// F14 清除基线
+export async function clearBaseline(): Promise<{
+  deleted: { site: number; road: number; lessor: number };
+}> {
+  const res = await fetch("/api/baseline", { method: "DELETE" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
 export async function downloadConflictsXlsx(sessionId: string): Promise<void> {

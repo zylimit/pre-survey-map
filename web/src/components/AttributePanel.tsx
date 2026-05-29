@@ -1,8 +1,12 @@
 import { Feature } from "../api";
+import { PANEL_LIMITS } from "../state";
+import ResizeHandle from "./ResizeHandle";
 
 interface Props {
   feature: Feature | null;
   onClose: () => void;
+  onResize: (px: number) => void;
+  onResizeEnd: () => void;
 }
 
 // 各类型的核心强类型列。Spec：属性面板先核心列，再展开 extras
@@ -49,10 +53,21 @@ function display(v: unknown): string {
   return String(v);
 }
 
-export default function AttributePanel({ feature, onClose }: Props) {
+export default function AttributePanel({ feature, onClose, onResize, onResizeEnd }: Props) {
+  // 拖拽手柄要在「左边缘」，挂在面板内部 absolute；feature 是 null 时不渲染整个面板
+  const resizeHandle = (
+    <ResizeHandle
+      axis="x" edge="start"
+      min={PANEL_LIMITS.right.min} max={PANEL_LIMITS.right.max}
+      onResize={onResize}
+      onResizeEnd={onResizeEnd}
+    />
+  );
+
   if (!feature) {
     return (
       <div className="attr">
+        {resizeHandle}
         <h3>📋 属性面板</h3>
         <div className="placeholder">点击地图要素或左侧树节点查看属性</div>
       </div>
@@ -72,6 +87,7 @@ export default function AttributePanel({ feature, onClose }: Props) {
 
   return (
     <div className="attr">
+      {resizeHandle}
       <div className="attr-head">
         <h3>{title(feature)}</h3>
         <button className="close" onClick={onClose} title="关闭">✖</button>

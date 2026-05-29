@@ -1,14 +1,18 @@
-"""两阶段导入。
+"""三阶段导入（Spec V1.x #12）：
 
-Phase 1 (POST /api/import)：解析所有上传文件 → 同批次按主键归一化去重（后者覆盖前者，
-Spec 合并策略表）→ 与 DB 现状比对得出 non_conflicts / conflicts → 存 session 暂不写库
-→ 返回 session_id + conflicts[] 给前端决策。
+Phase 1 (POST /api/import)：解析单文件 → 同文件内重复 dict 折叠 → 清洗扫描 4 类
+  + 主基准区域计算 → 存 session(state=cleaning)，返回 cleanings + baseline_region + summary
 
-Phase 2 (POST /api/import/{sid}/commit)：拿用户 decisions 在一个事务内执行：
-non_conflicts 全部 INSERT，conflicts 按决策做 UPDATE（覆盖）或跳过（忽略）。
-Road 不做去重（Spec），全部直接 INSERT。
+Phase 2 (POST /api/import/{sid}/proceed-to-conflicts)：应用用户清洗决策
+  （auto_fix swap 坐标 / keep 原样 / discard 丢弃）→ 用清洗后剩下的点做冲突检测
+  → 转 state=conflicts，返回 conflicts[]
 
-DELETE /api/import/{sid}：取消，丢弃 session，不写任何库。
+Phase 3 (POST /api/import/{sid}/commit)：拿用户冲突决策入库（事务）
+  non_conflicts INSERT + 冲突按 decision overwrite/ignore 处理
+  → 转 state=committing→done
+
+DELETE /api/import/{sid}：取消，丢弃 session
+GET  /api/import/{sid}/conflicts.xlsx：F5 冲突 Excel 导出
 """
 
 import json
@@ -22,7 +26,11 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 import session_store
-from anomaly import detect_coord_warning
+from cleaning import (
+    classify_points,
+    compute_baseline_region,
+    detect_swap_or_missing_decimal,
+)
 from db import pool
 from exporters.conflicts_xlsx import build_conflicts_xlsx
 from parsers.kml import LessorRow, ParseResult, SiteRow, parse_kml
@@ -56,7 +64,7 @@ def _parse(kind: str, data: bytes) -> ParseResult:
     raise ValueError(f"不支持的文件类型：{kind}")
 
 
-# ---------- 归一化（用于冲突比对的 key） ----------
+# ---------- 归一化 ----------
 
 
 def _site_key(site_id: str, option: str) -> str:
@@ -67,67 +75,290 @@ def _lessor_key(fid: str) -> str:
     return (fid or "").strip().lower()
 
 
-# ---------- 行 → 可 JSON 序列化的字典 ----------
+def _row_id(kind: str, key: str) -> str:
+    return f"{kind}:{key}"
 
 
-def _site_row_dict(s: SiteRow, source_file: str) -> dict[str, Any]:
-    return {**asdict(s), "source_file": source_file}
+# ---------- 行 → dict（asdict + 添加 source_file） ----------
 
 
-def _lessor_row_dict(l: LessorRow, source_file: str) -> dict[str, Any]:
-    return {**asdict(l), "source_file": source_file}
+def _site_dict(s: SiteRow, source: str) -> dict[str, Any]:
+    return {**asdict(s), "source_file": source}
 
 
-# ---------- Phase 1: POST /api/import ----------
+def _lessor_dict(l: LessorRow, source: str) -> dict[str, Any]:
+    return {**asdict(l), "source_file": source}
+
+
+def _normalize_jsonb(row: dict[str, Any]) -> dict[str, Any]:
+    if "extras" in row and isinstance(row["extras"], str):
+        row = {**row, "extras": json.loads(row["extras"])}
+    return row
+
+
+# =====================================================================
+# Phase 1: POST /api/import （单文件，Spec F1 #12）
+# =====================================================================
 
 
 @router.post("")
-async def import_files(files: list[UploadFile]):
-    file_reports: list[dict[str, Any]] = []
-    # 同批次内按主键归一化去重；后者覆盖前者
+async def import_file(file: UploadFile):
+    """解析单文件 → 同文件内重复折叠 → 清洗扫描 4 类 → 算主基准。"""
+    kind = _detect(file.filename or "")
+    if kind == "unknown":
+        raise HTTPException(
+            status_code=400,
+            detail="不支持的文件类型，仅支持 .kml / .kmz / .xlsx",
+        )
+
+    file_report: dict[str, Any] = {"name": file.filename, "type": kind}
     site_pool: dict[str, dict[str, Any]] = {}
     lessor_pool: dict[str, dict[str, Any]] = {}
     road_pool: list[dict[str, Any]] = []
-    warnings: list[dict[str, str]] = []
+    # 同文件内重复统计（Spec Q2：banner 第 2 行展示）
+    site_dups_groups = 0
+    site_dups_discarded = 0
+    lessor_dups_groups = 0
+    lessor_dups_discarded = 0
+    parsed_count = 0
 
-    for f in files:
-        kind = _detect(f.filename or "")
-        report: dict[str, Any] = {"name": f.filename, "type": kind}
-        if kind == "unknown":
-            report["error"] = "不支持的文件类型，仅支持 .kml / .kmz / .xlsx"
-            file_reports.append(report)
+    try:
+        data = await file.read()
+        parsed = _parse(kind, data)
+        parsed_count = len(parsed.sites) + len(parsed.roads) + len(parsed.lessors)
+        file_report["parsed"] = {
+            "site": len(parsed.sites),
+            "road": len(parsed.roads),
+            "lessor": len(parsed.lessors),
+        }
+
+        # 同文件内重复折叠：dict 替换；统计被丢弃的
+        for s in parsed.sites:
+            k = _site_key(s.site_id, s.option)
+            if k in site_pool:
+                if site_dups_groups == 0 or k not in {sk for sk in site_pool}:
+                    pass  # 简化：统计在下面
+            site_pool[k] = _site_dict(s, file.filename or "")
+        # 用 parsed.sites 的总数减去 dict 后的数 = discarded
+        site_dups_discarded = len(parsed.sites) - len(site_pool)
+        # 组数 = 出现过多次的 key 数
+        seen: dict[str, int] = {}
+        for s in parsed.sites:
+            k = _site_key(s.site_id, s.option)
+            seen[k] = seen.get(k, 0) + 1
+        site_dups_groups = sum(1 for v in seen.values() if v > 1)
+
+        for r in parsed.roads:
+            road_pool.append({**asdict(r), "source_file": file.filename or ""})
+
+        for le in parsed.lessors:
+            k = _lessor_key(le.fid)
+            lessor_pool[k] = _lessor_dict(le, file.filename or "")
+        lessor_dups_discarded = len(parsed.lessors) - len(lessor_pool)
+        seen = {}
+        for le in parsed.lessors:
+            k = _lessor_key(le.fid)
+            seen[k] = seen.get(k, 0) + 1
+        lessor_dups_groups = sum(1 for v in seen.values() if v > 1)
+
+    except ParseError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{type(e).__name__}: {e}\n{traceback.format_exc().splitlines()[-2]}",
+        )
+
+    # === 清洗扫描 4 类 + 主基准 ===
+    cleanings: list[dict[str, Any]] = []
+
+    # 1) 坐标写反 / 漏小数点（纯算术）
+    # 同时收集"坐标合法"的点用于地理判定
+    geo_points: list[dict[str, Any]] = []
+    for k, row in site_pool.items():
+        rid = _row_id("site", k)
+        issue = detect_swap_or_missing_decimal(row.get("lati"), row.get("longi"))
+        if issue == "swap_latlong":
+            # 写反 → 默认 auto_fix，预览交换后的值
+            cleanings.append({
+                "row_id": rid,
+                "kind": "site",
+                "name": f"{row['site_id']}{' / ' + row['option'] if row['option'] else ''}",
+                "file_name": row["source_file"],
+                "issue": "swap_latlong",
+                "current_coord": {"lat": row["lati"], "lng": row["longi"]},
+                "fixed_coord_preview": {"lat": row["longi"], "lng": row["lati"]},
+                "default_action": "auto_fix",
+            })
+        elif issue == "missing_decimal":
+            cleanings.append({
+                "row_id": rid,
+                "kind": "site",
+                "name": f"{row['site_id']}{' / ' + row['option'] if row['option'] else ''}",
+                "file_name": row["source_file"],
+                "issue": "missing_decimal",
+                "current_coord": {"lat": row.get("lati"), "lng": row.get("longi")},
+                "fixed_coord_preview": None,
+                "default_action": "discard",
+            })
+        else:
+            # 坐标合法 → 收集做地理判定
+            if row.get("lati") is not None and row.get("longi") is not None:
+                geo_points.append({
+                    "row_id": rid,
+                    "lat": row["lati"],
+                    "lng": row["longi"],
+                })
+
+    # 2) + 3) 在海里 / 不在主基准（PostGIS）
+    async with pool().acquire() as conn:
+        # 先算主基准（基线 ≥ 1 用基线，否则用本文件 geo_points）
+        baseline = await compute_baseline_region(conn, current_points=geo_points)
+        baseline_iso = baseline["country_iso_a2"] if baseline else None
+
+        # 对 geo_points 做地理分类
+        classified = await classify_points(conn, geo_points, baseline_iso)
+
+    for p in geo_points:
+        cls = classified.get(p["row_id"])
+        if cls is None:
             continue
-        try:
-            data = await f.read()
-            parsed = _parse(kind, data)
-            report["parsed"] = {
-                "site": len(parsed.sites),
-                "road": len(parsed.roads),
-                "lessor": len(parsed.lessors),
-            }
-            for s in parsed.sites:
-                key = _site_key(s.site_id, s.option)
-                site_pool[key] = _site_row_dict(s, f.filename or "")
-                w = detect_coord_warning(s.lati, s.longi)
-                if w:
-                    warnings.append({
-                        "key": f"site:{s.site_id}:{s.option}",
-                        "name": f"{s.site_id}{' / ' + s.option if s.option else ''}",
-                        "source_file": f.filename or "",
-                        "message": w,
-                    })
-            for r in parsed.roads:
-                road_pool.append({**asdict(r), "source_file": f.filename or ""})
-            for le in parsed.lessors:
-                lessor_pool[_lessor_key(le.fid)] = _lessor_row_dict(le, f.filename or "")
-        except ParseError as e:
-            report["error"] = str(e)
-        except Exception as e:
-            report["error"] = f"{type(e).__name__}: {e}"
-            report["trace"] = traceback.format_exc().splitlines()[-3:]
-        file_reports.append(report)
+        rid = p["row_id"]
+        # 从 site_pool 拿对应行的展示信息
+        # rid = "site:{key}"，key = "{site_id}|{option}"（lower trim）
+        # 重新从 site_pool 取
+        k = rid.split(":", 1)[1]
+        row = site_pool.get(k)
+        if row is None:
+            continue
+        name = f"{row['site_id']}{' / ' + row['option'] if row['option'] else ''}"
+        coord = {"lat": row["lati"], "lng": row["longi"]}
+        if cls["in_sea"]:
+            cleanings.append({
+                "row_id": rid,
+                "kind": "site",
+                "name": name,
+                "file_name": row["source_file"],
+                "issue": "in_sea",
+                "current_coord": coord,
+                "fixed_coord_preview": None,
+                "default_action": "discard",
+                "country_iso_a2": None,
+            })
+        elif cls["not_in_baseline"]:
+            cleanings.append({
+                "row_id": rid,
+                "kind": "site",
+                "name": name,
+                "file_name": row["source_file"],
+                "issue": "not_in_baseline",
+                "current_coord": coord,
+                "fixed_coord_preview": None,
+                "default_action": "keep",
+                "country_iso_a2": cls["country_iso_a2"],
+                "country_name_zh": cls["country_name_zh"],
+            })
 
-    # 与 DB 现状比对 → 分流 non_conflicts / conflicts
+    summary = {
+        "total_parsed": parsed_count,
+        "intra_file_duplicates": {
+            "site_groups": site_dups_groups,
+            "site_discarded": site_dups_discarded,
+            "lessor_groups": lessor_dups_groups,
+            "lessor_discarded": lessor_dups_discarded,
+        },
+        "after_dedup": {
+            "site": len(site_pool),
+            "road": len(road_pool),
+            "lessor": len(lessor_pool),
+        },
+        "cleanings_count": len(cleanings),
+    }
+
+    sid = session_store.create(
+        {
+            "file_name": file.filename,
+            "site_pool": site_pool,
+            "lessor_pool": lessor_pool,
+            "road_pool": road_pool,
+            "cleanings": cleanings,
+            "baseline_region": baseline,
+        },
+        state="cleaning",
+    )
+
+    return {
+        "session_id": sid,
+        "file": file_report,
+        "summary": summary,
+        "baseline_region": baseline,
+        "cleanings": cleanings,
+    }
+
+
+# =====================================================================
+# Phase 2: POST /api/import/{sid}/proceed-to-conflicts
+# =====================================================================
+
+
+class CleaningDecision(BaseModel):
+    row_id: str
+    action: str  # "auto_fix" | "keep" | "discard"
+
+
+class ProceedBody(BaseModel):
+    decisions: list[CleaningDecision] = []
+
+
+@router.post("/{sid}/proceed-to-conflicts")
+async def proceed_to_conflicts(sid: str, body: ProceedBody):
+    s = session_store.get(sid)
+    if s is None:
+        raise HTTPException(status_code=404, detail="session 不存在或已过期")
+
+    err = session_store.transition(sid, "conflicts")
+    if err:
+        raise HTTPException(status_code=400, detail={"error": "invalid_state", "msg": err})
+
+    decisions = {d.row_id: d.action for d in body.decisions}
+    site_pool: dict[str, dict[str, Any]] = dict(s["site_pool"])  # 拷贝，应用清洗后回写
+    cleanings: list[dict[str, Any]] = s["cleanings"]
+
+    # 应用清洗决策
+    cleaning_stats = {"auto_fixed": 0, "kept": 0, "discarded": 0}
+    for c in cleanings:
+        if c["kind"] != "site":
+            continue
+        rid = c["row_id"]
+        action = decisions.get(rid, c["default_action"])
+        key = rid.split(":", 1)[1]
+        if action == "discard":
+            site_pool.pop(key, None)
+            cleaning_stats["discarded"] += 1
+        elif action == "auto_fix" and c["issue"] == "swap_latlong":
+            row = site_pool.get(key)
+            if row is not None:
+                # swap lati/longi 列 + 同步 extras + 重算 wkt
+                old_lati, old_longi = row.get("lati"), row.get("longi")
+                row["lati"] = old_longi
+                row["longi"] = old_lati
+                # extras 里如果有 LATI/LONGI（KML/Excel 解析时存的），同步 swap
+                ex = dict(row.get("extras") or {})
+                if "LATI" in ex and "LONGI" in ex:
+                    ex["LATI"], ex["LONGI"] = ex["LONGI"], ex["LATI"]
+                row["extras"] = ex
+                # 重算 wkt（POINT(lng lat)）
+                if row["lati"] is not None and row["longi"] is not None:
+                    row["wkt"] = f"POINT({row['longi']} {row['lati']})"
+            cleaning_stats["auto_fixed"] += 1
+        else:
+            # keep（含 auto_fix 用在非 swap 类型时也按 keep 处理）
+            cleaning_stats["kept"] += 1
+
+    # 用清洗后的 site_pool 做冲突检测（lessor / road 不参与清洗）
+    lessor_pool: dict[str, dict[str, Any]] = s["lessor_pool"]
+    road_pool: list[dict[str, Any]] = s["road_pool"]
+
     async with pool().acquire() as conn:
         existing_sites = await conn.fetch(
             "SELECT site_id, \"option\", project, site_status, lati, longi, "
@@ -182,6 +413,15 @@ async def import_files(files: list[UploadFile]):
                 "source_file": row["source_file"],
             })
 
+    # 写回 session（清洗后的 pool + 计算出的 non_conflicts + conflicts）
+    session_store.update(sid, {
+        "site_pool_cleaned": site_pool,
+        "non_conflicts": non_conflicts,
+        "conflicts": conflicts,
+        "cleaning_decisions": decisions,
+        "cleaning_stats": cleaning_stats,
+    })
+
     summary = {
         "site": {
             "non_conflict": len(non_conflicts["site"]),
@@ -197,28 +437,39 @@ async def import_files(files: list[UploadFile]):
         },
     }
 
-    sid = session_store.create({
-        "non_conflicts": non_conflicts,
-        "conflicts": conflicts,
-    })
-
     return {
         "session_id": sid,
-        "files": file_reports,
         "summary": summary,
         "conflicts": conflicts,
-        "warnings": warnings,
+        "cleaning_stats": cleaning_stats,
     }
 
 
-def _normalize_jsonb(row: dict[str, Any]) -> dict[str, Any]:
-    """asyncpg 返回的 JSONB 字段是 str，转回 dict 方便前端用。"""
-    if "extras" in row and isinstance(row["extras"], str):
-        row = {**row, "extras": json.loads(row["extras"])}
-    return row
+# =====================================================================
+# Phase 2 back: POST /api/import/{sid}/back-to-cleaning
+# =====================================================================
 
 
-# ---------- Phase 2: POST /api/import/{sid}/commit ----------
+@router.post("/{sid}/back-to-cleaning")
+async def back_to_cleaning(sid: str):
+    """从冲突向导返回清洗向导。保留 cleaning_decisions 缓存，清掉 conflicts 决策。"""
+    s = session_store.get(sid)
+    if s is None:
+        raise HTTPException(status_code=404, detail="session 不存在或已过期")
+    err = session_store.transition(sid, "cleaning")
+    if err:
+        raise HTTPException(status_code=400, detail={"error": "invalid_state", "msg": err})
+    return {
+        "session_id": sid,
+        "cleanings": s["cleanings"],
+        "baseline_region": s["baseline_region"],
+        "cleaning_decisions": s.get("cleaning_decisions", {}),
+    }
+
+
+# =====================================================================
+# Phase 3: POST /api/import/{sid}/commit
+# =====================================================================
 
 
 class Decision(BaseModel):
@@ -232,9 +483,18 @@ class CommitBody(BaseModel):
 
 @router.post("/{sid}/commit")
 async def commit_import(sid: str, body: CommitBody):
-    session = session_store.get(sid)
-    if session is None:
+    s = session_store.get(sid)
+    if s is None:
         raise HTTPException(status_code=404, detail="session 不存在或已过期")
+    if "non_conflicts" not in s:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_state", "msg": "尚未通过 proceed-to-conflicts"},
+        )
+
+    err = session_store.transition(sid, "committing")
+    if err:
+        raise HTTPException(status_code=400, detail={"error": "invalid_state", "msg": err})
 
     decisions = {d.key: d.action for d in body.decisions}
     stats = {
@@ -245,19 +505,17 @@ async def commit_import(sid: str, body: CommitBody):
 
     async with pool().acquire() as conn:
         async with conn.transaction():
-            for s in session["non_conflicts"]["site"]:
-                await _insert_site(conn, s)
+            for r in s["non_conflicts"]["site"]:
+                await _insert_site(conn, r)
                 stats["site"]["inserted"] += 1
-
-            for r in session["non_conflicts"]["road"]:
+            for r in s["non_conflicts"]["road"]:
                 await _insert_road(conn, r)
                 stats["road"]["inserted"] += 1
-
-            for le in session["non_conflicts"]["lessor"]:
-                await _insert_lessor(conn, le)
+            for r in s["non_conflicts"]["lessor"]:
+                await _insert_lessor(conn, r)
                 stats["lessor"]["inserted"] += 1
 
-            for c in session["conflicts"]:
+            for c in s["conflicts"]:
                 action = decisions.get(c["key"], "ignore")
                 if action == "overwrite":
                     if c["kind"] == "site":
@@ -270,22 +528,31 @@ async def commit_import(sid: str, body: CommitBody):
                     stats[c["kind"]]["ignored"] += 1
 
     session_store.drop(sid)
-    return {"stats": stats}
+    return {"stats": stats, "cleaning_stats": s.get("cleaning_stats", {})}
 
 
-# ---------- GET /api/import/{sid}/conflicts.xlsx ----------
+# =====================================================================
+# DELETE /api/import/{sid}
+# =====================================================================
+
+
+@router.delete("/{sid}")
+async def cancel_import(sid: str):
+    dropped = session_store.drop(sid)
+    return {"dropped": dropped}
+
+
+# =====================================================================
+# GET /api/import/{sid}/conflicts.xlsx (F5)
+# =====================================================================
 
 
 @router.get("/{sid}/conflicts.xlsx")
 async def conflicts_xlsx(sid: str):
-    """F5：当前 session 的冲突列表导出 Excel。
-
-    用户选 [取消] 时前端先调这个端点拿到 xlsx，再调 DELETE 释放 session。
-    """
-    session = session_store.get(sid)
-    if session is None:
+    s = session_store.get(sid)
+    if s is None:
         raise HTTPException(status_code=404, detail="session 不存在或已过期")
-    data = build_conflicts_xlsx(session.get("conflicts", []))
+    data = build_conflicts_xlsx(s.get("conflicts", []))
     fname = f"conflicts_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
     return Response(
         content=data,
@@ -295,15 +562,6 @@ async def conflicts_xlsx(sid: str):
             "X-Filename": fname,
         },
     )
-
-
-# ---------- DELETE /api/import/{sid} ----------
-
-
-@router.delete("/{sid}")
-async def cancel_import(sid: str):
-    dropped = session_store.drop(sid)
-    return {"dropped": dropped}
 
 
 # ---------- SQL helpers ----------
@@ -327,10 +585,6 @@ async def _insert_site(conn, row: dict[str, Any]) -> None:
 
 
 async def _update_site(conn, existing: dict[str, Any], row: dict[str, Any]) -> None:
-    """完整替换（Spec：新数据完整替换库中旧记录，V1 不做字段级合并）。
-
-    用 existing 的原始 PK 做 WHERE 定位旧行，SET 用 incoming 全字段。
-    """
     await conn.execute(
         """
         UPDATE site SET

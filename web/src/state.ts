@@ -1,9 +1,13 @@
 import { useCallback, useState } from "react";
 import {
+  backToCleaning,
+  BaselineRegion,
   cancelImport,
+  CleaningAction,
+  CleaningRow,
+  clearBaseline,
   commitImport,
   ConflictRow,
-  CoordWarning,
   Decision,
   downloadConflictsXlsx,
   exportAll,
@@ -12,11 +16,20 @@ import {
   FeatureCollection,
   fetchAll,
   GeoJSONPolygon,
-  ImportSessionResponse,
-  uploadFiles,
+  Phase1Summary,
+  proceedToConflicts,
+  uploadFile,
 } from "./api";
 
 const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] };
+
+// Spec F1：单文件上限 100MB（前端拦截 + 后端 413 + nginx client_max_body_size 三层）
+const MAX_FILE_BYTES = 100 * 1024 * 1024;
+const MAX_FILE_MB = 100;
+
+function fmtMB(bytes: number): string {
+  return (bytes / 1024 / 1024).toFixed(1);
+}
 
 export interface LogEntry {
   ts: string;
@@ -24,20 +37,64 @@ export interface LogEntry {
   msg: string;
 }
 
-// Spec F11：导入/解析/入库阶段进度条
-export type Phase = "idle" | "uploading" | "awaiting_decision" | "committing" | "exporting";
+// Spec F11/12：导入阶段进度条 + 向导步骤
+export type Phase =
+  | "idle"
+  | "uploading"
+  | "cleaning"        // 步骤 1 等待用户决策
+  | "conflicts"       // 步骤 2 等待用户决策
+  | "committing"
+  | "exporting";
 
 // F9 框选模式
 export type DrawMode = "polygon" | "rectangle" | null;
 
+// 三面板缩放（Spec V1.x #11）
+export type PanelKey = "left" | "right" | "bottom";
+
+export const PANEL_LIMITS: Record<PanelKey, { min: number; max: number }> = {
+  left: { min: 200, max: 500 },
+  right: { min: 240, max: 600 },
+  bottom: { min: 120, max: 500 },
+};
+
+const PANEL_LS_KEY: Record<PanelKey, string> = {
+  left: "presurvey.panel.left",
+  right: "presurvey.panel.right",
+  bottom: "presurvey.panel.bottom",
+};
+
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function readPanelSize(key: PanelKey): number | null {
+  try {
+    const v = localStorage.getItem(PANEL_LS_KEY[key]);
+    if (v == null) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    const { min, max } = PANEL_LIMITS[key];
+    return clamp(n, min, max);
+  } catch {
+    return null;
+  }
+}
+
+// Spec #12 两步向导：缓存清洗 / 冲突两个阶段的 state
 export interface ImportSession {
   sessionId: string;
+  fileName: string;
+  // 步骤 1
+  cleanings: CleaningRow[];
+  cleaningDecisions: Record<string, CleaningAction>;
+  baselineRegion: BaselineRegion | null;
+  phase1Summary: Phase1Summary;
+  // 步骤 2（proceed-to-conflicts 后填）
   conflicts: ConflictRow[];
-  warnings: CoordWarning[];
-  // 每条冲突的当前决策；默认 ignore（Spec：忽略 = 仅导无冲突）
-  decisions: Record<string, Decision>;
-  fileNames: string[];
-  summary: ImportSessionResponse["summary"];
+  conflictDecisions: Record<string, Decision>;
+  // 当前在哪一步
+  step: "cleaning" | "conflicts";
 }
 
 export function useAppState() {
@@ -56,6 +113,14 @@ export function useAppState() {
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   // 触发地图调用 fit-all 的 epoch
   const [fitAllEpoch, setFitAllEpoch] = useState(0);
+  // 三面板尺寸；null = 用 CSS 默认百分比，number = 用户拖拽过的 px
+  const [panelSizes, setPanelSizes] = useState<Record<PanelKey, number | null>>(() => ({
+    left: readPanelSize("left"),
+    right: readPanelSize("right"),
+    bottom: readPanelSize("bottom") ?? 200,
+  }));
+  // 拖拽中通知地图 updateSize() 的 epoch
+  const [layoutEpoch, setLayoutEpoch] = useState(0);
 
   const log = useCallback((level: LogEntry["level"], msg: string) => {
     const ts = new Date().toLocaleTimeString("zh-CN", { hour12: false });
@@ -73,46 +138,48 @@ export function useAppState() {
   const importFiles = useCallback(
     async (files: File[]) => {
       if (!files.length) return;
-      setPhase("uploading");
-      log("info", `开始上传 ${files.length} 个文件：${files.map(f => f.name).join(", ")}`);
-      try {
-        const resp = await uploadFiles(files);
-        // 文件级解析错误先报
-        for (const f of resp.files) {
-          if (f.error) log("error", `${f.name} → ${f.error}`);
-        }
-        // 坐标异常 warnings
-        for (const w of resp.warnings) {
-          log("warn", `坐标异常 ${w.name} (来自 ${w.source_file})：${w.message}`);
-        }
 
-        const sumLine = (label: string, k: "site" | "road" | "lessor") =>
-          `${label} ${resp.summary[k].non_conflict}/${resp.summary[k].conflict}`;
+      // Spec F1 #12：V1 单文件强制。拖入多个 → 只取首个 + warn
+      if (files.length > 1) {
+        const dropped = files.length - 1;
+        const droppedNames = files.slice(1).map(f => f.name).join(", ");
+        log("warn", `已忽略其他 ${dropped} 个文件（V1 一次只能传一个）：${droppedNames}`);
+        files = [files[0]];
+      }
+
+      const f0 = files[0];
+      if (f0.size > MAX_FILE_BYTES) {
+        log("error", `文件 ${f0.name} (${fmtMB(f0.size)}MB) 超过 ${MAX_FILE_MB}MB 上限，已拒绝`);
+        return;
+      }
+
+      setPhase("uploading");
+      log("info", `开始上传：${f0.name}`);
+      try {
+        const resp = await uploadFile(f0);
+        const sm = resp.summary;
         log(
           "info",
-          `解析完成（无冲突/冲突）：${sumLine("site", "site")}，${sumLine("road", "road")}，${sumLine("lessor", "lessor")}`
+          `解析 ${sm.total_parsed} 条；文件内重复去重 ${sm.intra_file_duplicates.site_groups + sm.intra_file_duplicates.lessor_groups} 组` +
+          `（丢弃 ${sm.intra_file_duplicates.site_discarded + sm.intra_file_duplicates.lessor_discarded}）；检测异常 ${sm.cleanings_count} 条，等待用户决策（尚未写库）`
         );
 
-        if (resp.conflicts.length === 0) {
-          // 直接 commit 空决策
-          await doCommit(resp.session_id, [], files.map(f => f.name));
-          return;
-        }
-
-        // 默认全部忽略（Spec：忽略 = 仅导无冲突）
-        const decisions: Record<string, Decision> = {};
-        for (const c of resp.conflicts) decisions[c.key] = "ignore";
+        // 默认决策按后端给的 default_action
+        const decisions: Record<string, CleaningAction> = {};
+        for (const c of resp.cleanings) decisions[c.row_id] = c.default_action;
 
         setImportSession({
           sessionId: resp.session_id,
-          conflicts: resp.conflicts,
-          warnings: resp.warnings,
-          decisions,
-          fileNames: files.map(f => f.name),
-          summary: resp.summary,
+          fileName: f0.name,
+          cleanings: resp.cleanings,
+          cleaningDecisions: decisions,
+          baselineRegion: resp.baseline_region,
+          phase1Summary: sm,
+          conflicts: [],
+          conflictDecisions: {},
+          step: "cleaning",
         });
-        setPhase("awaiting_decision");
-        log("info", `等待用户处理 ${resp.conflicts.length} 条冲突`);
+        setPhase("cleaning");
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         log("error", `导入失败：${msg}`);
@@ -123,22 +190,75 @@ export function useAppState() {
     [log]
   );
 
-  const doCommit = useCallback(
-    async (
-      sessionId: string,
-      decisions: { key: string; action: Decision }[],
-      fileNames: string[]
-    ) => {
-      setPhase("committing");
-      log("info", `正在入库 (${fileNames.join(", ")})...`);
+  // 步骤 1 → 步骤 2
+  const goToConflicts = useCallback(
+    async (cleaningDecisions: Record<string, CleaningAction>) => {
+      if (!importSession) return;
+      setPhase("uploading");  // 用"上传中"做占位 spinner；后端处理一般 < 1s
       try {
-        const resp = await commitImport(sessionId, decisions);
+        const list = Object.entries(cleaningDecisions).map(([row_id, action]) => ({ row_id, action }));
+        const resp = await proceedToConflicts(importSession.sessionId, list);
+        const cs = resp.cleaning_stats;
+        log("info",
+          `清洗决策已暂存（自动修复 ${cs.auto_fixed} / 保留 ${cs.kept} / 丢弃 ${cs.discarded}）；` +
+          `待处理冲突 ${resp.conflicts.length} 条；尚未写库`
+        );
+
+        // 冲突默认决策：ignore（Spec F4 / Stage 2 沿用）
+        const cdec: Record<string, Decision> = {};
+        for (const c of resp.conflicts) cdec[c.key] = "ignore";
+
+        setImportSession({
+          ...importSession,
+          cleaningDecisions,
+          conflicts: resp.conflicts,
+          conflictDecisions: cdec,
+          step: "conflicts",
+        });
+        setPhase("conflicts");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log("error", `进入冲突检测失败：${msg}`);
+        setPhase("cleaning");
+      }
+    },
+    [importSession, log]
+  );
+
+  // 步骤 2 → 步骤 1（保留 cleaning 决策）
+  const goBackToCleaning = useCallback(async () => {
+    if (!importSession) return;
+    try {
+      await backToCleaning(importSession.sessionId);
+      setImportSession({
+        ...importSession,
+        conflicts: [],
+        conflictDecisions: {},
+        step: "cleaning",
+      });
+      setPhase("cleaning");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log("error", `返回清洗步骤失败：${msg}`);
+    }
+  }, [importSession, log]);
+
+  const confirmConflicts = useCallback(
+    async (decisions: Record<string, Decision>) => {
+      if (!importSession) return;
+      setPhase("committing");
+      log("info", `正在入库 (${importSession.fileName})...`);
+      try {
+        const list = Object.entries(decisions).map(([key, action]) => ({ key, action }));
+        const resp = await commitImport(importSession.sessionId, list);
         const s = resp.stats;
+        const cs = resp.cleaning_stats;
         log(
           "info",
-          `入库完成：site ${s.site.inserted}+${s.site.updated}/-${s.site.ignored}，` +
-            `road ${s.road.inserted}/-，` +
-            `lessor ${s.lessor.inserted}+${s.lessor.updated}/-${s.lessor.ignored}`
+          `入库完成：清洗 fix ${cs.auto_fixed}/丢弃 ${cs.discarded}；` +
+          `site ${s.site.inserted}+${s.site.updated}/-${s.site.ignored}，` +
+          `road ${s.road.inserted}/-，` +
+          `lessor ${s.lessor.inserted}+${s.lessor.updated}/-${s.lessor.ignored}`
         );
         await refresh();
       } catch (e: unknown) {
@@ -149,30 +269,26 @@ export function useAppState() {
         setPhase("idle");
       }
     },
-    [log, refresh]
+    [importSession, log, refresh]
   );
 
-  const confirmConflicts = useCallback(
-    async (decisions: Record<string, Decision>) => {
-      if (!importSession) return;
-      const list = Object.entries(decisions).map(([key, action]) => ({ key, action }));
-      await doCommit(importSession.sessionId, list, importSession.fileNames);
-    },
-    [importSession, doCommit]
-  );
-
-  const abortConflicts = useCallback(async () => {
+  // 取消导入：步骤 2 取消 → 下载 Excel 然后 DELETE；步骤 1 取消 → 直接 DELETE
+  const abortImport = useCallback(async () => {
     if (!importSession) return;
-    // F5：先拿 xlsx 文件，再释放 session（顺序不能反，删了 session 就拿不到 xlsx 了）
-    try {
-      await downloadConflictsXlsx(importSession.sessionId);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      log("error", `下载冲突 Excel 失败：${msg}`);
+    const isStep2 = importSession.step === "conflicts" && importSession.conflicts.length > 0;
+    if (isStep2) {
+      try {
+        await downloadConflictsXlsx(importSession.sessionId);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log("error", `下载冲突 Excel 失败：${msg}`);
+      }
     }
     try {
       await cancelImport(importSession.sessionId);
-      log("warn", `已取消导入 (${importSession.fileNames.join(", ")})，冲突列表已下载为 Excel`);
+      log("warn",
+        `已取消导入 (${importSession.fileName})，数据库未变动${isStep2 ? "，冲突列表已下载为 Excel" : ""}`
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       log("error", `取消导入失败：${msg}`);
@@ -181,6 +297,19 @@ export function useAppState() {
       setPhase("idle");
     }
   }, [importSession, log]);
+
+  // F14 清除基线
+  const doClearBaseline = useCallback(async () => {
+    try {
+      const resp = await clearBaseline();
+      const d = resp.deleted;
+      log("error", `基线已清空：site -${d.site} / road -${d.road} / lessor -${d.lessor}`);
+      await refresh();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log("error", `清除基线失败：${msg}`);
+    }
+  }, [log, refresh]);
 
   const selectFeature = useCallback((f: Feature | null) => {
     setSelected(f);
@@ -256,6 +385,27 @@ export function useAppState() {
 
   const fitAll = useCallback(() => setFitAllEpoch(Date.now()), []);
 
+  // 拖拽中实时改 panel size 并通知地图重绘
+  const setPanelSize = useCallback((key: PanelKey, sizePx: number) => {
+    const { min, max } = PANEL_LIMITS[key];
+    const clamped = clamp(sizePx, min, max);
+    setPanelSizes(prev => ({ ...prev, [key]: clamped }));
+    setLayoutEpoch(Date.now());
+  }, []);
+
+  // 拖拽结束写 localStorage
+  const persistPanelSize = useCallback((key: PanelKey) => {
+    setPanelSizes(prev => {
+      const v = prev[key];
+      if (v != null) {
+        try {
+          localStorage.setItem(PANEL_LS_KEY[key], String(v));
+        } catch { /* localStorage 不可用就放弃持久化 */ }
+      }
+      return prev;
+    });
+  }, []);
+
   // 全局搜索：按 SITE ID / Lessor Name / Road Property 匹配，返回第一个命中
   const globalSearch = useCallback((query: string): Feature | null => {
     const q = query.trim().toLowerCase();
@@ -318,12 +468,17 @@ export function useAppState() {
     selectionPolygon,
     hiddenIds,
     fitAllEpoch,
+    panelSizes,
+    layoutEpoch,
     log,
     clearLogs,
     refresh,
     importFiles,
+    goToConflicts,
+    goBackToCleaning,
     confirmConflicts,
-    abortConflicts,
+    abortImport,
+    doClearBaseline,
     selectFeature,
     flyTo,
     startDraw,
@@ -335,5 +490,7 @@ export function useAppState() {
     setKindVisible,
     fitAll,
     globalSearch,
+    setPanelSize,
+    persistPanelSize,
   };
 }

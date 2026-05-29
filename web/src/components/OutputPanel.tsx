@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { LogEntry, Phase } from "../state";
+import { LogEntry, PANEL_LIMITS, Phase } from "../state";
+import ResizeHandle from "./ResizeHandle";
 
 interface Props {
   open: boolean;
@@ -7,12 +8,15 @@ interface Props {
   logs: LogEntry[];
   phase: Phase;
   onClearLogs: () => void;
+  onResize: (px: number) => void;
+  onResizeEnd: () => void;
 }
 
 const PHASE_LABEL: Record<Phase, string> = {
   idle: "就绪",
   uploading: "上传 + 解析中...",
-  awaiting_decision: "等待用户处理冲突",
+  cleaning: "等待用户处理清洗",
+  conflicts: "等待用户处理冲突",
   committing: "入库中...",
   exporting: "导出中...",
 };
@@ -20,12 +24,15 @@ const PHASE_LABEL: Record<Phase, string> = {
 const PHASE_BUSY: Record<Phase, boolean> = {
   idle: false,
   uploading: true,
-  awaiting_decision: false,
+  cleaning: false,
+  conflicts: false,
   committing: true,
   exporting: true,
 };
 
-export default function OutputPanel({ open, onToggle, logs, phase, onClearLogs }: Props) {
+export default function OutputPanel({
+  open, onToggle, logs, phase, onClearLogs, onResize, onResizeEnd,
+}: Props) {
   const [dbOk, setDbOk] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -50,6 +57,14 @@ export default function OutputPanel({ open, onToggle, logs, phase, onClearLogs }
 
   return (
     <div className="output">
+      {open && (
+        <ResizeHandle
+          axis="y" edge="start"
+          min={PANEL_LIMITS.bottom.min} max={PANEL_LIMITS.bottom.max}
+          onResize={onResize}
+          onResizeEnd={onResizeEnd}
+        />
+      )}
       <div className="bar" onClick={onToggle}>
         <span>{open ? "▾" : "▸"}</span>
         <span className="phase-label">

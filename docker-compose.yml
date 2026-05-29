@@ -38,6 +38,9 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DB_NAME: ${DB_NAME:-presurvey}
+    volumes:
+      # Natural Earth countries GeoJSON（Spec #12 底层地理数据），api lifespan 一次性加载到 PostGIS
+      - ./deploy/db/geo_data:/app/geo_data:ro
     ports:
       - "8000:8000"
 

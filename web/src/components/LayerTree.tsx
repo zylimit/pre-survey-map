@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Feature, FeatureCollection } from "../api";
 import { formatCount } from "../utils";
+import { PANEL_LIMITS } from "../state";
+import ResizeHandle from "./ResizeHandle";
 
 interface Props {
   sites: FeatureCollection;
@@ -11,6 +13,8 @@ interface Props {
   onPick: (f: Feature) => void;
   onToggleFeature: (id: string) => void;
   onSetKindVisible: (ids: string[], visible: boolean) => void;
+  onResize: (px: number) => void;
+  onResizeEnd: () => void;
 }
 
 function nameOf(f: Feature): string {
@@ -112,6 +116,7 @@ function Folder({
 export default function LayerTree({
   sites, roads, lessors, selectedId, hiddenIds,
   onPick, onToggleFeature, onSetKindVisible,
+  onResize, onResizeEnd,
 }: Props) {
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Record<"site" | "road" | "lessor", boolean>>({
@@ -173,6 +178,12 @@ export default function LayerTree({
         onPick={onPick}
         onToggleFeature={onToggleFeature}
         onSetKindVisible={onSetKindVisible}
+      />
+      <ResizeHandle
+        axis="x" edge="end"
+        min={PANEL_LIMITS.left.min} max={PANEL_LIMITS.left.max}
+        onResize={onResize}
+        onResizeEnd={onResizeEnd}
       />
     </div>
   );

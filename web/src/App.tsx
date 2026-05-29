@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Toolbar from "./components/Toolbar";
 import LayerTree from "./components/LayerTree";
 import MapView from "./components/MapView";
 import AttributePanel from "./components/AttributePanel";
 import OutputPanel from "./components/OutputPanel";
 import ConflictDialog from "./components/ConflictDialog";
+import CleaningDialog from "./components/CleaningDialog";
+import ConfirmDialog from "./components/ConfirmDialog";
 import { useAppState } from "./state";
 
 export default function App() {
   const [outputOpen, setOutputOpen] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
   const s = useAppState();
 
   useEffect(() => {
@@ -41,8 +44,23 @@ export default function App() {
 
   const selectedId = s.selected?.id ?? null;
 
+  // Spec V1.x #11：三面板尺寸 → grid 模板
+  const gridStyle: React.CSSProperties = useMemo(() => {
+    const left = s.panelSizes.left != null ? `${s.panelSizes.left}px` : "20%";
+    const right = !s.selected
+      ? "0"
+      : s.panelSizes.right != null
+        ? `${s.panelSizes.right}px`
+        : "25%";
+    const bottom = outputOpen ? `${s.panelSizes.bottom ?? 200}px` : "28px";
+    return {
+      gridTemplateColumns: `${left} 1fr ${right}`,
+      gridTemplateRows: `56px 1fr ${bottom}`,
+    };
+  }, [s.panelSizes, s.selected, outputOpen]);
+
   return (
-    <div className={`app ${s.selected ? "" : "no-attr"}`}>
+    <div className={`app ${s.selected ? "" : "no-attr"}`} style={gridStyle}>
       <Toolbar
         onImport={s.importFiles}
         busy={s.phase === "uploading" || s.phase === "committing" || s.phase === "exporting"}
@@ -54,6 +72,7 @@ export default function App() {
         onExportSelection={s.doExportSelection}
         onRefresh={onRefresh}
         onSearch={onSearch}
+        onClearBaseline={() => setConfirmingClear(true)}
       />
       <LayerTree
         sites={s.sites}
@@ -64,6 +83,8 @@ export default function App() {
         onPick={s.flyTo}
         onToggleFeature={s.toggleFeatureVisible}
         onSetKindVisible={s.setKindVisible}
+        onResize={px => s.setPanelSize("left", px)}
+        onResizeEnd={() => s.persistPanelSize("left")}
       />
       <MapView
         sites={s.sites}
@@ -75,26 +96,67 @@ export default function App() {
         selectionPolygon={s.selectionPolygon}
         hiddenIds={s.hiddenIds}
         fitAllEpoch={s.fitAllEpoch}
+        layoutEpoch={s.layoutEpoch}
         onDropFiles={s.importFiles}
         onSelectFeature={s.selectFeature}
         onSelectionDrawn={s.onSelectionDrawn}
         onFitAll={s.fitAll}
       />
-      <AttributePanel feature={s.selected} onClose={() => s.selectFeature(null)} />
+      <AttributePanel
+        feature={s.selected}
+        onClose={() => s.selectFeature(null)}
+        onResize={px => s.setPanelSize("right", px)}
+        onResizeEnd={() => s.persistPanelSize("right")}
+      />
       <OutputPanel
         open={outputOpen}
         onToggle={() => setOutputOpen(o => !o)}
         logs={s.logs}
         phase={s.phase}
         onClearLogs={s.clearLogs}
+        onResize={px => s.setPanelSize("bottom", px)}
+        onResizeEnd={() => s.persistPanelSize("bottom")}
       />
 
-      {s.importSession && (
+      {/* Spec #12 两步向导：步骤 1 清洗 / 步骤 2 冲突 */}
+      {s.importSession && s.importSession.step === "cleaning" && (
+        <CleaningDialog
+          fileName={s.importSession.fileName}
+          cleanings={s.importSession.cleanings}
+          baselineRegion={s.importSession.baselineRegion}
+          summary={s.importSession.phase1Summary}
+          initial={s.importSession.cleaningDecisions}
+          onProceed={s.goToConflicts}
+          onCancel={s.abortImport}
+        />
+      )}
+      {s.importSession && s.importSession.step === "conflicts" && (
         <ConflictDialog
           conflicts={s.importSession.conflicts}
-          initial={s.importSession.decisions}
+          initial={s.importSession.conflictDecisions}
           onConfirm={s.confirmConflicts}
-          onCancel={s.abortConflicts}
+          onCancel={s.abortImport}
+          onBack={s.goBackToCleaning}
+        />
+      )}
+
+      {/* F14 清除基线确认 */}
+      {confirmingClear && (
+        <ConfirmDialog
+          title="清除基线数据"
+          body={
+            "此操作将清空 site / road / lessor 三表的所有数据。\n" +
+            "本操作不可撤销，主基准区域也会被重置。\n" +
+            "确定继续吗?"
+          }
+          confirmLabel="确定清除"
+          cancelLabel="取消"
+          destructive
+          onConfirm={() => {
+            setConfirmingClear(false);
+            s.doClearBaseline();
+          }}
+          onCancel={() => setConfirmingClear(false)}
         />
       )}
     </div>

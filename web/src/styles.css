@@ -82,6 +82,17 @@ button, input, select, textarea {
   border-color: var(--accent);
 }
 
+.toolbar button.danger {
+  color: var(--error);
+  border-color: var(--border);
+}
+
+.toolbar button.danger:hover:not(:disabled) {
+  background: var(--error-bg);
+  border-color: var(--error);
+  color: var(--error);
+}
+
 .toolbar .dropdown {
   position: relative;
 }
@@ -165,6 +176,7 @@ button, input, select, textarea {
   padding: 8px;
   color: var(--text);
   box-shadow: var(--shadow-panel);
+  position: relative;
 }
 
 .tree > input {
@@ -303,6 +315,46 @@ button, input, select, textarea {
   text-overflow: ellipsis;
 }
 
+/* ============ Resize Handles ============ */
+
+.resize-handle {
+  position: absolute;
+  z-index: 50;
+  background: transparent;
+  transition: background var(--transition-fast);
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background: var(--accent);
+}
+
+.resize-handle-x {
+  width: 4px;
+  top: 0;
+  bottom: 0;
+  cursor: col-resize;
+}
+
+.resize-handle-x.resize-handle-end {
+  right: -2px;
+}
+
+.resize-handle-x.resize-handle-start {
+  left: -2px;
+}
+
+.resize-handle-y {
+  height: 4px;
+  left: 0;
+  right: 0;
+  cursor: row-resize;
+}
+
+.resize-handle-y.resize-handle-start {
+  top: -2px;
+}
+
 /* ============ Map ============ */
 
 .map {
@@ -419,6 +471,7 @@ button, input, select, textarea {
   padding: 0;
   color: var(--text);
   box-shadow: var(--shadow-panel);
+  position: relative;
 }
 
 .attr h3 {
@@ -521,6 +574,8 @@ button, input, select, textarea {
   font-size: 12px;
   border-top: 1px solid var(--border);
   box-shadow: var(--shadow-panel);
+  position: relative;
+  overflow: hidden;
 }
 
 .output .bar {
@@ -860,4 +915,209 @@ button, input, select, textarea {
 
 .modal-footer .cancel:hover {
   border-color: var(--error);
+}
+
+.modal-footer .danger {
+  background: var(--error);
+  color: var(--bg-panel);
+  border-color: var(--error);
+  font-weight: 500;
+}
+
+.modal-footer .danger:hover {
+  background: #c92a2a;
+  border-color: #c92a2a;
+}
+
+/* ============ Import Stepper（Spec #12 两步向导）============ */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.stepper .step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.stepper .step-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.stepper .step-active .step-marker {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-panel);
+}
+
+.stepper .step-active .step-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.stepper .step-done .step-marker {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stepper .step-sep {
+  color: var(--text-muted);
+}
+
+/* ============ Cleaning Dialog ============ */
+
+.cleaning-modal {
+  width: 1200px;
+}
+
+.banner {
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.banner-baseline {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.banner-summary {
+  background: var(--bg-app);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.empty {
+  padding: 48px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.cleaning-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.cleaning-table th,
+.cleaning-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.cleaning-table th {
+  background: var(--bg-elevated);
+  position: sticky;
+  top: 0;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-strong);
+  font-family: var(--font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+}
+
+.cleaning-table td.mono,
+.cleaning-table .mono {
+  font-family: var(--font-mono);
+}
+
+.cleaning-table tr.act-auto_fix {
+  background: var(--accent-bg);
+}
+
+.cleaning-table tr.act-keep {
+  background: var(--warn-bg);
+}
+
+.cleaning-table tr.act-discard {
+  background: var(--bg-app);
+  opacity: 0.7;
+}
+
+.cleaning-table td button {
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 3px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 11px;
+  margin-right: 4px;
+  font-family: var(--font-ui);
+  transition: border-color var(--transition-fast), color var(--transition-fast),
+              background var(--transition-fast);
+}
+
+.cleaning-table td button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.cleaning-table td button.active {
+  background: var(--accent);
+  color: var(--bg-panel);
+  border-color: var(--accent);
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: var(--radius);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.badge-auto_fix {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.badge-keep {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.badge-discard {
+  background: var(--bg-app);
+  color: var(--text-muted);
+}
+
+/* ============ Confirm Dialog ============ */
+
+.confirm-modal {
+  width: 460px;
+}
+
+.confirm-body {
+  padding: 16px 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
 }
