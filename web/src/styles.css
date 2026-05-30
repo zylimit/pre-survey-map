@@ -793,6 +793,85 @@ button, input, select, textarea {
   color: var(--error);
 }
 
+/* ---- F16 搜索结果区（独立于日志，封顶 200 条）---- */
+
+.output .search-results {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.output .search-summary {
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: var(--radius);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.output .search-summary:hover {
+  background: var(--accent-bg);
+}
+
+.output .search-result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+.output .search-result-row:hover {
+  background: var(--bg-elevated);
+}
+
+.output .search-result-row .sr-name {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.output .search-result-row .sr-info {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.output .search-result-row .sr-badge {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.output .search-result-row .sr-badge.sr-site { color: var(--accent); border-color: var(--accent); }
+.output .search-result-row .sr-badge.sr-road { color: var(--warn); border-color: var(--warn); }
+.output .search-result-row .sr-badge.sr-lessor { color: var(--success); border-color: var(--success); }
+
+.output .bar .search-summary-collapsed {
+  flex-shrink: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.output .bar .search-summary-collapsed:hover {
+  text-decoration: underline;
+}
+
 /* ============ Drop overlay ============ */
 
 .drop-overlay {

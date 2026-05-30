@@ -22,6 +22,7 @@ import {
   proceedToConflicts,
   uploadFile,
 } from "./api";
+import { nameOf } from "./utils";
 
 const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] };
 
@@ -38,6 +39,16 @@ export interface LogEntry {
   level: "info" | "warn" | "error";
   msg: string;
 }
+
+// F16 全局搜索结果：Output 内独立 state，不进 50 条日志数组
+export interface SearchResults {
+  query: string;
+  total: number;       // 命中总数（封顶前）
+  results: Feature[];  // 实际渲染列表，封顶 200 条
+}
+
+// 结果封顶：超出只提示不全量渲染（与 #16 虚拟化精神一致，防卡）
+const SEARCH_CAP = 200;
 
 // Spec F11/12：导入阶段进度条 + 向导步骤
 export type Phase =
@@ -116,6 +127,8 @@ export function useAppState() {
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   // F15 全局基线状态栏
   const [baselineState, setBaselineState] = useState<BaselineState>({ established: false });
+  // F16 全局搜索结果（独立于日志数组）
+  const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
   // 触发地图调用 fit-all 的 epoch
   const [fitAllEpoch, setFitAllEpoch] = useState(0);
   // 三面板尺寸；null = 用 CSS 默认百分比，number = 用户拖拽过的 px
@@ -440,36 +453,20 @@ export function useAppState() {
     });
   }, []);
 
-  // 全局搜索：按 SITE ID / Lessor Name / Road Property 匹配，返回第一个命中
-  const globalSearch = useCallback((query: string): Feature | null => {
-    const q = query.trim().toLowerCase();
-    if (!q) return null;
-    const test = (f: Feature, fields: (keyof Record<string, unknown>)[]): boolean => {
-      const p = f.properties ?? {};
-      for (const fld of fields) {
-        const v = p[fld as string];
-        if (v != null && String(v).toLowerCase().includes(q)) return true;
-      }
-      return false;
-    };
-    const all = [
-      ...sites.features.map(f => ({ f, fields: ["site_id", "option"] as string[] })),
-      ...lessors.features.map(f => ({ f, fields: ["lessor_name", "fid"] as string[] })),
-      ...roads.features.map(f => ({ f, fields: ["property"] as string[] })),
-    ];
-    const matches = all.filter(({ f, fields }) => test(f, fields as never));
-    if (matches.length === 0) {
-      log("warn", `搜索：未匹配 "${query}"`);
-      return null;
-    }
-    if (matches.length > 1) {
-      log("info", `搜索匹配 ${matches.length} 条，飞到第一条`);
-    }
-    const first = matches[0].f;
-    setSelected(first);
-    setFlyTarget({ feature: first, epoch: Date.now() });
-    return first;
-  }, [sites, roads, lessors, log]);
+  // F16 全局搜索：三类全搜，匹配口径复用 nameOf（与左树过滤同口径，子串、大小写不敏感）
+  // 结果写入独立 searchResults（不进 50 条日志），新搜覆盖旧；非空自动飞第一条。
+  const globalSearch = useCallback((query: string) => {
+    const q = query.trim();
+    if (!q) return;  // 空关键词不搜索
+    const lower = q.toLowerCase();
+    const all = [...sites.features, ...roads.features, ...lessors.features];
+    const matches = all.filter(f => nameOf(f).toLowerCase().includes(lower));
+    setSearchResults({ query: q, total: matches.length, results: matches.slice(0, SEARCH_CAP) });
+    if (matches.length > 0) flyTo(matches[0]);
+  }, [sites, roads, lessors, flyTo]);
+
+  // F16 #18：清空搜索结果（只动 searchResults，不碰日志数组）
+  const clearSearch = useCallback(() => setSearchResults(null), []);
 
   const doExportSelection = useCallback(async () => {
     if (!selectionPolygon) {
@@ -526,6 +523,8 @@ export function useAppState() {
     setKindVisible,
     fitAll,
     globalSearch,
+    searchResults,
+    clearSearch,
     setPanelSize,
     persistPanelSize,
   };

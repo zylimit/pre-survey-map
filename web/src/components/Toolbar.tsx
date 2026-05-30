@@ -119,7 +119,7 @@ export default function Toolbar({
 
       <div className="search">
         <input
-          placeholder="🔍 搜索 SITE ID / 名称..."
+          placeholder="🔍 搜索 Site / Road / Lessor..."
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => {

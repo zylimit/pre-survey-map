@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Feature, FeatureCollection } from "../api";
-import { formatCount } from "../utils";
+import { formatCount, nameOf } from "../utils";
 import { PANEL_LIMITS } from "../state";
 import ResizeHandle from "./ResizeHandle";
 
@@ -18,15 +18,6 @@ interface Props {
 }
 
 type Kind = "site" | "road" | "lessor";
-
-function nameOf(f: Feature): string {
-  const p = f.properties;
-  if (!p) return "(未命名)";
-  if (p.kind === "site") return `${p.site_id ?? "?"}${p.option ? ` / ${p.option}` : ""}`;
-  if (p.kind === "road") return (p.property as string) || `road #${p.id}`;
-  if (p.kind === "lessor") return (p.lessor_name as string) || `lessor ${p.fid}`;
-  return "(未知)";
-}
 
 function searchMatch(f: Feature, q: string): boolean {
   if (!q) return true;
