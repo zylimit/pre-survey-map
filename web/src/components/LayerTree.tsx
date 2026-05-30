@@ -110,6 +110,33 @@ function LayerTree({
     return () => ro.disconnect();
   }, []);
 
+  // 地图选中 → 树定位：虚拟列表里目标节点可能没渲染，需先展开所在文件夹，
+  // 再把它滚进视口。依赖 rows：展开后 rows 重建会再次触发本 effect 完成滚动。
+  useEffect(() => {
+    if (selectedId == null) return;
+    const sel = String(selectedId);
+
+    const idx = rows.findIndex(r => r.t === "node" && String(r.feature.id) === sel);
+    if (idx < 0) {
+      // 节点不在 rows 里 = 所在文件夹折叠了，先展开（本 effect 会因 rows 变化重跑）
+      let kind: Kind | null = null;
+      if (filteredSites.some(f => String(f.id) === sel)) kind = "site";
+      else if (filteredRoads.some(f => String(f.id) === sel)) kind = "road";
+      else if (filteredLessors.some(f => String(f.id) === sel)) kind = "lessor";
+      if (kind && !expanded[kind]) setExpanded(prev => ({ ...prev, [kind!]: true }));
+      return;
+    }
+
+    const el = scrollRef.current;
+    if (!el) return;
+    const top = idx * ROW_H;
+    const viewTop = el.scrollTop;
+    const viewBottom = viewTop + el.clientHeight;
+    if (top < viewTop || top + ROW_H > viewBottom) {
+      el.scrollTop = Math.max(0, top - el.clientHeight / 2 + ROW_H / 2);
+    }
+  }, [selectedId, rows, filteredSites, filteredRoads, filteredLessors, expanded]);
+
   const total = rows.length;
   const start = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
   const end = Math.min(total, Math.ceil((scrollTop + viewportH) / ROW_H) + OVERSCAN);
