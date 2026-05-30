@@ -16,6 +16,7 @@ GET  /api/import/{sid}/conflicts.xlsx：F5 冲突 Excel 导出
 """
 
 import json
+import time
 import traceback
 from dataclasses import asdict
 from datetime import datetime
@@ -212,13 +213,35 @@ async def import_file(file: UploadFile):
                 })
 
     # 2) + 3) 在海里 / 不在主基准（PostGIS）
-    async with pool().acquire() as conn:
-        # 先算主基准（基线 ≥ 1 用基线，否则用本文件 geo_points）
-        baseline = await compute_baseline_region(conn, current_points=geo_points)
-        baseline_iso = baseline["country_iso_a2"] if baseline else None
+    # 这段是偶发 502/500 的高危区（清空基线后导入大文件，PostGIS KNN 重负载）。
+    # 包 try/except 把裸异常变成可读错误 + 打满堆栈和耗时到 stderr，下次必留证据。
+    _t0 = time.perf_counter()
+    baseline = None
+    baseline_iso = None
+    try:
+        async with pool().acquire() as conn:
+            # 先算主基准（基线 ≥ 1 用基线，否则用本文件 geo_points）
+            baseline = await compute_baseline_region(conn, current_points=geo_points)
+            baseline_iso = baseline["country_iso_a2"] if baseline else None
 
-        # 对 geo_points 做地理分类
-        classified = await classify_points(conn, geo_points, baseline_iso)
+            # 对 geo_points 做地理分类
+            classified = await classify_points(conn, geo_points, baseline_iso)
+    except Exception as e:
+        traceback.print_exc()
+        print(
+            f"[import] geo classify FAILED after {time.perf_counter() - _t0:.1f}s "
+            f"points={len(geo_points)} baseline_iso={baseline_iso}",
+            flush=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"地理清洗失败（{len(geo_points)} 点）：{type(e).__name__}: {e}",
+        )
+    print(
+        f"[import] geo classify OK in {time.perf_counter() - _t0:.1f}s "
+        f"points={len(geo_points)} baseline_iso={baseline_iso}",
+        flush=True,
+    )
 
     for p in geo_points:
         cls = classified.get(p["row_id"])

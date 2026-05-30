@@ -63,6 +63,8 @@ async def classify_points(conn, points: list[dict[str, Any]],
     lngs = [p["lng"] for p in points]
     lats = [p["lat"] for p in points]
 
+    # 每个点只做一次 KNN（LATERAL 一次性取 iso_a2 + name_zh），
+    # 避免对超大多边形（俄/加/南极）重复扫描——之前两个相关子查询等于 2× KNN。
     rows = await conn.fetch(
         f"""
         WITH pts AS (
@@ -73,19 +75,15 @@ async def classify_points(conn, points: list[dict[str, Any]],
         pts_geom AS (
             SELECT row_id, ST_SetSRID(ST_MakePoint(lng, lat), 4326) AS g FROM pts
         )
-        SELECT
-            p.row_id,
-            (
-                SELECT c.iso_a2 FROM countries c
-                WHERE ST_DWithin(p.g, c.geom, {BUFFER_DEG})
-                ORDER BY c.geom <-> p.g LIMIT 1
-            ) AS country_iso_a2,
-            (
-                SELECT c.name_zh FROM countries c
-                WHERE ST_DWithin(p.g, c.geom, {BUFFER_DEG})
-                ORDER BY c.geom <-> p.g LIMIT 1
-            ) AS country_name_zh
+        SELECT p.row_id, c.iso_a2 AS country_iso_a2, c.name_zh AS country_name_zh
         FROM pts_geom p
+        LEFT JOIN LATERAL (
+            SELECT c.iso_a2, c.name_zh
+            FROM countries c
+            WHERE ST_DWithin(p.g, c.geom, {BUFFER_DEG})
+            ORDER BY c.geom <-> p.g
+            LIMIT 1
+        ) c ON true
         """,
         row_ids, lngs, lats,
     )

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   backToCleaning,
   BaselineRegion,
@@ -413,11 +413,18 @@ export function useAppState() {
   const fitAll = useCallback(() => setFitAllEpoch(Date.now()), []);
 
   // 拖拽中实时改 panel size 并通知地图重绘
+  // layoutEpoch 用 rAF 节流：pointermove 可能比帧率更密，避免地图每个事件都 updateSize
+  const layoutRafRef = useRef<number | null>(null);
   const setPanelSize = useCallback((key: PanelKey, sizePx: number) => {
     const { min, max } = PANEL_LIMITS[key];
     const clamped = clamp(sizePx, min, max);
     setPanelSizes(prev => ({ ...prev, [key]: clamped }));
-    setLayoutEpoch(Date.now());
+    if (layoutRafRef.current == null) {
+      layoutRafRef.current = requestAnimationFrame(() => {
+        layoutRafRef.current = null;
+        setLayoutEpoch(Date.now());
+      });
+    }
   }, []);
 
   // 拖拽结束写 localStorage

@@ -213,14 +213,33 @@ button, input, select, textarea {
   grid-area: tree;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
-  overflow-y: auto;
-  padding: 8px;
+  overflow: hidden;
   color: var(--text);
   box-shadow: var(--shadow-panel);
   position: relative;
 }
 
-.tree > input {
+/* 内层滚动容器：留出右侧 6px 给拖拽手柄，滚动条不会压住手柄 */
+.tree-scroll {
+  height: 100%;
+  width: calc(100% - 6px);
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* 左侧树的拖拽手柄独占右缘 6px 条带，常驻浅色便于发现，悬停变绿 */
+.tree > .resize-handle-x.resize-handle-end {
+  right: 0;
+  width: 6px;
+  background: var(--border);
+}
+
+.tree > .resize-handle-x.resize-handle-end:hover,
+.tree > .resize-handle-x.resize-handle-end:active {
+  background: var(--accent);
+}
+
+.tree-scroll > input {
   background: var(--bg-input);
   color: var(--text);
   border: 1px solid var(--border);
@@ -230,11 +249,11 @@ button, input, select, textarea {
   transition: border-color var(--transition-fast);
 }
 
-.tree > input::placeholder {
+.tree-scroll > input::placeholder {
   color: var(--text-muted);
 }
 
-.tree > input:focus {
+.tree-scroll > input:focus {
   outline: none;
   border-color: var(--accent);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Feature, FeatureCollection } from "../api";
 import { formatCount } from "../utils";
 import { PANEL_LIMITS } from "../state";
@@ -113,7 +113,7 @@ function Folder({
   );
 }
 
-export default function LayerTree({
+function LayerTree({
   sites, roads, lessors, selectedId, hiddenIds,
   onPick, onToggleFeature, onSetKindVisible,
   onResize, onResizeEnd,
@@ -140,45 +140,47 @@ export default function LayerTree({
 
   return (
     <div className="tree">
-      <input
-        placeholder="🔍 过滤节点..."
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        style={{ width: "100%", padding: 6 }}
-      />
-      <Folder
-        title="Site"
-        items={filteredSites}
-        hiddenIds={hiddenIds}
-        selectedId={selectedId}
-        expanded={expanded.site}
-        onToggleExpanded={() => toggle("site")}
-        onPick={onPick}
-        onToggleFeature={onToggleFeature}
-        onSetKindVisible={onSetKindVisible}
-      />
-      <Folder
-        title="Road"
-        items={filteredRoads}
-        hiddenIds={hiddenIds}
-        selectedId={selectedId}
-        expanded={expanded.road}
-        onToggleExpanded={() => toggle("road")}
-        onPick={onPick}
-        onToggleFeature={onToggleFeature}
-        onSetKindVisible={onSetKindVisible}
-      />
-      <Folder
-        title="Lessor"
-        items={filteredLessors}
-        hiddenIds={hiddenIds}
-        selectedId={selectedId}
-        expanded={expanded.lessor}
-        onToggleExpanded={() => toggle("lessor")}
-        onPick={onPick}
-        onToggleFeature={onToggleFeature}
-        onSetKindVisible={onSetKindVisible}
-      />
+      <div className="tree-scroll">
+        <input
+          placeholder="🔍 过滤节点..."
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          style={{ width: "100%", padding: 6 }}
+        />
+        <Folder
+          title="Site"
+          items={filteredSites}
+          hiddenIds={hiddenIds}
+          selectedId={selectedId}
+          expanded={expanded.site}
+          onToggleExpanded={() => toggle("site")}
+          onPick={onPick}
+          onToggleFeature={onToggleFeature}
+          onSetKindVisible={onSetKindVisible}
+        />
+        <Folder
+          title="Road"
+          items={filteredRoads}
+          hiddenIds={hiddenIds}
+          selectedId={selectedId}
+          expanded={expanded.road}
+          onToggleExpanded={() => toggle("road")}
+          onPick={onPick}
+          onToggleFeature={onToggleFeature}
+          onSetKindVisible={onSetKindVisible}
+        />
+        <Folder
+          title="Lessor"
+          items={filteredLessors}
+          hiddenIds={hiddenIds}
+          selectedId={selectedId}
+          expanded={expanded.lessor}
+          onToggleExpanded={() => toggle("lessor")}
+          onPick={onPick}
+          onToggleFeature={onToggleFeature}
+          onSetKindVisible={onSetKindVisible}
+        />
+      </div>
       <ResizeHandle
         axis="x" edge="end"
         min={PANEL_LIMITS.left.min} max={PANEL_LIMITS.left.max}
@@ -188,3 +190,5 @@ export default function LayerTree({
     </div>
   );
 }
+
+export default memo(LayerTree);

@@ -44,6 +44,14 @@ export default function App() {
     s.globalSearch(q);
   }, [s]);
 
+  // 稳定的拖动回调：避免每帧 pointermove 透过 inline 箭头函数让子组件丢失 memo
+  const onResizeLeft = useCallback((px: number) => s.setPanelSize("left", px), [s]);
+  const onResizeEndLeft = useCallback(() => s.persistPanelSize("left"), [s]);
+  const onResizeRight = useCallback((px: number) => s.setPanelSize("right", px), [s]);
+  const onResizeEndRight = useCallback(() => s.persistPanelSize("right"), [s]);
+  const onResizeBottom = useCallback((px: number) => s.setPanelSize("bottom", px), [s]);
+  const onResizeEndBottom = useCallback(() => s.persistPanelSize("bottom"), [s]);
+
   const selectedId = s.selected?.id ?? null;
 
   // Spec V1.x #11/#15：四行 grid（toolbar / baseline 状态栏 / 内容 / 输出）
@@ -88,8 +96,8 @@ export default function App() {
         onPick={s.flyTo}
         onToggleFeature={s.toggleFeatureVisible}
         onSetKindVisible={s.setKindVisible}
-        onResize={px => s.setPanelSize("left", px)}
-        onResizeEnd={() => s.persistPanelSize("left")}
+        onResize={onResizeLeft}
+        onResizeEnd={onResizeEndLeft}
       />
       <MapView
         sites={s.sites}
@@ -110,8 +118,8 @@ export default function App() {
       <AttributePanel
         feature={s.selected}
         onClose={() => s.selectFeature(null)}
-        onResize={px => s.setPanelSize("right", px)}
-        onResizeEnd={() => s.persistPanelSize("right")}
+        onResize={onResizeRight}
+        onResizeEnd={onResizeEndRight}
       />
       <OutputPanel
         open={outputOpen}
@@ -119,8 +127,8 @@ export default function App() {
         logs={s.logs}
         phase={s.phase}
         onClearLogs={s.clearLogs}
-        onResize={px => s.setPanelSize("bottom", px)}
-        onResizeEnd={() => s.persistPanelSize("bottom")}
+        onResize={onResizeBottom}
+        onResizeEnd={onResizeEndBottom}
       />
 
       {/* Spec #12 两步向导：步骤 1 清洗 / 步骤 2 冲突 */}
