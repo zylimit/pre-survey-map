@@ -39,6 +39,7 @@
 | F14 | 清除基线（调试用 + 换基线唯一通道）| Toolbar 加 [🗑️ 清除基线] 按钮 → 弹确认 modal → 后端 truncate `site` / `road` / `lessor` + **`baseline_state`** 四表；**这是用户换基线国家的唯一方式**（V1 不做基线漂移、不做工作空间）；V1 不做权限控制 |
 | F15 | 全局基线状态栏（V1.x #15）| Toolbar 下方独立一条 28px 横条，永远显示当前基线状态："📍 基线国家：菲律宾 (PH) · 固化于 2026-05-29" 或 "📍 基线未确立 · 首次导入完成后将自动锁定"|
 | F16 | 全局搜索结果列表（V1.x #16）| Toolbar 右上搜索框回车 → **三类要素全搜（显示名匹配，与左树过滤同口径）**；结果写入底部 Output 的**独立"搜索结果区"**（不挤占 50 条日志），封顶 200 条；区头可点汇总条"🔍 搜索匹配 N 条，飞到第一条" + **[✖ 清空结果] 按钮**；每条结果一行 = **显示名 · 核心属性 · 类型角标**，可点 → **地图飞到该要素 + 左树该节点同步高亮滚动定位**（复用 F12 双向焦点同步）|
+| F17 | 基线恢复点与回滚（V1.x #20）| **不可逆操作的安全网**。导入 commit 前 / 清除基线（F14）前 / 回滚前 **自动建恢复点**（快照 `site`/`road`/`lessor` 三表 + `baseline_state`），并提供 Toolbar [🕘 恢复点] 手动建点；保留最近 N=10 个（环形淘汰最旧）；恢复点对话框列表可**覆盖式回滚**到任一点（事务内 truncate + 从快照重灌，回滚本身也先自动建点 → 可逆）+ 快捷 [↩ 撤销上一次导入]；详见「基线恢复点与回滚机制（F17）」节 |
 
 ---
 
@@ -105,7 +106,8 @@
 | ⬛ 框选 ▾ | 下拉：[自由多边形] / [矩形]；进入绘制状态，鼠标变成十字 |
 | 🔍 搜索 | 全局搜索框（右上角）；**回车触发**，三类要素全搜（Site/Road/Lessor，匹配各自显示名，与左树过滤同口径）→ 结果列入底部 Output「搜索结果区」+ **自动飞到第一条**（详见 F16 / 「底部输出面板·搜索结果区」）|
 | 🔄 刷新 | 重载库数据 + 重连 DB 状态指示 |
-| 🗑️ 清除基线 | **危险操作 + 换基线唯一通道**：弹确认 modal → 后端 truncate `site` / `road` / `lessor` + **`baseline_state`** 四表；主基准随之重置；V1 不做权限控制（仅靠红色按钮 + 确认 modal 防误点）|
+| 🗑️ 清除基线 | **危险操作 + 换基线唯一通道**：弹确认 modal → 后端 truncate `site` / `road` / `lessor` + **`baseline_state`** 四表；主基准随之重置；V1 不做权限控制（仅靠红色按钮 + 确认 modal 防误点）；**执行前自动建恢复点（F17 · reason=pre_clear）**|
+| 🕘 恢复点 | 打开**恢复点对话框**（F17）：列表展示最近 10 个恢复点（时间 · 原因徽标 · 三类点数摘要 · 基线国家 · [回滚] [删除]）；顶部 [+ 手动建恢复点] + [↩ 撤销上一次导入]（无 pre_import 点时灰禁）|
 
 ### 左侧树
 
@@ -237,6 +239,8 @@
 1. 工程师点 [💾 导出 KMZ ▾] → [导出整库]
 2. 系统打包整库要素 → 下载 KMZ
 
+> 注：F17 恢复点解决的是"误操作秒级回退"（导入前/清除前自动建点 + 一键回滚），与本流程的 KMZ 导出（对外交付/离线归档）、`DEPLOY.md` 的 `pg_dump`（机器级容灾）三者分工不同，互补不替代。
+
 ---
 
 ## 应用场景
@@ -283,6 +287,8 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 | `lessor` | `fid` | Lessor Name / Lessor Category / Relationship | — | `geom POLYGON SRID 4326` |
 | **`baseline_state`**（V1.x #15 新增）| `id INT CHECK (id = 1)` 单行约束 | `iso_a2` / `name_zh` / `coverage_pct` / `points_used` / `established_at` | — | — |
 | `countries`（地理数据，docker init 时加载）| 来自 Natural Earth | `iso_a2` / `iso_a3` / `name` / `name_zh` | — | `geom MULTIPOLYGON SRID 4326`（GIST 索引）|
+| **`restore_point`**（V1.x #20 · F17 新增）| 自增 `id` | `reason`（pre_import/pre_clear/pre_rollback/manual）/ `note` / `created_at` / `site_count` / `road_count` / `lessor_count` / `baseline_iso_a2`（摘要列，列表直接展示免反查）| — | — |
+| **`site_snapshot` / `road_snapshot` / `lessor_snapshot` / `baseline_state_snapshot`**（V1.x #20 · F17 新增）| 各自镜像源表列 + `restore_point_id`（外键 ON DELETE CASCADE）| 源表全列副本 | 同源表 | 同源表 |
 
 **字段集策略（两层）**：
 - **强类型核心列**：KML 公共字段直接建列，承担去重主键、索引、空间查询
@@ -301,6 +307,34 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 - 详见「主基准区域算法」节的状态机
 
 **镜像选型**：`postgis/postgis:16-3.4`（不是 `pgvector/pgvector:pg16` — 本项目要 PostGIS 空间扩展，不要向量扩展）
+
+### 基线恢复点与回滚机制（F17 · V1.x #20）
+
+**动机**：`清除基线`（F14）不可逆、坏导入会污染累积数据，菲律宾现场出错没退路。F17 是这两类不可逆操作的**安全网**。设计参考专业软件的两层做法——**操作级撤销 + 命名恢复点/快照**（不上 Esri 版本控制/PITR 那种重型方案，本工具数据小、内部单点用）。
+
+**"基线"的完整定义**（一个恢复点要快照的内容）：`site` + `road` + `lessor` 三张业务表 **+ `baseline_state`**（主基准固化态）。四者一起才是一个可回滚的完整基线。
+
+**自动建点触发（三处，都在对应写操作之前、同一事务内）**：
+- **导入 commit 前** → reason=`pre_import`（"撤销上一次导入" = 回滚到最近的 pre_import 点）
+- **清除基线（F14）前** → reason=`pre_clear`
+- **回滚执行前** → reason=`pre_rollback`（**回滚本身也先建点 → 回滚可逆，防手滑**）
+
+**手动建点**：Toolbar [🕘 恢复点] → 对话框 [+ 手动建恢复点]，reason=`manual`，可填 note。
+
+**存储**：DB 内镜像表（见「数据库设计」表）。建点 = `INSERT ... SELECT` 把三表 + baseline_state 整体拷进 `*_snapshot`，挂 `restore_point_id`。数据小（万级行），成本可忽略。
+
+**保留策略**：环形，**保留最近 N=10 个**，超出删最旧（`restore_point` 删行 → 快照行 `ON DELETE CASCADE` 连带清理）。V1.x 不做"锁定/置顶/分类配额"，统一按时间淘汰，保持简单。
+
+**回滚语义（覆盖式）**：选中某恢复点 → **二次确认弹窗（destructive 红）** → 事务内 `TRUNCATE site/road/lessor` + 清 `baseline_state` → 从该点的 `*_snapshot` 整体重灌 → 重置主基准为快照里的 `baseline_state`。回滚前自动建 `pre_rollback` 点。
+
+**API**：
+- `GET /api/restore-points` → 列表（仅元数据，不含快照明细）
+- `POST /api/restore-points` → 手动建点 `{note?}`
+- `POST /api/restore-points/{id}/rollback` → 覆盖式回滚（内部先自动建 pre_rollback）
+- `DELETE /api/restore-points/{id}` → 删除某点（CASCADE 清快照）
+- 撤销上一次导入 = 前端定位最近 `pre_import` 点 → 调其 rollback
+
+**与冷备份的分工（重要，不重复造轮子）**：恢复点是 **DB 内**快照，**卷（`presurvey_pgdata`）丢了恢复点一起没**。真正的容灾仍靠 `DEPLOY.md` 的 `pg_dump` 冷备（异地）。两者互补：恢复点管"日常误操作秒级回退"，pg_dump 管"机器/卷级灾难"。
 
 ### KML / KMZ 处理
 
