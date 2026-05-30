@@ -35,6 +35,7 @@ from cleaning import (
 )
 from db import pool
 from exporters.conflicts_xlsx import build_conflicts_xlsx
+from restore_point_helper import create_restore_point
 from parsers.kml import LessorRow, ParseResult, SiteRow, parse_kml
 from parsers.kmz import parse_kmz
 from parsers.xlsx import ParseError, parse_xlsx
@@ -542,6 +543,9 @@ async def commit_import(sid: str, body: CommitBody):
 
     async with pool().acquire() as conn:
         async with conn.transaction():
+            # F17: commit 落库前自动建恢复点（pre_import）
+            await create_restore_point(conn, "pre_import")
+
             for r in s["non_conflicts"]["site"]:
                 await _insert_site(conn, r)
                 stats["site"]["inserted"] += 1

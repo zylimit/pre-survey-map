@@ -10,6 +10,7 @@ V1 不做权限控制，前端弹确认 modal 防误点。
 from fastapi import APIRouter
 
 from db import pool
+from restore_point_helper import create_restore_point
 
 router = APIRouter()
 
@@ -37,6 +38,9 @@ async def clear_baseline():
     """F14：清空 site / road / lessor + baseline_state（换基线唯一通道）。countries 不动。"""
     async with pool().acquire() as conn:
         async with conn.transaction():
+            # F17: 清除基线前自动建恢复点（pre_clear）
+            await create_restore_point(conn, "pre_clear")
+
             site_n = await conn.fetchval("SELECT count(*) FROM site")
             road_n = await conn.fetchval("SELECT count(*) FROM road")
             lessor_n = await conn.fetchval("SELECT count(*) FROM lessor")

@@ -8,7 +8,7 @@ from starlette.responses import JSONResponse
 
 from db import close_pool, init_pool, ping, pool
 from geo_loader import ensure_countries_loaded
-from routers import baseline, exports, imports, lessors, roads, sites
+from routers import baseline, exports, imports, lessors, restore_points, roads, sites
 
 # F1 Spec：单文件上限 100MB（前端 + 后端 + nginx 三端配齐）
 MAX_BODY_BYTES = 100 * 1024 * 1024
@@ -68,3 +68,4 @@ app.include_router(lessors.router, prefix="/api/lessors", tags=["lessors"])
 app.include_router(imports.router, prefix="/api/import", tags=["import"])
 app.include_router(exports.router, prefix="/api/export", tags=["export"])
 app.include_router(baseline.router, prefix="/api", tags=["baseline"])
+app.include_router(restore_points.router, prefix="/api/restore-points", tags=["restore_points"])

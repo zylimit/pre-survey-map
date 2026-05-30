@@ -205,6 +205,45 @@ export async function fetchAll(): Promise<{
   return { sites, roads, lessors };
 }
 
+// ---------- F17 恢复点 ----------
+
+export interface RestorePoint {
+  id: number;
+  created_at: string;
+  reason: "pre_import" | "pre_clear" | "pre_rollback" | "manual";
+  note: string | null;
+  site_count: number | null;
+  road_count: number | null;
+  lessor_count: number | null;
+  baseline_iso_a2: string | null;
+}
+
+export async function listRestorePoints(): Promise<RestorePoint[]> {
+  const res = await fetch("/api/restore-points");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function createRestorePoint(note?: string): Promise<RestorePoint> {
+  const res = await fetch("/api/restore-points", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note: note ?? null }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function rollbackToPoint(id: number): Promise<void> {
+  const res = await fetch(`/api/restore-points/${id}/rollback`, { method: "POST" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+export async function deleteRestorePoint(id: number): Promise<void> {
+  const res = await fetch(`/api/restore-points/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
 // ---------- Export ----------
 
 export interface GeoJSONPolygon {

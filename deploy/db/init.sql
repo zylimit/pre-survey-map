@@ -78,3 +78,77 @@ CREATE TABLE IF NOT EXISTS baseline_state (
     points_used     INT,
     established_at  TIMESTAMP   DEFAULT now()
 );
+
+-- ============================================================
+-- F17 · 基线恢复点与回滚（Spec V1.x #20）
+-- ============================================================
+
+-- restore_point: 恢复点元表
+CREATE TABLE IF NOT EXISTS restore_point (
+    id              BIGSERIAL   PRIMARY KEY,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    reason          TEXT        NOT NULL
+                    CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual')),
+    note            TEXT,
+    site_count      INT,
+    road_count      INT,
+    lessor_count    INT,
+    baseline_iso_a2 TEXT
+);
+
+-- site_snapshot: 镜像 site 全列 + restore_point_id
+CREATE TABLE IF NOT EXISTS site_snapshot (
+    restore_point_id BIGINT      NOT NULL REFERENCES restore_point(id) ON DELETE CASCADE,
+    site_id          TEXT        NOT NULL,
+    "option"         TEXT        NOT NULL DEFAULT '',
+    project          TEXT,
+    site_status      TEXT,
+    lati             DOUBLE PRECISION,
+    longi            DOUBLE PRECISION,
+    extras           JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    source_file      TEXT,
+    created_at       TIMESTAMPTZ,
+    updated_at       TIMESTAMPTZ,
+    geom             GEOMETRY(Point, 4326)
+);
+CREATE INDEX IF NOT EXISTS site_snapshot_rp_idx ON site_snapshot (restore_point_id);
+
+-- road_snapshot: 镜像 road 全列 + restore_point_id
+CREATE TABLE IF NOT EXISTS road_snapshot (
+    restore_point_id BIGINT      NOT NULL REFERENCES restore_point(id) ON DELETE CASCADE,
+    id               BIGINT,
+    property         TEXT,
+    extras           JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    source_file      TEXT,
+    created_at       TIMESTAMPTZ,
+    geom             GEOMETRY(LineString, 4326)
+);
+CREATE INDEX IF NOT EXISTS road_snapshot_rp_idx ON road_snapshot (restore_point_id);
+
+-- lessor_snapshot: 镜像 lessor 全列 + restore_point_id
+CREATE TABLE IF NOT EXISTS lessor_snapshot (
+    restore_point_id BIGINT      NOT NULL REFERENCES restore_point(id) ON DELETE CASCADE,
+    fid              TEXT        NOT NULL,
+    lessor_name      TEXT,
+    lessor_category  TEXT,
+    relationship     TEXT,
+    extras           JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    source_file      TEXT,
+    created_at       TIMESTAMPTZ,
+    updated_at       TIMESTAMPTZ,
+    geom             GEOMETRY(Polygon, 4326)
+);
+CREATE INDEX IF NOT EXISTS lessor_snapshot_rp_idx ON lessor_snapshot (restore_point_id);
+
+-- baseline_state_snapshot: 镜像 baseline_state 全列 + restore_point_id
+CREATE TABLE IF NOT EXISTS baseline_state_snapshot (
+    restore_point_id BIGINT      NOT NULL REFERENCES restore_point(id) ON DELETE CASCADE,
+    id               INT,
+    iso_a2           TEXT,
+    name_zh          TEXT,
+    coverage_pct     INT,
+    points_used      INT,
+    established_at   TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS baseline_state_snapshot_rp_idx
+    ON baseline_state_snapshot (restore_point_id);

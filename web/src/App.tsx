@@ -7,12 +7,14 @@ import OutputPanel from "./components/OutputPanel";
 import ConflictDialog from "./components/ConflictDialog";
 import CleaningDialog from "./components/CleaningDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
+import RestorePointDialog from "./components/RestorePointDialog";
 import BaselineStatusBar from "./components/BaselineStatusBar";
 import { useAppState } from "./state";
 
 export default function App() {
   const [outputOpen, setOutputOpen] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [restorePointsOpen, setRestorePointsOpen] = useState(false);
   const s = useAppState();
 
   useEffect(() => {
@@ -89,6 +91,7 @@ export default function App() {
         onRefresh={onRefresh}
         onSearch={onSearch}
         onClearBaseline={() => setConfirmingClear(true)}
+        onOpenRestorePoints={() => setRestorePointsOpen(true)}
       />
       {/* F15 全局基线状态栏（Spec V1.x #15）*/}
       <BaselineStatusBar state={s.baselineState} />
@@ -159,6 +162,17 @@ export default function App() {
           onConfirm={s.confirmConflicts}
           onCancel={s.abortImport}
           onBack={s.goBackToCleaning}
+        />
+      )}
+
+      {/* F17 恢复点对话框 */}
+      {restorePointsOpen && (
+        <RestorePointDialog
+          onClose={() => setRestorePointsOpen(false)}
+          onRolledBack={async () => {
+            await s.refresh();
+            await s.refreshBaselineState();
+          }}
         />
       )}
 

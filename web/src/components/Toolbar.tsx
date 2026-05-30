@@ -13,12 +13,13 @@ interface Props {
   onRefresh: () => void;
   onSearch: (query: string) => void;
   onClearBaseline: () => void;
+  onOpenRestorePoints: () => void;
 }
 
 export default function Toolbar({
   onImport, busy, drawMode, hasSelection,
   onStartDraw, onClearSelection, onExportAll, onExportSelection,
-  onRefresh, onSearch, onClearBaseline,
+  onRefresh, onSearch, onClearBaseline, onOpenRestorePoints,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [openMenu, setOpenMenu] = useState<"export" | "draw" | null>(null);
@@ -151,6 +152,13 @@ export default function Toolbar({
         onClick={onClearBaseline}
         title="清空 site / road / lessor 三表 + 重置主基准"
       >🗑️ 清除基线</button>
+
+      {/* F17 恢复点 */}
+      <button
+        onClick={onOpenRestorePoints}
+        disabled={busy}
+        title="查看 / 创建 / 回滚恢复点"
+      >🕘 恢复点</button>
 
       {/* #19 双主题切换（唯一新增控件）*/}
       <button
