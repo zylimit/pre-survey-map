@@ -17,6 +17,8 @@ interface Props {
   onResizeEnd: () => void;
 }
 
+type Kind = "site" | "road" | "lessor";
+
 function nameOf(f: Feature): string {
   const p = f.properties;
   if (!p) return "(未命名)";
@@ -43,75 +45,15 @@ function triState(items: Feature[], hidden: Set<string>): TriState {
   return "partial";
 }
 
-function Folder({
-  title, items, hiddenIds, selectedId, expanded, onToggleExpanded,
-  onPick, onToggleFeature, onSetKindVisible,
-}: {
-  title: string;
-  items: Feature[];
-  hiddenIds: Set<string>;
-  selectedId: string | number | null;
-  expanded: boolean;
-  onToggleExpanded: () => void;
-  onPick: (f: Feature) => void;
-  onToggleFeature: (id: string) => void;
-  onSetKindVisible: (ids: string[], visible: boolean) => void;
-}) {
-  const state = triState(items, hiddenIds);
-  const allIds = items.map(f => String(f.id));
-  const cbRef = useRef<HTMLInputElement>(null);
+// 扁平行：把「文件夹头 + 展开的节点」拍平成一维数组喂给虚拟列表
+type Row =
+  | { t: "folder"; kind: Kind; title: string; items: Feature[]; state: TriState; expanded: boolean }
+  | { t: "empty" }
+  | { t: "node"; feature: Feature };
 
-  useEffect(() => {
-    if (cbRef.current) cbRef.current.indeterminate = state === "partial";
-  }, [state]);
-
-  const onFolderClick = () => {
-    onSetKindVisible(allIds, state !== "all"); // partial / none → 全开；all → 全关
-  };
-
-  return (
-    <>
-      <h3 className="folder-row" onClick={onFolderClick} title="点击全选/全关">
-        <span
-          className={`folder-disclose ${expanded ? "open" : "closed"}`}
-          onClick={e => { e.stopPropagation(); onToggleExpanded(); }}
-          title={expanded ? "折叠" : "展开"}
-        >{expanded ? "−" : "+"}</span>
-        <input
-          ref={cbRef}
-          type="checkbox"
-          className="folder-cb-native"
-          checked={state === "all"}
-          onChange={onFolderClick}
-          onClick={e => e.stopPropagation()}
-          title="全选/全关"
-        />
-        <span className="folder-title">📂 {title}</span>
-        <span className="folder-count">{formatCount(items.length)}</span>
-      </h3>
-      {expanded && items.length === 0 && <div className="node muted">暂无数据</div>}
-      {expanded && items.map(f => {
-        const id = String(f.id);
-        const hidden = hiddenIds.has(id);
-        const sel = id === String(selectedId);
-        return (
-          <div key={id} className={`node ${sel ? "selected" : ""} ${hidden ? "hidden-node" : ""}`}>
-            <input
-              type="checkbox"
-              checked={!hidden}
-              onChange={() => onToggleFeature(id)}
-              onClick={e => e.stopPropagation()}
-              title={hidden ? "勾选显示" : "取消勾选隐藏"}
-            />
-            <span className="node-label" onClick={() => onPick(f)}>
-              {nameOf(f)}
-            </span>
-          </div>
-        );
-      })}
-    </>
-  );
-}
+// 固定行高虚拟化：DOM 里只保留视口可见的 ~30 行，13000 节点也丝滑
+const ROW_H = 24;
+const OVERSCAN = 8;
 
 function LayerTree({
   sites, roads, lessors, selectedId, hiddenIds,
@@ -119,11 +61,10 @@ function LayerTree({
   onResize, onResizeEnd,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<Record<"site" | "road" | "lessor", boolean>>({
+  const [expanded, setExpanded] = useState<Record<Kind, boolean>>({
     site: true, road: true, lessor: true,
   });
-  const toggle = (k: "site" | "road" | "lessor") =>
-    setExpanded(prev => ({ ...prev, [k]: !prev[k] }));
+  const toggle = (k: Kind) => setExpanded(prev => ({ ...prev, [k]: !prev[k] }));
 
   const filteredSites = useMemo(
     () => sites.features.filter(f => searchMatch(f, query)),
@@ -138,48 +79,118 @@ function LayerTree({
     [lessors, query]
   );
 
+  // 拍平成行数组。依赖 hiddenIds 仅为算文件夹三态；selectedId 不在依赖里
+  // （选中只重渲可见行，不重建数组）。
+  const rows = useMemo<Row[]>(() => {
+    const out: Row[] = [];
+    const add = (kind: Kind, title: string, items: Feature[]) => {
+      out.push({ t: "folder", kind, title, items, state: triState(items, hiddenIds), expanded: expanded[kind] });
+      if (expanded[kind]) {
+        if (items.length === 0) out.push({ t: "empty" });
+        else for (const f of items) out.push({ t: "node", feature: f });
+      }
+    };
+    add("site", "Site", filteredSites);
+    add("road", "Road", filteredRoads);
+    add("lessor", "Lessor", filteredLessors);
+    return out;
+  }, [filteredSites, filteredRoads, filteredLessors, hiddenIds, expanded]);
+
+  // ---- 虚拟窗口 ----
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportH, setViewportH] = useState(400);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setViewportH(el.clientHeight);
+    const ro = new ResizeObserver(() => setViewportH(el.clientHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const total = rows.length;
+  const start = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const end = Math.min(total, Math.ceil((scrollTop + viewportH) / ROW_H) + OVERSCAN);
+  const visible = rows.slice(start, end);
+  const selStr = String(selectedId);
+
+  const renderRow = (row: Row, index: number) => {
+    const top = index * ROW_H;
+    if (row.t === "folder") {
+      const allIds = row.items.map(f => String(f.id));
+      const onFolderClick = () => onSetKindVisible(allIds, row.state !== "all");
+      return (
+        <div className="tree-row" style={{ transform: `translateY(${top}px)` }} key={`f-${row.kind}`}>
+          <h3 className="folder-row" onClick={onFolderClick} title="点击全选/全关">
+            <span
+              className={`folder-disclose ${row.expanded ? "open" : "closed"}`}
+              onClick={e => { e.stopPropagation(); toggle(row.kind); }}
+              title={row.expanded ? "折叠" : "展开"}
+            >{row.expanded ? "−" : "+"}</span>
+            <input
+              type="checkbox"
+              className="folder-cb-native"
+              ref={el => { if (el) el.indeterminate = row.state === "partial"; }}
+              checked={row.state === "all"}
+              onChange={onFolderClick}
+              onClick={e => e.stopPropagation()}
+              title="全选/全关"
+            />
+            <span className="folder-title">📂 {row.title}</span>
+            <span className="folder-count">{formatCount(row.items.length)}</span>
+          </h3>
+        </div>
+      );
+    }
+    if (row.t === "empty") {
+      return (
+        <div className="tree-row" style={{ transform: `translateY(${top}px)` }} key={`e-${top}`}>
+          <div className="node muted">暂无数据</div>
+        </div>
+      );
+    }
+    const f = row.feature;
+    const id = String(f.id);
+    const hidden = hiddenIds.has(id);
+    const sel = id === selStr;
+    return (
+      <div className="tree-row" style={{ transform: `translateY(${top}px)` }} key={`n-${id}`}>
+        <div className={`node ${sel ? "selected" : ""} ${hidden ? "hidden-node" : ""}`}>
+          <input
+            type="checkbox"
+            checked={!hidden}
+            onChange={() => onToggleFeature(id)}
+            onClick={e => e.stopPropagation()}
+            title={hidden ? "勾选显示" : "取消勾选隐藏"}
+          />
+          <span className="node-label" onClick={() => onPick(f)}>
+            {nameOf(f)}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="tree">
-      <div className="tree-scroll">
+      <div className="tree-head">
         <input
           placeholder="🔍 过滤节点..."
           value={query}
           onChange={e => setQuery(e.target.value)}
           style={{ width: "100%", padding: 6 }}
         />
-        <Folder
-          title="Site"
-          items={filteredSites}
-          hiddenIds={hiddenIds}
-          selectedId={selectedId}
-          expanded={expanded.site}
-          onToggleExpanded={() => toggle("site")}
-          onPick={onPick}
-          onToggleFeature={onToggleFeature}
-          onSetKindVisible={onSetKindVisible}
-        />
-        <Folder
-          title="Road"
-          items={filteredRoads}
-          hiddenIds={hiddenIds}
-          selectedId={selectedId}
-          expanded={expanded.road}
-          onToggleExpanded={() => toggle("road")}
-          onPick={onPick}
-          onToggleFeature={onToggleFeature}
-          onSetKindVisible={onSetKindVisible}
-        />
-        <Folder
-          title="Lessor"
-          items={filteredLessors}
-          hiddenIds={hiddenIds}
-          selectedId={selectedId}
-          expanded={expanded.lessor}
-          onToggleExpanded={() => toggle("lessor")}
-          onPick={onPick}
-          onToggleFeature={onToggleFeature}
-          onSetKindVisible={onSetKindVisible}
-        />
+      </div>
+      <div
+        className="tree-scroll"
+        ref={scrollRef}
+        onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
+      >
+        <div className="tree-virt" style={{ height: total * ROW_H }}>
+          {visible.map((row, i) => renderRow(row, start + i))}
+        </div>
       </div>
       <ResizeHandle
         axis="x" edge="end"
