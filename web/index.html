@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pre-Survey Map</title>
+    <!-- #19 双主题：渲染前定 data-theme，默认 dark，避免亮/暗闪烁（FOUC）-->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("presurvey.theme");
+          document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

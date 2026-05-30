@@ -1,44 +1,31 @@
-/* V1.x · Mint Tech 主题变量（#8 反转，替换 #7 Dark Pro）
+/* V1.x #19 · 双主题主题变量（反转 #8 Light 单模式 → 默认 Dark Slate + 亮/暗切换）
  *
  * 唯一允许出现硬编码色值的文件。所有组件颜色必须引用这里。
- * 主色板逐项对齐 Product-Spec.md「V1.x 视觉皮肤 · Mint Tech」节。
+ * 主色板逐项对齐 Product-Spec.md「V1.x 视觉皮肤 → 模式切换（#19）→ 暗色主色板」表。
  *
- * 键名保留 #7 已建立的 CSS Variables 体系（--bg-app/--accent/--row-* 等），
- * 仅换值；新增 3 个键：--accent-bg / --shadow-panel / --radius。
+ * 体系「只换值不换键」：
+ *   - 主题无关令牌（accent / 要素色 / 字体 / 圆角 / 地图护栏）只在 :root 写一次。
+ *   - 主题相关令牌：:root = Dark（默认），[data-theme="light"] = Light 覆盖。
+ *   - 不带 data-theme 属性时落到 :root → 默认暗色（Spec 硬约束 #1）。
  */
 
 :root {
-  /* ---- 主色板（Spec Mint Tech 节）---- */
-  --bg-app: #fafafa;              /* 应用底色，柔和不刺眼 */
-  --bg-panel: #ffffff;            /* 面板背景：toolbar / 树 / 属性 / 输出 */
-  --bg-elevated: #ffffff;         /* 弹窗、下拉，跟面板同色靠阴影区分 */
-  --bg-input: #ffffff;            /* 输入框 */
-  --border: #e5e7eb;              /* slate-200，极细分隔线 */
-  --border-strong: #cbd5e1;       /* slate-300 */
-  --text: #0f172a;                /* slate-900，深蓝灰主文字 */
-  --text-muted: #64748b;          /* slate-500，次文字 / 占位 */
-  --text-disabled: #94a3b8;       /* slate-400 */
+  /* ============ 主题无关令牌（两主题共用，只写一次）============ */
 
-  --accent: #10b981;              /* emerald-500（薄荷绿 accent） */
+  /* accent 薄荷绿两主题共用 */
+  --accent: #10b981;              /* emerald-500 */
   --accent-hover: #34d399;        /* emerald-400 hover 亮一点 */
   --accent-10: rgba(16, 185, 129, 0.10);  /* 半透明叠加（dropdown hover / 选区填充） */
   --accent-20: rgba(16, 185, 129, 0.18);
-  --accent-bg: #ecfdf5;           /* 新增：emerald-50 实底（选中态底色 / 拖放层） */
 
-  --warn: #f59e0b;                /* amber-500 */
-  --warn-bg: #fef3c7;             /* amber-100 实底，warning banner */
-  --error: #ef4444;               /* red-500 */
-  --error-bg: #fee2e2;            /* red-100 */
-  --success: #10b981;             /* 同 accent，Spec 明示 */
+  --warn: #f59e0b;                /* amber-500，两主题共用 */
+  --success: #10b981;             /* 同 accent */
 
-  --row-overwrite: #fef3c7;       /* amber-100 暖黄，冲突列表覆盖行 */
-  --row-ignore: #ffffff;          /* 同面板，冲突列表忽略行 */
-
-  /* ---- 要素颜色（Spec 中间地图节，Mint Tech 下与主色板同 Tailwind 系协调）---- */
-  --feat-site-positive: #10b981;          /* 与 accent / success 一致 */
-  --feat-site-negative: #f59e0b;          /* 与 warn 一致 */
-  --feat-site-unknown: #ef4444;           /* 与 error 一致 */
-  --feat-site-stroke: #ffffff;            /* 浅底 pin 白描边 */
+  /* ---- 要素颜色（地图护栏：不参与主题切换，两主题恒定）---- */
+  --feat-site-positive: #10b981;
+  --feat-site-negative: #f59e0b;
+  --feat-site-unknown: #ef4444;
+  --feat-site-stroke: #ffffff;
 
   --feat-lessor-friendly: #10b981;
   --feat-lessor-friendly-fill: rgba(16, 185, 129, 0.30);
@@ -49,30 +36,85 @@
 
   --feat-road: #92400e;           /* amber-800，深棕色线，在浅底图上清晰 */
 
-  /* 选区（框选模式临时几何） */
   --selection-stroke: var(--accent);
   --selection-fill: var(--accent-10);
-
-  /* 选中要素描边 */
   --feat-selected-stroke: var(--accent);
 
-  /* ---- 字体 ----（#7 已确定，本轮不动） */
+  /* ---- 地图护栏（恒亮，防重蹈 #7）---- */
+  --map-backdrop: #fafafa;        /* 地图容器底色（瓦片加载时露出）：恒为亮色，不随主题暗化 */
+  --ol-control-bg: rgba(255, 255, 255, 0.92);  /* OL 归属/比例尺浮层底，恒亮（浮在亮地图上）*/
+  --ol-control-text: #475569;     /* 上述亮浮层上的文字，恒为深 slate（防暗色下亮底白字消失）*/
+
+  /* ---- 字体 / 几何（两主题一致）---- */
   --font-ui: 'Inter', 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont,
              'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
   --font-mono: 'JetBrains Mono', 'Iosevka', 'SF Mono', Menlo, Consolas, monospace;
-
-  /* ---- 几何（Spec Mint Tech 新增）---- */
   --radius: 6px;
-  --shadow-panel: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --transition-fast: 80ms ease;
 
-  /* ---- 阴影 / 遮罩（Mint Tech 浅底 → 全部调淡）---- */
+  /* ============ Dark Slate（默认主题，Spec 暗色主色板表）============ */
+
+  --bg-app: #0f172a;              /* surface-base 深石板蓝，非纯黑 */
+  --bg-panel: #1e293b;            /* surface-raised 提亮一档 */
+  --bg-elevated: #273449;         /* surface-overlay 再提亮一档（弹窗/下拉）*/
+  --bg-input: #273449;            /* 输入框，浮于面板之上可见 */
+  --border: #334155;              /* slate-700 细灰蓝 */
+  --border-strong: #475569;       /* slate-600 */
+  --text: #e2e8f0;               /* 调白，非纯白（防高分屏震动）*/
+  --text-muted: #94a3b8;          /* slate-400 次文字 / 占位 */
+  --text-disabled: #64748b;       /* slate-500，比 muted 更暗 */
+
+  --accent-bg: rgba(16, 185, 129, 0.14);  /* 选中态半透明绿垫底 */
+
+  --warn-bg: rgba(245, 158, 11, 0.16);     /* warning banner 暗底 */
+  --error: #f87171;               /* 暗底亮一档红 */
+  --error-bg: rgba(248, 113, 113, 0.16);
+  --error-hover: #ef4444;         /* danger 按钮 hover */
+
+  --row-overwrite: rgba(245, 158, 11, 0.16);  /* 冲突列表覆盖行（暗底暖黄垫）*/
+  --row-ignore: #1e293b;          /* 同面板 */
+
+  /* 暗底阴影更深（Spec：暗底 0.35）*/
+  --shadow-panel: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.40);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --mask-modal: rgba(0, 0, 0, 0.60);
+
+  /* 暗色微交互：选中节点 / 激活按钮薄荷绿辉光（克制使用）*/
+  --glow: 0 0 8px rgba(16, 185, 129, 0.45);
+}
+
+/* ============ Light（原 Mint Tech 值，仅覆盖主题相关令牌）============ */
+
+[data-theme="light"] {
+  --bg-app: #fafafa;
+  --bg-panel: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-input: #ffffff;
+  --border: #e5e7eb;
+  --border-strong: #cbd5e1;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-disabled: #94a3b8;
+
+  --accent-bg: #ecfdf5;           /* emerald-50 实底 */
+
+  --warn-bg: #fef3c7;             /* amber-100 */
+  --error: #ef4444;               /* red-500 */
+  --error-bg: #fee2e2;            /* red-100 */
+  --error-hover: #c92a2a;
+
+  --row-overwrite: #fef3c7;
+  --row-ignore: #ffffff;
+
+  --shadow-panel: 0 1px 3px rgba(0, 0, 0, 0.05);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.10);
   --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
-  --mask-modal: rgba(15, 23, 42, 0.40);   /* slate-900 半透明遮罩 */
-  --ol-control-bg: rgba(255, 255, 255, 0.92);
+  --mask-modal: rgba(15, 23, 42, 0.40);
 
-  /* ---- 过渡 ---- */
-  --transition-fast: 80ms ease;
+  --glow: none;                   /* 亮色不发光 */
 }

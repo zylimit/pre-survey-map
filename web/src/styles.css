@@ -81,11 +81,20 @@ button, input, select, textarea {
   background: var(--accent);
   color: var(--bg-app);
   border-color: var(--accent);
+  box-shadow: var(--glow);  /* #19 暗色辉光（亮色为 none）*/
 }
 
 .toolbar button.danger {
   color: var(--error);
   border-color: var(--border);
+}
+
+/* #19 双主题切换按钮：固定宽度，切图标不抖动 */
+.toolbar button.theme-toggle {
+  min-width: 38px;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .toolbar button.danger:hover:not(:disabled) {
@@ -377,6 +386,7 @@ button, input, select, textarea {
   background: var(--accent-bg);
   border-left-color: var(--accent);
   color: var(--accent);
+  box-shadow: var(--glow);  /* #19 暗色辉光（亮色为 none）*/
 }
 
 .tree .node.hidden-node .node-label {
@@ -444,7 +454,7 @@ button, input, select, textarea {
 .map {
   grid-area: map;
   position: relative;
-  background: var(--bg-app);
+  background: var(--map-backdrop);  /* 地图护栏：恒亮，不随主题暗化（防重蹈 #7）*/
 }
 
 .map .ol-map {
@@ -530,7 +540,7 @@ button, input, select, textarea {
 .ol-scale-line,
 .ol-mouse-position {
   background: var(--ol-control-bg) !important;
-  color: var(--text) !important;
+  color: var(--ol-control-text) !important;  /* 恒亮浮层上的文字恒为深 slate（防暗色白字消失）*/
   border: none !important;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -541,8 +551,8 @@ button, input, select, textarea {
 }
 
 .ol-scale-line-inner {
-  border-color: var(--text) !important;
-  color: var(--text) !important;
+  border-color: var(--ol-control-text) !important;
+  color: var(--ol-control-text) !important;
 }
 
 /* ============ Attribute Panel ============ */
@@ -1088,8 +1098,8 @@ button, input, select, textarea {
 }
 
 .modal-footer .danger:hover {
-  background: #c92a2a;
-  border-color: #c92a2a;
+  background: var(--error-hover);
+  border-color: var(--error-hover);
 }
 
 /* ============ Import Stepper（Spec #12 两步向导）============ */

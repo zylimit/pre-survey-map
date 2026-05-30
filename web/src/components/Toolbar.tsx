@@ -24,6 +24,19 @@ export default function Toolbar({
   const [openMenu, setOpenMenu] = useState<"export" | "draw" | null>(null);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
+  // #19 双主题：初值取自 index.html 预渲染脚本写入的 data-theme（默认 dark）
+  const [theme, setTheme] = useState<"dark" | "light">(
+    () => (document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark")
+  );
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem("presurvey.theme", next);
+    } catch { /* localStorage 不可用就只切当前会话 */ }
+  };
 
   useEffect(() => {
     if (!openMenu) return;
@@ -138,6 +151,13 @@ export default function Toolbar({
         onClick={onClearBaseline}
         title="清空 site / road / lessor 三表 + 重置主基准"
       >🗑️ 清除基线</button>
+
+      {/* #19 双主题切换（唯一新增控件）*/}
+      <button
+        className="theme-toggle"
+        onClick={toggleTheme}
+        title={theme === "dark" ? "切换到亮色" : "切换到暗色"}
+      >{theme === "dark" ? "☀" : "☾"}</button>
     </div>
   );
 }
