@@ -3,7 +3,8 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+ARG PIP_INDEX=https://pypi.org/simple
+RUN pip install --no-cache-dir -i ${PIP_INDEX} -r requirements.txt
 
 COPY . .
 

@@ -38,3 +38,6 @@ data/*.tmp
 .idea/
 .vscode/
 *.swp
+
+# 离线部署产物（镜像 tar / 密钥，体积大且含凭证，勿入库）
+_dist/
