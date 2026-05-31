@@ -53,6 +53,7 @@ const SEARCH_CAP = 200;
 // Spec F11/12：导入阶段进度条 + 向导步骤
 export type Phase =
   | "idle"
+  | "loading"         // 初始/刷新数据加载中
   | "uploading"
   | "cleaning"        // 步骤 1 等待用户决策
   | "conflicts"       // 步骤 2 等待用户决策
@@ -146,11 +147,16 @@ export function useAppState() {
   }, []);
 
   const refresh = useCallback(async () => {
-    const { sites, roads, lessors } = await fetchAll();
-    setSites(sites);
-    setRoads(roads);
-    setLessors(lessors);
-    return { sites, roads, lessors };
+    setPhase("loading");
+    try {
+      const { sites, roads, lessors } = await fetchAll();
+      setSites(sites);
+      setRoads(roads);
+      setLessors(lessors);
+      return { sites, roads, lessors };
+    } finally {
+      setPhase("idle");
+    }
   }, []);
 
   const refreshBaselineState = useCallback(async () => {

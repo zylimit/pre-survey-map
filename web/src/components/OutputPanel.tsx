@@ -78,6 +78,7 @@ function coreInfo(f: Feature): string {
 
 const PHASE_LABEL: Record<Phase, string> = {
   idle: "就绪",
+  loading: "加载数据中...",
   uploading: "上传 + 解析中...",
   cleaning: "等待用户处理清洗",
   conflicts: "等待用户处理冲突",
@@ -87,6 +88,7 @@ const PHASE_LABEL: Record<Phase, string> = {
 
 const PHASE_BUSY: Record<Phase, boolean> = {
   idle: false,
+  loading: true,
   uploading: true,
   cleaning: false,
   conflicts: false,

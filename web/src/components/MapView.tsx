@@ -20,12 +20,13 @@ import { Polygon } from "ol/geom";
 import { Feature, FeatureCollection, GeoJSONPolygon } from "../api";
 import { DrawMode } from "../state";
 
-type BasemapKey = "positron" | "osm" | "esri";
+type BasemapKey = "positron" | "osm" | "esri" | "google";
 
 const BASEMAP_LABEL: Record<BasemapKey, string> = {
   positron: "Positron",
   osm: "OSM",
   esri: "Esri 卫星",
+  google: "Google 卫星",
 };
 
 // 从 :root 上 theme.css 定义的变量读色。OL 的 style 函数不能直接吃 var()，必须读出字符串。
@@ -148,7 +149,7 @@ function MapView({
   const sitesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const roadsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const lessorsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
-  const basemapsRef = useRef<{ positron: TileLayer<XYZ>; osm: TileLayer<XYZ>; esri: TileLayer<XYZ> } | null>(null);
+  const basemapsRef = useRef<{ positron: TileLayer<XYZ>; osm: TileLayer<XYZ>; esri: TileLayer<XYZ>; google: TileLayer<XYZ> } | null>(null);
   const drawRef = useRef<Draw | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [basemap, setBasemap] = useState<BasemapKey>("positron");
@@ -221,12 +222,21 @@ function MapView({
         attributions: "© Esri",
       }),
     });
-    basemapsRef.current = { positron: positronLayer, osm: osmLayer, esri: esriLayer };
+    const googleLayer = new TileLayer({
+      visible: false,
+      source: new XYZ({
+        url: "https://mt{0-3}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        crossOrigin: "anonymous",
+        maxZoom: 20,
+        attributions: "© Google",
+      }),
+    });
+    basemapsRef.current = { positron: positronLayer, osm: osmLayer, esri: esriLayer, google: googleLayer };
 
     mapRef.current = new Map({
       target: ref.current,
       layers: [
-        positronLayer, osmLayer, esriLayer,
+        positronLayer, osmLayer, esriLayer, googleLayer,
         lessorsLayer, roadsLayer, sitesLayer,
         selectionLayer,
       ],
@@ -308,6 +318,7 @@ function MapView({
     bm.positron.setVisible(basemap === "positron");
     bm.osm.setVisible(basemap === "osm");
     bm.esri.setVisible(basemap === "esri");
+    bm.google.setVisible(basemap === "google");
   }, [basemap]);
 
   // 面板拖拽中通知 OL 重算视口尺寸，否则地图渲染会错位
@@ -432,7 +443,7 @@ function MapView({
           onClick={() => onFitAll()}
         >🎯</button>
         <div className="basemap-switch">
-          {(["positron", "osm", "esri"] as const).map(k => (
+          {(["positron", "osm", "esri", "google"] as const).map(k => (
             <button
               key={k}
               className={`map-ctrl-btn ${basemap === k ? "active" : ""}`}

@@ -81,7 +81,7 @@ export default function App() {
     <div className={`app ${s.selected ? "" : "no-attr"}`} style={gridStyle}>
       <Toolbar
         onImport={s.importFiles}
-        busy={s.phase === "uploading" || s.phase === "committing" || s.phase === "exporting"}
+        busy={s.phase === "loading" || s.phase === "uploading" || s.phase === "committing" || s.phase === "exporting"}
         drawMode={s.drawMode}
         hasSelection={s.selectionPolygon !== null}
         onStartDraw={s.startDraw}
@@ -107,6 +107,11 @@ export default function App() {
         onResize={onResizeLeft}
         onResizeEnd={onResizeEndLeft}
       />
+      {s.phase === "loading" && (
+        <div className="map-loading-overlay">
+          <div className="map-loading-box">⏳ 正在加载数据...</div>
+        </div>
+      )}
       <MapView
         sites={s.sites}
         roads={s.roads}

@@ -1431,3 +1431,28 @@ button, input, select, textarea {
 .badge-clear   { background: var(--error-bg, #3b1a1a); color: var(--error, #f87171); }
 .badge-rollback { background: var(--warn-bg);   color: var(--warn); }
 .badge-manual  { background: var(--bg-app);     color: var(--text-muted); }
+
+/* ============ 数据加载蒙层 ============ */
+
+.map-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 覆盖地图区域，grid 布局中靠绝对定位 */
+  grid-column: 2;
+  grid-row: 3;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.map-loading-box {
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 20px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+}
