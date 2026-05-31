@@ -15,6 +15,17 @@
         }
       })();
     </script>
+    <!-- F18 双语：渲染前定 data-lang，默认 en，避免 FOUC -->
+    <script>
+      (function () {
+        try {
+          var l = localStorage.getItem("presurvey.lang");
+          document.documentElement.setAttribute("data-lang", l === "zh" ? "zh" : "en");
+        } catch (e) {
+          document.documentElement.setAttribute("data-lang", "en");
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

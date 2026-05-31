@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { t, useT } from "./i18n";
 import Toolbar from "./components/Toolbar";
 import LayerTree from "./components/LayerTree";
 import MapView from "./components/MapView";
@@ -16,9 +17,10 @@ export default function App() {
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [restorePointsOpen, setRestorePointsOpen] = useState(false);
   const s = useAppState();
+  const tFn = useT();
 
   useEffect(() => {
-    s.refresh().catch(err => s.log("error", `首次加载失败：${err.message ?? err}`));
+    s.refresh().catch(err => s.log("error", t("log.load_err", { msg: err.message ?? String(err) })));
     s.refreshBaselineState();  // F15：启动时拉一次主基准状态
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -35,17 +37,16 @@ export default function App() {
   }, [s.searchResults]);
 
   const onRefresh = useCallback(async () => {
-    s.log("info", "刷新数据...");
+    s.log("info", tFn("log.refresh_start"));
     try {
       const { sites, roads, lessors } = await s.refresh();
-      s.log(
-        "info",
-        `刷新完成：site ${sites.features.length} · road ${roads.features.length} · lessor ${lessors.features.length}`
-      );
+      s.log("info", tFn("log.refresh_ok", {
+        s: sites.features.length, r: roads.features.length, l: lessors.features.length,
+      }));
     } catch (e: unknown) {
-      s.log("error", `刷新失败：${e instanceof Error ? e.message : String(e)}`);
+      s.log("error", tFn("log.refresh_err", { msg: e instanceof Error ? e.message : String(e) }));
     }
-  }, [s]);
+  }, [s, tFn]);
 
   const onSearch = useCallback((q: string) => {
     s.globalSearch(q);
@@ -109,7 +110,7 @@ export default function App() {
       />
       {s.phase === "loading" && (
         <div className="map-loading-overlay">
-          <div className="map-loading-box">⏳ 正在加载数据...</div>
+          <div className="map-loading-box">⏳ {tFn("phase.loading")}</div>
         </div>
       )}
       <MapView
@@ -184,14 +185,10 @@ export default function App() {
       {/* F14 清除基线确认 */}
       {confirmingClear && (
         <ConfirmDialog
-          title="清除基线数据"
-          body={
-            "此操作将清空 site / road / lessor 三表的所有数据。\n" +
-            "本操作不可撤销，主基准区域也会被重置。\n" +
-            "确定继续吗?"
-          }
-          confirmLabel="确定清除"
-          cancelLabel="取消"
+          title={tFn("app.clear.title")}
+          body={tFn("app.clear.body")}
+          confirmLabel={tFn("app.clear.confirm")}
+          cancelLabel={tFn("app.clear.cancel")}
           destructive
           onConfirm={() => {
             setConfirmingClear(false);

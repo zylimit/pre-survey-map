@@ -1,3 +1,5 @@
+import { useT } from "../i18n";
+
 interface Props {
   title: string;
   body: string;
@@ -9,9 +11,13 @@ interface Props {
 }
 
 export default function ConfirmDialog({
-  title, body, confirmLabel = "确定", cancelLabel = "取消",
+  title, body, confirmLabel, cancelLabel,
   destructive = false, onConfirm, onCancel,
 }: Props) {
+  const tFn = useT();
+  const okLabel = confirmLabel ?? tFn("dlg.ok");
+  const noLabel = cancelLabel ?? tFn("dlg.cancel");
+
   return (
     <div className="modal-mask">
       <div className="modal confirm-modal">
@@ -24,11 +30,11 @@ export default function ConfirmDialog({
           ))}
         </div>
         <div className="modal-footer">
-          <button onClick={onCancel}>{cancelLabel}</button>
+          <button onClick={onCancel}>{noLabel}</button>
           <button
             className={destructive ? "danger" : "primary"}
             onClick={onConfirm}
-          >{confirmLabel}</button>
+          >{okLabel}</button>
         </div>
       </div>
     </div>

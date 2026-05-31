@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DrawMode } from "../state";
+import { useLang, useT } from "../i18n";
 
 interface Props {
   onImport: (files: File[]) => void;
@@ -25,18 +26,17 @@ export default function Toolbar({
   const [openMenu, setOpenMenu] = useState<"export" | "draw" | null>(null);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
-  // #19 双主题：初值取自 index.html 预渲染脚本写入的 data-theme（默认 dark）
   const [theme, setTheme] = useState<"dark" | "light">(
     () => (document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark")
   );
+  const { toggleLang } = useLang();
+  const tFn = useT();
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
     document.documentElement.setAttribute("data-theme", next);
-    try {
-      localStorage.setItem("presurvey.theme", next);
-    } catch { /* localStorage 不可用就只切当前会话 */ }
+    try { localStorage.setItem("presurvey.theme", next); } catch { }
   };
 
   useEffect(() => {
@@ -62,10 +62,14 @@ export default function Toolbar({
     if (q) onSearch(q);
   };
 
+  const drawLabel = drawMode
+    ? tFn(drawMode === "polygon" ? "tb.draw.active.poly" : "tb.draw.active.rect")
+    : tFn("tb.draw.label");
+
   return (
     <div className="toolbar" ref={rootRef}>
-      <button onClick={pick} disabled={busy} title="导入 KML/KMZ/Excel">
-        {busy ? "⏳ 处理中..." : "📁 导入"}
+      <button onClick={pick} disabled={busy} title={tFn("tb.import.tip")}>
+        {busy ? tFn("tb.import.busy") : tFn("tb.import.label")}
       </button>
       <input
         ref={inputRef}
@@ -79,21 +83,20 @@ export default function Toolbar({
         <button
           onClick={() => setOpenMenu(openMenu === "export" ? null : "export")}
           disabled={busy}
-          title="导出 KMZ"
         >
-          💾 导出 KMZ ▾
+          {tFn("tb.export.label")}
         </button>
         {openMenu === "export" && (
           <div className="dropdown-menu">
             <div className="dropdown-item" onClick={() => { setOpenMenu(null); onExportAll(); }}>
-              导出整库
+              {tFn("tb.export.all")}
             </div>
             <div
               className={`dropdown-item ${hasSelection ? "" : "disabled"}`}
               onClick={() => hasSelection && (setOpenMenu(null), onExportSelection())}
-              title={hasSelection ? "" : "请先用框选工具绘制选区"}
+              title={hasSelection ? "" : tFn("tb.export.nosel.tip")}
             >
-              导出选区{!hasSelection && "（未绘制选区）"}
+              {hasSelection ? tFn("tb.export.selection") : tFn("tb.export.nosel.txt")}
             </div>
           </div>
         )}
@@ -105,67 +108,70 @@ export default function Toolbar({
           disabled={busy}
           className={drawMode ? "active" : ""}
         >
-          ⬛ 框选 ▾{drawMode ? ` · ${drawMode === "polygon" ? "多边形" : "矩形"}` : ""}
+          {drawLabel}
         </button>
         {openMenu === "draw" && (
           <div className="dropdown-menu">
             <div className="dropdown-item" onClick={() => { setOpenMenu(null); onStartDraw("polygon"); }}>
-              自由多边形
+              {tFn("tb.draw.polygon")}
             </div>
             <div className="dropdown-item" onClick={() => { setOpenMenu(null); onStartDraw("rectangle"); }}>
-              矩形
+              {tFn("tb.draw.rect")}
             </div>
             {(drawMode || hasSelection) && (
               <div
                 className="dropdown-item danger"
                 onClick={() => { setOpenMenu(null); onClearSelection(); }}
               >
-                清除选区
+                {tFn("tb.draw.clear")}
               </div>
             )}
           </div>
         )}
       </div>
 
-      <button onClick={onRefresh} disabled={busy} title="重载数据 + 重连 DB 状态">
-        🔄 刷新
+      <button onClick={onRefresh} disabled={busy} title={tFn("tb.refresh.tip")}>
+        {tFn("tb.refresh.label")}
       </button>
 
       <div className="search">
         <input
-          placeholder="🔍 搜索 Site / Road / Lessor..."
+          placeholder={tFn("tb.search.placeholder")}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === "Enter") submitSearch();
-          }}
+          onKeyDown={e => { if (e.key === "Enter") submitSearch(); }}
         />
-        <button onClick={submitSearch} disabled={!query.trim()} title="按 Enter 也可搜索">
-          搜
+        <button onClick={submitSearch} disabled={!query.trim()} title={tFn("tb.search.tip")}>
+          {tFn("tb.search.btn")}
         </button>
       </div>
 
-      {/* F14 清除基线（调试 / 主基准误固化后兜底）*/}
       <button
         className="danger"
         disabled={busy}
         onClick={onClearBaseline}
-        title="清空 site / road / lessor 三表 + 重置主基准"
-      >🗑️ 清除基线</button>
+        title={tFn("tb.clear.tip")}
+      >{tFn("tb.clear.label")}</button>
 
-      {/* F17 恢复点 */}
       <button
         onClick={onOpenRestorePoints}
         disabled={busy}
-        title="查看 / 创建 / 回滚恢复点"
-      >🕘 恢复点</button>
+        title={tFn("tb.restore.tip")}
+      >{tFn("tb.restore.label")}</button>
 
-      {/* #19 双主题切换（唯一新增控件）*/}
+      {/* #19 主题切换 */}
       <button
         className="theme-toggle"
         onClick={toggleTheme}
-        title={theme === "dark" ? "切换到亮色" : "切换到暗色"}
+        title={theme === "dark" ? tFn("tb.theme.to_light") : tFn("tb.theme.to_dark")}
       >{theme === "dark" ? "☀" : "☾"}</button>
+
+      {/* F18 语言切换 */}
+      <button
+        className="lang-toggle"
+        onClick={toggleLang}
+        title={tFn("tb.lang.tip")}
+      >{tFn("tb.lang.label")}</button>
     </div>
   );
 }

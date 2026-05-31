@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ConflictRow, Decision } from "../api";
+import { useT } from "../i18n";
 import { formatCount } from "../utils";
 import ImportStepper from "./ImportStepper";
 
@@ -11,12 +12,11 @@ interface Props {
   onBack?: () => void;
 }
 
-// 把库里现状 / 新数据浓缩成一行展示字符串
-function summarize(row: Record<string, unknown>, kind: "site" | "lessor"): string {
+function summarize(row: Record<string, unknown>, kind: "site" | "lessor", noCoord: string): string {
   if (kind === "site") {
     const parts = [
       row.site_status ? String(row.site_status) : "—",
-      row.lati != null && row.longi != null ? `${row.lati}, ${row.longi}` : "(无坐标)",
+      row.lati != null && row.longi != null ? `${row.lati}, ${row.longi}` : noCoord,
       row.project ? String(row.project) : "",
     ].filter(Boolean);
     return parts.join(" · ");
@@ -28,6 +28,7 @@ function summarize(row: Record<string, unknown>, kind: "site" | "lessor"): strin
 }
 
 export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel, onBack }: Props) {
+  const tFn = useT();
   const [decisions, setDecisions] = useState<Record<string, Decision>>(initial);
 
   const setOne = (key: string, action: Decision) =>
@@ -51,18 +52,23 @@ export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel
     return { ov, ig };
   }, [conflicts, decisions]);
 
+  const noCoord = tFn("co.no_coord");
+
   return (
     <div className="modal-mask">
       <div className="modal conflict-modal">
         <div className="modal-header">
           {onBack && <ImportStepper current="conflicts" />}
-          <h2>{onBack ? "步骤 2：" : ""}⚠️ 冲突列表（共 {formatCount(conflicts.length)} 条）</h2>
+          <h2>
+            {onBack ? tFn("co.step") : ""}
+            {tFn("co.title", { count: formatCount(conflicts.length) })}
+          </h2>
           <div className="batch-actions">
-            <button onClick={() => setAll("overwrite")}>全部覆盖</button>
-            <button onClick={() => setAll("ignore")}>全部忽略</button>
-            <button onClick={flipAll}>反选</button>
+            <button onClick={() => setAll("overwrite")}>{tFn("co.batch.overwrite")}</button>
+            <button onClick={() => setAll("ignore")}>{tFn("co.batch.ignore")}</button>
+            <button onClick={flipAll}>{tFn("co.batch.toggle")}</button>
             <span className="counts">
-              已选：覆盖 <b>{formatCount(counts.ov)}</b> · 忽略 <b>{formatCount(counts.ig)}</b>
+              {tFn("co.batch.status", { ov: formatCount(counts.ov), ig: formatCount(counts.ig) })}
             </span>
           </div>
         </div>
@@ -71,12 +77,12 @@ export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel
           <table className="conflict-table">
             <thead>
               <tr>
-                <th>类型</th>
-                <th>名称</th>
-                <th>库里现状</th>
-                <th>导入文件</th>
-                <th>来源文件名</th>
-                <th>操作</th>
+                <th>{tFn("co.col.type")}</th>
+                <th>{tFn("co.col.name")}</th>
+                <th>{tFn("co.col.existing")}</th>
+                <th>{tFn("co.col.incoming")}</th>
+                <th>{tFn("co.col.file")}</th>
+                <th>{tFn("co.col.action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -86,18 +92,18 @@ export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel
                   <tr key={c.key} className={action === "overwrite" ? "act-overwrite" : "act-ignore"}>
                     <td>{c.kind}</td>
                     <td>{c.name}</td>
-                    <td>{summarize(c.existing, c.kind)}</td>
-                    <td>{summarize(c.incoming, c.kind)}</td>
+                    <td>{summarize(c.existing, c.kind, noCoord)}</td>
+                    <td>{summarize(c.incoming, c.kind, noCoord)}</td>
                     <td>{c.source_file}</td>
                     <td>
                       <button
                         className={action === "overwrite" ? "active" : ""}
                         onClick={() => setOne(c.key, "overwrite")}
-                      >覆盖</button>
+                      >{tFn("co.action.overwrite")}</button>
                       <button
                         className={action === "ignore" ? "active" : ""}
                         onClick={() => setOne(c.key, "ignore")}
-                      >忽略</button>
+                      >{tFn("co.action.ignore")}</button>
                     </td>
                   </tr>
                 );
@@ -107,12 +113,12 @@ export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel
         </div>
 
         <div className="modal-footer">
-          {onBack && <button onClick={onBack}>← 返回步骤 1</button>}
+          {onBack && <button onClick={onBack}>{tFn("co.back")}</button>}
           <button className="cancel" onClick={onCancel}>
-            取消（下载冲突 Excel）
+            {tFn("co.cancel")}
           </button>
           <button className="primary" onClick={() => onConfirm(decisions)}>
-            确认导入（覆盖 {formatCount(counts.ov)} · 忽略 {formatCount(counts.ig)}）
+            {tFn("co.confirm", { ov: formatCount(counts.ov), ig: formatCount(counts.ig) })}
           </button>
         </div>
       </div>

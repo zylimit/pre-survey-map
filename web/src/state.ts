@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { getLang, t } from "./i18n";
 import {
   backToCleaning,
   BaselineRegion,
@@ -142,7 +143,8 @@ export function useAppState() {
   const [layoutEpoch, setLayoutEpoch] = useState(0);
 
   const log = useCallback((level: LogEntry["level"], msg: string) => {
-    const ts = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+    const locale = getLang() === "zh" ? "zh-CN" : "en-US";
+    const ts = new Date().toLocaleTimeString(locale, { hour12: false });
     setLogs(prev => [...prev.slice(-49), { ts, level, msg }]);
   }, []);
 
@@ -164,9 +166,8 @@ export function useAppState() {
       const bs = await fetchBaselineState();
       setBaselineState(bs);
     } catch (e: unknown) {
-      // 不挡正常流程，只 log
       const msg = e instanceof Error ? e.message : String(e);
-      log("warn", `获取基线状态失败：${msg}`);
+      log("warn", t("log.baseline_err", { msg }));
     }
   }, [log]);
 
@@ -178,26 +179,27 @@ export function useAppState() {
       if (files.length > 1) {
         const dropped = files.length - 1;
         const droppedNames = files.slice(1).map(f => f.name).join(", ");
-        log("warn", `已忽略其他 ${dropped} 个文件（V1 一次只能传一个）：${droppedNames}`);
+        log("warn", t("log.multi_file", { n: dropped, names: droppedNames }));
         files = [files[0]];
       }
 
       const f0 = files[0];
       if (f0.size > MAX_FILE_BYTES) {
-        log("error", `文件 ${f0.name} (${fmtMB(f0.size)}MB) 超过 ${MAX_FILE_MB}MB 上限，已拒绝`);
+        log("error", t("log.file_too_large", { name: f0.name, size: fmtMB(f0.size), limit: MAX_FILE_MB }));
         return;
       }
 
       setPhase("uploading");
-      log("info", `开始上传：${f0.name}`);
+      log("info", t("log.upload_start", { name: f0.name }));
       try {
         const resp = await uploadFile(f0);
         const sm = resp.summary;
-        log(
-          "info",
-          `解析 ${sm.total_parsed} 条；文件内重复去重 ${sm.intra_file_duplicates.site_groups + sm.intra_file_duplicates.lessor_groups} 组` +
-          `（丢弃 ${sm.intra_file_duplicates.site_discarded + sm.intra_file_duplicates.lessor_discarded}）；检测异常 ${sm.cleanings_count} 条，等待用户决策（尚未写库）`
-        );
+        log("info", t("log.parse_ok", {
+          count: sm.total_parsed,
+          groups: sm.intra_file_duplicates.site_groups + sm.intra_file_duplicates.lessor_groups,
+          discarded: sm.intra_file_duplicates.site_discarded + sm.intra_file_duplicates.lessor_discarded,
+          cleanings: sm.cleanings_count,
+        }));
 
         // 默认决策按后端给的 default_action
         const decisions: Record<string, CleaningAction> = {};
@@ -218,7 +220,7 @@ export function useAppState() {
         setPhase("cleaning");
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        log("error", `导入失败：${msg}`);
+        log("error", t("log.upload_err", { msg }));
         setPhase("idle");
       }
     },
@@ -235,10 +237,9 @@ export function useAppState() {
         const list = Object.entries(cleaningDecisions).map(([row_id, action]) => ({ row_id, action }));
         const resp = await proceedToConflicts(importSession.sessionId, list);
         const cs = resp.cleaning_stats;
-        log("info",
-          `清洗决策已暂存（自动修复 ${cs.auto_fixed} / 保留 ${cs.kept} / 丢弃 ${cs.discarded}）；` +
-          `待处理冲突 ${resp.conflicts.length} 条；尚未写库`
-        );
+        log("info", t("log.cleaning_saved", {
+          af: cs.auto_fixed, k: cs.kept, d: cs.discarded, count: resp.conflicts.length,
+        }));
 
         // 冲突默认决策：ignore（Spec F4 / Stage 2 沿用）
         const cdec: Record<string, Decision> = {};
@@ -254,7 +255,7 @@ export function useAppState() {
         setPhase("conflicts");
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        log("error", `进入冲突检测失败：${msg}`);
+        log("error", t("log.conflict_err", { msg }));
         setPhase("cleaning");
       }
     },
@@ -275,7 +276,7 @@ export function useAppState() {
       setPhase("cleaning");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      log("error", `返回清洗步骤失败：${msg}`);
+      log("error", t("log.back_err", { msg }));
     }
   }, [importSession, log]);
 
@@ -283,29 +284,27 @@ export function useAppState() {
     async (decisions: Record<string, Decision>) => {
       if (!importSession) return;
       setPhase("committing");
-      log("info", `正在入库 (${importSession.fileName})...`);
+      log("info", t("log.committing", { file: importSession.fileName }));
       try {
         const list = Object.entries(decisions).map(([key, action]) => ({ key, action }));
         const resp = await commitImport(importSession.sessionId, list);
         const s = resp.stats;
         const cs = resp.cleaning_stats;
-        log(
-          "info",
-          `入库完成：清洗 fix ${cs.auto_fixed}/丢弃 ${cs.discarded}；` +
-          `site ${s.site.inserted}+${s.site.updated}/-${s.site.ignored}，` +
-          `road ${s.road.inserted}/-，` +
-          `lessor ${s.lessor.inserted}+${s.lessor.updated}/-${s.lessor.ignored}`
-        );
-        // Spec #15：commit 后刷基线状态栏（可能本次刚固化）
+        log("info", t("log.commit_ok", {
+          af: cs.auto_fixed, d: cs.discarded,
+          si: s.site.inserted, su: s.site.updated, sn: s.site.ignored,
+          ri: s.road.inserted,
+          li: s.lessor.inserted, lu: s.lessor.updated, ln: s.lessor.ignored,
+        }));
         if (resp.baseline_established) {
           const bs = resp.baseline_established;
-          log("info", `✅ 主基准已固化：${bs.name_zh ?? bs.iso_a2} (${bs.iso_a2}) · ${bs.coverage_pct}% 覆盖`);
+          log("info", t("log.baseline_fixed", { name: bs.name_zh ?? bs.iso_a2, iso: bs.iso_a2, pct: bs.coverage_pct ?? "?" }));
         }
         await refresh();
         await refreshBaselineState();
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        log("error", `入库失败：${msg}`);
+        log("error", t("log.commit_err", { msg }));
       } finally {
         setImportSession(null);
         setPhase("idle");
@@ -323,17 +322,16 @@ export function useAppState() {
         await downloadConflictsXlsx(importSession.sessionId);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        log("error", `下载冲突 Excel 失败：${msg}`);
+        log("error", t("log.cancel_excel_err", { msg }));
       }
     }
     try {
       await cancelImport(importSession.sessionId);
-      log("warn",
-        `已取消导入 (${importSession.fileName})，数据库未变动${isStep2 ? "，冲突列表已下载为 Excel" : ""}`
-      );
+      log("warn", t("log.cancel_ok", { file: importSession.fileName }) +
+        (isStep2 ? t("log.cancel_ok_extra") : ""));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      log("error", `取消导入失败：${msg}`);
+      log("error", t("log.cancel_err", { msg }));
     } finally {
       setImportSession(null);
       setPhase("idle");
@@ -345,15 +343,13 @@ export function useAppState() {
     try {
       const resp = await clearBaseline();
       const d = resp.deleted;
-      log("error",
-        `基线已清空：site -${d.site} / road -${d.road} / lessor -${d.lessor}` +
-        (d.baseline_state ? `（主基准已重置）` : "")
-      );
+      log("error", t("log.clear_ok", { s: d.site, r: d.road, l: d.lessor }) +
+        (d.baseline_state ? t("log.clear_ok_reset") : ""));
       await refresh();
       await refreshBaselineState();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      log("error", `清除基线失败：${msg}`);
+      log("error", t("log.clear_err", { msg }));
     }
   }, [log, refresh, refreshBaselineState]);
 
@@ -373,7 +369,7 @@ export function useAppState() {
         !Number.isFinite(lat) || !Number.isFinite(lon) ||
         Math.abs(lat) > 90 || Math.abs(lon) > 180
       ) {
-        log("warn", `${p.site_id ?? f.id} 坐标异常，无法定位（请修源文件后重新导入）`);
+        log("warn", t("log.coord_err", { id: String(p.site_id ?? f.id) }));
         return;
       }
     }
@@ -387,7 +383,7 @@ export function useAppState() {
   const onSelectionDrawn = useCallback((polygon: GeoJSONPolygon) => {
     setSelectionPolygon(polygon);
     setDrawMode(null);
-    log("info", "已绘制选区，可点 [导出 KMZ ▾ → 导出选区] 下载");
+    log("info", t("log.selection_drawn"));
   }, [log]);
 
   const clearSelection = useCallback(() => {
@@ -397,13 +393,13 @@ export function useAppState() {
 
   const doExportAll = useCallback(async () => {
     setPhase("exporting");
-    log("info", "整库导出中...");
+    log("info", t("log.export_all_start"));
     try {
       await exportAll();
-      log("info", "整库 KMZ 下载已触发");
+      log("info", t("log.export_all_ok"));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      log("error", `整库导出失败：${msg}`);
+      log("error", t("log.export_all_err", { msg }));
     } finally {
       setPhase("idle");
     }
@@ -476,17 +472,17 @@ export function useAppState() {
 
   const doExportSelection = useCallback(async () => {
     if (!selectionPolygon) {
-      log("error", "未绘制选区");
+      log("error", t("log.no_selection"));
       return;
     }
     setPhase("exporting");
-    log("info", "选区导出中...");
+    log("info", t("log.export_sel_start"));
     try {
       await exportSelection(selectionPolygon);
-      log("info", "选区 KMZ 下载已触发");
+      log("info", t("log.export_sel_ok"));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      log("error", `选区导出失败：${msg}`);
+      log("error", t("log.export_sel_err", { msg }));
     } finally {
       setPhase("idle");
     }

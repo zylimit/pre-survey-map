@@ -1,4 +1,5 @@
 import { Feature } from "../api";
+import { useT } from "../i18n";
 import { PANEL_LIMITS } from "../state";
 import ResizeHandle from "./ResizeHandle";
 
@@ -9,36 +10,26 @@ interface Props {
   onResizeEnd: () => void;
 }
 
-// 各类型的核心强类型列。Spec：属性面板先核心列，再展开 extras
 const CORE_FIELDS: Record<string, string[]> = {
-  site: ["site_id", "option", "project", "site_status", "lati", "longi", "source_file"],
-  road: ["id", "property", "source_file"],
+  site:   ["site_id", "option", "project", "site_status", "lati", "longi", "source_file"],
+  road:   ["id", "property", "source_file"],
   lessor: ["fid", "lessor_name", "lessor_category", "relationship", "source_file"],
 };
 
 const CORE_LABELS: Record<string, string> = {
-  site_id: "SITE ID",
-  option: "OPTION",
-  project: "PROJECT",
-  site_status: "SITE STATUS",
-  lati: "LATI",
-  longi: "LONGI",
-  id: "ID",
-  property: "Property",
-  fid: "fid",
-  lessor_name: "Lessor Name",
-  lessor_category: "Lessor Category",
-  relationship: "Relationship",
-  source_file: "来源文件",
+  site_id:          "SITE ID",
+  option:           "OPTION",
+  project:          "PROJECT",
+  site_status:      "SITE STATUS",
+  lati:             "LATI",
+  longi:            "LONGI",
+  id:               "ID",
+  property:         "Property",
+  fid:              "fid",
+  lessor_name:      "Lessor Name",
+  lessor_category:  "Lessor Category",
+  relationship:     "Relationship",
 };
-
-function title(f: Feature): string {
-  const p = f.properties ?? {};
-  if (p.kind === "site") return `Site: ${p.site_id ?? "?"}${p.option ? " / " + p.option : ""}`;
-  if (p.kind === "road") return `Road: ${p.property ?? "#" + p.id}`;
-  if (p.kind === "lessor") return `Lessor: ${p.lessor_name ?? p.fid}`;
-  return "要素";
-}
 
 function isCoordSwapOrOutOfRange(lati: unknown, longi: unknown): boolean {
   const la = typeof lati === "number" ? lati : Number(lati);
@@ -54,7 +45,8 @@ function display(v: unknown): string {
 }
 
 export default function AttributePanel({ feature, onClose, onResize, onResizeEnd }: Props) {
-  // 拖拽手柄要在「左边缘」，挂在面板内部 absolute；feature 是 null 时不渲染整个面板
+  const tFn = useT();
+
   const resizeHandle = (
     <ResizeHandle
       axis="x" edge="start"
@@ -64,12 +56,20 @@ export default function AttributePanel({ feature, onClose, onResize, onResizeEnd
     />
   );
 
+  const featureTitle = (f: Feature): string => {
+    const p = f.properties ?? {};
+    if (p.kind === "site") return `Site: ${p.site_id ?? "?"}${p.option ? " / " + p.option : ""}`;
+    if (p.kind === "road") return `Road: ${p.property ?? "#" + p.id}`;
+    if (p.kind === "lessor") return `Lessor: ${p.lessor_name ?? p.fid}`;
+    return tFn("ap.feature");
+  };
+
   if (!feature) {
     return (
       <div className="attr">
         {resizeHandle}
-        <h3>📋 属性面板</h3>
-        <div className="placeholder">点击地图要素或左侧树节点查看属性</div>
+        <h3>{tFn("ap.title")}</h3>
+        <div className="placeholder">{tFn("ap.placeholder")}</div>
       </div>
     );
   }
@@ -80,34 +80,31 @@ export default function AttributePanel({ feature, onClose, onResize, onResizeEnd
   const coreSet = new Set(coreFields);
   coreSet.add("kind");
 
-  const extras = (p as Record<string, unknown>);
-  const extrasEntries = Object.entries(extras).filter(([k]) => !coreSet.has(k));
-
+  const extrasEntries = Object.entries(p).filter(([k]) => !coreSet.has(k));
   const coordWarn = kind === "site" && isCoordSwapOrOutOfRange(p.lati, p.longi);
 
   return (
     <div className="attr">
       {resizeHandle}
       <div className="attr-head">
-        <h3>{title(feature)}</h3>
-        <button className="close" onClick={onClose} title="关闭">✖</button>
+        <h3>{featureTitle(feature)}</h3>
+        <button className="close" onClick={onClose} title={tFn("ap.close")}>✖</button>
       </div>
 
       {coordWarn && (
-        <div className="warn-banner">
-          ⚠️ 坐标异常（LATI/LONGI 写反或漏小数点），请核对源文件
-        </div>
+        <div className="warn-banner">{tFn("ap.coord_warn")}</div>
       )}
 
       <div className="attr-section">
-        <div className="attr-section-title">核心字段</div>
+        <div className="attr-section-title">{tFn("ap.core")}</div>
         {coreFields.map(k => {
           const isLat = k === "lati";
           const isLon = k === "longi";
           const highlight = (isLat || isLon) && coordWarn;
+          const label = k === "source_file" ? tFn("ap.source") : (CORE_LABELS[k] ?? k);
           return (
             <div key={k} className={`attr-row ${highlight ? "highlight" : ""}`}>
-              <span className="k">{CORE_LABELS[k] ?? k}</span>
+              <span className="k">{label}</span>
               <span className="v">{display(p[k])}</span>
             </div>
           );
@@ -116,7 +113,7 @@ export default function AttributePanel({ feature, onClose, onResize, onResizeEnd
 
       {extrasEntries.length > 0 && (
         <div className="attr-section">
-          <div className="attr-section-title">扩展字段（{extrasEntries.length}）</div>
+          <div className="attr-section-title">{tFn("ap.extras", { n: extrasEntries.length })}</div>
           {extrasEntries.map(([k, v]) => (
             <div key={k} className="attr-row">
               <span className="k">{k}</span>

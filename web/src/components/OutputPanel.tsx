@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Feature } from "../api";
+import { I18nKey, useT } from "../i18n";
 import { LogEntry, PANEL_LIMITS, Phase, SearchResults } from "../state";
 import { nameOf } from "../utils";
 import ResizeHandle from "./ResizeHandle";
@@ -23,6 +24,26 @@ const KIND_LABEL: Record<string, string> = {
   lessor: "Lessor",
 };
 
+const PHASE_KEY: Record<Phase, I18nKey> = {
+  idle:       "phase.idle",
+  loading:    "phase.loading",
+  uploading:  "phase.uploading",
+  cleaning:   "phase.cleaning",
+  conflicts:  "phase.conflicts",
+  committing: "phase.committing",
+  exporting:  "phase.exporting",
+};
+
+const PHASE_BUSY: Record<Phase, boolean> = {
+  idle: false,
+  loading: true,
+  uploading: true,
+  cleaning: false,
+  conflicts: false,
+  committing: true,
+  exporting: true,
+};
+
 function kindOf(f: Feature): string {
   const k = f.properties?.kind;
   return typeof k === "string" ? k : "unknown";
@@ -38,7 +59,6 @@ function nonEmpty(v: unknown): string | null {
   return s === "" ? null : s;
 }
 
-// Road 起点：从几何首坐标取（LineString / MultiLineString 都剥到 [lng, lat]），取不到返回 null
 function firstCoord(geom: Feature["geometry"]): { lat: number; lng: number } | null {
   if (!geom) return null;
   let c: unknown = geom.coordinates;
@@ -51,7 +71,6 @@ function firstCoord(geom: Feature["geometry"]): { lat: number; lng: number } | n
   return null;
 }
 
-// 结果行核心属性：只取强类型核心列（不碰 extras），缺失即省略该段（不渲染空占位）
 function coreInfo(f: Feature): string {
   const p = f.properties ?? {};
   const k = kindOf(f);
@@ -59,47 +78,28 @@ function coreInfo(f: Feature): string {
   if (k === "site") {
     const status = nonEmpty(p.site_status);
     const project = nonEmpty(p.project);
-    if (status) segs.push(`状态: ${status}`);
-    if (project) segs.push(`项目: ${project}`);
+    if (status) segs.push(`Status: ${status}`);
+    if (project) segs.push(`Project: ${project}`);
     const lat = Number(p.lati);
     const lng = Number(p.longi);
     if (Number.isFinite(lat) && Number.isFinite(lng)) segs.push(fmtCoord(lat, lng));
   } else if (k === "lessor") {
     const cat = nonEmpty(p.lessor_category);
     const rel = nonEmpty(p.relationship);
-    if (cat) segs.push(`类别: ${cat}`);
-    if (rel) segs.push(`关系: ${rel}`);
+    if (cat) segs.push(`Cat: ${cat}`);
+    if (rel) segs.push(`Rel: ${rel}`);
   } else if (k === "road") {
     const c = firstCoord(f.geometry);
-    if (c) segs.push(`起点: ${fmtCoord(c.lat, c.lng)}`);
+    if (c) segs.push(`Start: ${fmtCoord(c.lat, c.lng)}`);
   }
   return segs.join(" · ");
 }
-
-const PHASE_LABEL: Record<Phase, string> = {
-  idle: "就绪",
-  loading: "加载数据中...",
-  uploading: "上传 + 解析中...",
-  cleaning: "等待用户处理清洗",
-  conflicts: "等待用户处理冲突",
-  committing: "入库中...",
-  exporting: "导出中...",
-};
-
-const PHASE_BUSY: Record<Phase, boolean> = {
-  idle: false,
-  loading: true,
-  uploading: true,
-  cleaning: false,
-  conflicts: false,
-  committing: true,
-  exporting: true,
-};
 
 export default function OutputPanel({
   open, onToggle, logs, phase, onClearLogs, onResize, onResizeEnd,
   searchResults, onResultClick, onClearSearch,
 }: Props) {
+  const tFn = useT();
   const [dbOk, setDbOk] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -118,12 +118,11 @@ export default function OutputPanel({
   }, []);
 
   const dotClass = dbOk === null ? "dot" : dbOk ? "dot ok" : "dot err";
-  const dotLabel = dbOk === null ? "DB 检测中" : dbOk ? "DB 已连接" : "DB 断开";
+  const dotLabel = dbOk === null ? tFn("op.db.checking") : dbOk ? tFn("op.db.ok") : tFn("op.db.error");
   const latest = logs[logs.length - 1];
   const showBar = phase !== "idle";
 
   const firstResult = searchResults?.results[0];
-  // 折叠态汇总行：点击 → 展开面板 + 飞第一条
   const onCollapsedSummary = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!open) onToggle();
@@ -143,7 +142,7 @@ export default function OutputPanel({
       <div className="bar" onClick={onToggle}>
         <span>{open ? "▾" : "▸"}</span>
         <span className="phase-label">
-          {showBar ? PHASE_LABEL[phase] : latest ? `${latest.ts} ${latest.msg}` : "就绪"}
+          {showBar ? tFn(PHASE_KEY[phase]) : latest ? `${latest.ts} ${latest.msg}` : tFn("phase.idle")}
         </span>
         {showBar && (
           <div className={`progress ${PHASE_BUSY[phase] ? "indeterminate" : "paused"}`}>
@@ -152,7 +151,7 @@ export default function OutputPanel({
         )}
         {!open && searchResults && searchResults.total > 0 && firstResult && (
           <span className="search-summary-collapsed" onClick={onCollapsedSummary}>
-            🔍 搜索匹配 {searchResults.total} 条，飞到第一条
+            {tFn("op.search.summary", { count: searchResults.total })}
           </span>
         )}
         <div className="status">
@@ -166,20 +165,20 @@ export default function OutputPanel({
             <div className="search-results">
               <div className="body-head">
                 <span className="muted">
-                  搜索结果{searchResults.total > 0 ? `（${searchResults.total}）` : ""}
+                  {tFn("op.search.header")}{searchResults.total > 0 ? `（${searchResults.total}）` : ""}
                 </span>
                 <button
                   className="clear-btn"
                   onClick={(e) => { e.stopPropagation(); onClearSearch(); }}
-                  title="只清搜索结果，不动日志"
-                >✖ 清空结果</button>
+                  title={tFn("op.search.clear.tip")}
+                >{tFn("op.search.clear.btn")}</button>
               </div>
               {searchResults.total === 0 ? (
-                <div className="row error">未匹配到任何要素</div>
+                <div className="row error">{tFn("op.search.none")}</div>
               ) : (
                 <>
                   <div className="search-summary" onClick={() => firstResult && onResultClick(firstResult)}>
-                    🔍 搜索匹配 {searchResults.total} 条，飞到第一条
+                    {tFn("op.search.summary", { count: searchResults.total })}
                   </div>
                   {searchResults.results.map((f, i) => {
                     const info = coreInfo(f);
@@ -198,22 +197,22 @@ export default function OutputPanel({
                     );
                   })}
                   {searchResults.total > searchResults.results.length && (
-                    <div className="row muted">仅显示前 {searchResults.results.length} 条，请细化关键词</div>
+                    <div className="row muted">{tFn("op.search.capped", { cap: searchResults.results.length })}</div>
                   )}
                 </>
               )}
             </div>
           )}
           <div className="body-head">
-            <span className="muted">日志（最近 50 条）</span>
+            <span className="muted">{tFn("op.logs.header")}</span>
             <button
               className="clear-btn"
               onClick={(e) => { e.stopPropagation(); onClearLogs(); }}
               disabled={logs.length === 0}
-              title="清空日志"
-            >清空</button>
+              title={tFn("op.logs.clear")}
+            >{tFn("op.logs.clear")}</button>
           </div>
-          {logs.length === 0 && <div className="row muted">暂无日志</div>}
+          {logs.length === 0 && <div className="row muted">{tFn("op.logs.empty")}</div>}
           {logs.map((l, i) => (
             <div key={i} className={`row ${l.level}`}>
               [{l.ts}] {l.msg}
