@@ -19,15 +19,9 @@ import { Polygon } from "ol/geom";
 
 import { Feature, FeatureCollection, GeoJSONPolygon } from "../api";
 import { DrawMode } from "../state";
+import { useT } from "../i18n";
 
 type BasemapKey = "positron" | "osm" | "esri" | "google";
-
-const BASEMAP_LABEL: Record<BasemapKey, string> = {
-  positron: "Positron",
-  osm: "OSM",
-  esri: "Esri 卫星",
-  google: "Google 卫星",
-};
 
 // 从 :root 上 theme.css 定义的变量读色。OL 的 style 函数不能直接吃 var()，必须读出字符串。
 function cssVar(name: string): string {
@@ -138,6 +132,14 @@ function MapView({
   drawMode, selectionPolygon, hiddenIds, fitAllEpoch, layoutEpoch,
   onDropFiles, onSelectFeature, onSelectionDrawn, onFitAll,
 }: Props) {
+  const tFn = useT();
+  const basemapLabel: Record<BasemapKey, string> = {
+    positron: "Positron",
+    osm: "OSM",
+    esri: tFn("map.basemap.esri"),
+    google: tFn("map.basemap.google"),
+  };
+
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const sitesSrc = useRef(new VectorSource());
@@ -448,15 +450,15 @@ function MapView({
               key={k}
               className={`map-ctrl-btn ${basemap === k ? "active" : ""}`}
               onClick={() => setBasemap(k)}
-              title={`切换到 ${BASEMAP_LABEL[k]}`}
+              title={basemapLabel[k]}
             >
-              {BASEMAP_LABEL[k]}
+              {basemapLabel[k]}
             </button>
           ))}
         </div>
       </div>
 
-      {dragOver && <div className="drop-overlay">📥 释放鼠标导入文件</div>}
+      {dragOver && <div className="drop-overlay">📥 {tFn("map.drop.hint")}</div>}
       {drawMode && (
         <div className="draw-hint">
           {drawMode === "polygon" ? "🖱 点击设顶点 · 双击结束" : "🖱 按住拖动绘制矩形"}

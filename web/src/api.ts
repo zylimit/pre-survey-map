@@ -38,11 +38,13 @@ export interface CleaningRow {
   default_action: CleaningAction;
   country_iso_a2?: string | null;
   country_name_zh?: string | null;
+  country_name_en?: string | null;
 }
 
 export interface BaselineRegion {
   country_iso_a2: string | null;
   country_name_zh: string | null;
+  country_name_en?: string | null;
   source: "baseline" | "current_file";
   coverage_pct: number;
   points_used: number;
@@ -101,6 +103,7 @@ export interface CommitResponse {
   baseline_established: {
     iso_a2: string;
     name_zh: string | null;
+    name_en?: string | null;
     coverage_pct: number | null;
     points_used: number | null;
   } | null;
@@ -176,6 +179,7 @@ export interface BaselineState {
   established: boolean;
   iso_a2?: string;
   name_zh?: string;
+  name_en?: string;
   coverage_pct?: number;
   points_used?: number;
   established_at?: string;

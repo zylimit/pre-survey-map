@@ -4,6 +4,26 @@
 
 ---
 
+## 2026-05-31 (#22)
+
+### F18 双语覆盖补全（底图标签 + 基线国家名 + LayerTree）
+
+**类型**：轻度变更（F18 范围内的遗漏补全）
+
+**触发**：实测发现底图切换按钮（"Esri 卫星"/"Google 卫星"）及基线国家名（如"菲律宾"）在英文模式下仍显示中文。
+
+**变更内容**：
+
+- **F18 覆盖补全**：底图切换标签、LayerTree tooltip / 过滤框 placeholder、基线状态栏国家名，纳入双语体系
+- **底图标签**：`"Esri 卫星"` → `tFn("map.basemap.esri")`（EN: "Esri Sat"），`"Google 卫星"` → `tFn("map.basemap.google")`（EN: "Google Sat"）；同时修复拖拽提示 "释放鼠标导入文件"
+- **基线国家名**：后端 `GET /api/baseline-state` 新增 `name_en` 字段（JOIN countries 表取 `name_en`），前端按当前语言选 `name_en`（英文）/ `name_zh`（中文）
+- **清洗对话框国家名**：`country_name_en` 从后端透传至 `CleaningRow` / `BaselineRegion`，按语言显示；`not_in_baseline` 清洗条目 "Outside Baseline (Philippines)" 英文正确显示
+- **LayerTree**：过滤框 placeholder、文件夹 tooltip（全选/展开/折叠）、节点 checkbox tooltip、"暂无数据" 全部接入 i18n
+
+**不变**：数据字段名、字段值、文件名不翻译（F18 既有约定）
+
+---
+
 ## 2026-05-28
 
 ### V2 候选 · 整理与新增

@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Feature, FeatureCollection } from "../api";
 import { formatCount, nameOf } from "../utils";
 import { PANEL_LIMITS } from "../state";
+import { useT } from "../i18n";
 import ResizeHandle from "./ResizeHandle";
 
 interface Props {
@@ -51,6 +52,7 @@ function LayerTree({
   onPick, onToggleFeature, onSetKindVisible,
   onResize, onResizeEnd,
 }: Props) {
+  const tFn = useT();
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Record<Kind, boolean>>({
     site: true, road: true, lessor: true,
@@ -141,11 +143,11 @@ function LayerTree({
       const onFolderClick = () => onSetKindVisible(allIds, row.state !== "all");
       return (
         <div className="tree-row" style={{ transform: `translateY(${top}px)` }} key={`f-${row.kind}`}>
-          <h3 className="folder-row" onClick={onFolderClick} title="点击全选/全关">
+          <h3 className="folder-row" onClick={onFolderClick} title={tFn("lt.folder.toggle.tip")}>
             <span
               className={`folder-disclose ${row.expanded ? "open" : "closed"}`}
               onClick={e => { e.stopPropagation(); toggle(row.kind); }}
-              title={row.expanded ? "折叠" : "展开"}
+              title={row.expanded ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
             >{row.expanded ? "−" : "+"}</span>
             <input
               type="checkbox"
@@ -154,7 +156,7 @@ function LayerTree({
               checked={row.state === "all"}
               onChange={onFolderClick}
               onClick={e => e.stopPropagation()}
-              title="全选/全关"
+              title={tFn("lt.folder.toggle.tip")}
             />
             <span className="folder-title">📂 {row.title}</span>
             <span className="folder-count">{formatCount(row.items.length)}</span>
@@ -165,7 +167,7 @@ function LayerTree({
     if (row.t === "empty") {
       return (
         <div className="tree-row" style={{ transform: `translateY(${top}px)` }} key={`e-${top}`}>
-          <div className="node muted">暂无数据</div>
+          <div className="node muted">{tFn("lt.empty")}</div>
         </div>
       );
     }
@@ -181,7 +183,7 @@ function LayerTree({
             checked={!hidden}
             onChange={() => onToggleFeature(id)}
             onClick={e => e.stopPropagation()}
-            title={hidden ? "勾选显示" : "取消勾选隐藏"}
+            title={hidden ? tFn("lt.node.show") : tFn("lt.node.hide")}
           />
           <span className="node-label" onClick={() => onPick(f)}>
             {nameOf(f)}
@@ -195,7 +197,7 @@ function LayerTree({
     <div className="tree">
       <div className="tree-head">
         <input
-          placeholder="🔍 过滤节点..."
+          placeholder={tFn("lt.filter.placeholder")}
           value={query}
           onChange={e => setQuery(e.target.value)}
           style={{ width: "100%", padding: 6 }}

@@ -298,7 +298,7 @@ export function useAppState() {
         }));
         if (resp.baseline_established) {
           const bs = resp.baseline_established;
-          log("info", t("log.baseline_fixed", { name: bs.name_zh ?? bs.iso_a2, iso: bs.iso_a2, pct: bs.coverage_pct ?? "?" }));
+          log("info", t("log.baseline_fixed", { name: (getLang() === "zh" ? bs.name_zh : bs.name_en) ?? bs.name_zh ?? bs.iso_a2, iso: bs.iso_a2, pct: bs.coverage_pct ?? "?" }));
         }
         await refresh();
         await refreshBaselineState();

@@ -1,5 +1,5 @@
 import { BaselineState } from "../api";
-import { useT } from "../i18n";
+import { useLang, useT } from "../i18n";
 
 interface Props {
   state: BaselineState;
@@ -13,6 +13,8 @@ function fmtDate(iso?: string): string {
 
 export default function BaselineStatusBar({ state }: Props) {
   const tFn = useT();
+  const { lang } = useLang();
+  const countryName = (lang === "zh" ? state.name_zh : state.name_en) ?? state.name_zh ?? state.iso_a2;
 
   if (state.established) {
     return (
@@ -20,7 +22,7 @@ export default function BaselineStatusBar({ state }: Props) {
         <span className="baseline-icon">📍</span>
         <span className="baseline-text">
           {tFn("bs.country")}
-          <b>{state.name_zh ?? state.iso_a2}</b>
+          <b>{countryName}</b>
           {" "}
           <span className="baseline-iso">({state.iso_a2})</span>
           {" · "}

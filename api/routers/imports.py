@@ -284,6 +284,7 @@ async def import_file(file: UploadFile):
                 "default_action": "discard",
                 "country_iso_a2": cls["country_iso_a2"],
                 "country_name_zh": cls["country_name_zh"],
+                "country_name_en": cls.get("country_name_en"),
             })
 
     summary = {
@@ -594,6 +595,7 @@ async def commit_import(sid: str, body: CommitBody):
                         baseline_established = {
                             "iso_a2": country["country_iso_a2"],
                             "name_zh": country.get("country_name_zh"),
+                            "name_en": country.get("country_name_en"),
                             "coverage_pct": country.get("coverage_pct"),
                             "points_used": country.get("points_used"),
                         }

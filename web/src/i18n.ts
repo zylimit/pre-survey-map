@@ -47,6 +47,20 @@ const en = {
   "tb.lang.label":         "中",
   "tb.lang.tip":           "Switch to Chinese",
 
+  // MapView basemap labels + drag
+  "map.basemap.esri":      "Esri Sat",
+  "map.basemap.google":    "Google Sat",
+  "map.drop.hint":         "Drop to import file",
+
+  // LayerTree
+  "lt.filter.placeholder": "🔍 Filter nodes...",
+  "lt.folder.toggle.tip":  "Toggle all on/off",
+  "lt.folder.expand":      "Expand",
+  "lt.folder.collapse":    "Collapse",
+  "lt.node.show":          "Show",
+  "lt.node.hide":          "Hide",
+  "lt.empty":              "No data",
+
   // BaselineStatusBar
   "bs.pending":            "Baseline not established · Will lock after first import",
   "bs.country":            "Baseline:",
@@ -241,6 +255,20 @@ const zh: Record<keyof typeof en, string> = {
   "tb.theme.to_dark":      "切换到暗色",
   "tb.lang.label":         "EN",
   "tb.lang.tip":           "切换到英文",
+
+  // MapView basemap labels + drag
+  "map.basemap.esri":      "Esri 卫星",
+  "map.basemap.google":    "Google 卫星",
+  "map.drop.hint":         "释放鼠标导入文件",
+
+  // LayerTree
+  "lt.filter.placeholder": "🔍 过滤节点...",
+  "lt.folder.toggle.tip":  "点击全选/全关",
+  "lt.folder.expand":      "展开",
+  "lt.folder.collapse":    "折叠",
+  "lt.node.show":          "勾选显示",
+  "lt.node.hide":          "取消勾选隐藏",
+  "lt.empty":              "暂无数据",
 
   "bs.pending":            "基线未确立 · 首次导入完成后将自动锁定",
   "bs.country":            "基线国家：",

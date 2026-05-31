@@ -20,13 +20,17 @@ router = APIRouter()
 @router.get("/baseline-state")
 async def get_baseline_state():
     async with pool().acquire() as conn:
-        row = await conn.fetchrow("SELECT * FROM baseline_state WHERE id = 1")
+        row = await conn.fetchrow(
+            "SELECT bs.*, c.name_en FROM baseline_state bs "
+            "LEFT JOIN countries c ON c.iso_a2 = bs.iso_a2 WHERE bs.id = 1"
+        )
     if row is None:
         return {"established": False}
     return {
         "established": True,
         "iso_a2": row["iso_a2"],
         "name_zh": row["name_zh"],
+        "name_en": row["name_en"],
         "coverage_pct": row["coverage_pct"],
         "points_used": row["points_used"],
         "established_at": row["established_at"].isoformat() if row["established_at"] else None,

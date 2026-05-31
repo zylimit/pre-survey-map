@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { BaselineRegion, CleaningAction, CleaningRow, Phase1Summary } from "../api";
-import { I18nKey, useT } from "../i18n";
+import { I18nKey, useLang, useT } from "../i18n";
 import { formatCount } from "../utils";
 import ImportStepper from "./ImportStepper";
 
@@ -38,6 +38,9 @@ export default function CleaningDialog({
   warnAllOutsideBaseline, onProceed, onCancel,
 }: Props) {
   const tFn = useT();
+  const { lang } = useLang();
+  const pickName = (zh: string | null | undefined, en: string | null | undefined, iso: string | null | undefined) =>
+    (lang === "zh" ? zh : en) ?? zh ?? iso ?? "?";
   const [decisions, setDecisions] = useState<Record<string, CleaningAction>>(initial);
 
   const setOne = (rid: string, action: CleaningAction) =>
@@ -72,7 +75,7 @@ export default function CleaningDialog({
   const baselineBanner = (): string => {
     const b = baselineRegion;
     if (!b || !b.country_iso_a2) return tFn("cl.baseline.none");
-    const name = b.country_name_zh || b.country_iso_a2;
+    const name = pickName(b.country_name_zh, b.country_name_en, b.country_iso_a2);
     if (b.source === "baseline") {
       return tFn("cl.baseline.db", {
         name, used: formatCount(b.points_used), total: formatCount(b.points_total), pct: b.coverage_pct,
@@ -103,7 +106,7 @@ export default function CleaningDialog({
             <div className="banner banner-danger">
               {tFn("cl.warn.all_outside", {
                 count: String(summary.total_parsed),
-                iso: baselineRegion?.country_name_zh ?? baselineRegion?.country_iso_a2 ?? "?",
+                iso: pickName(baselineRegion?.country_name_zh, baselineRegion?.country_name_en, baselineRegion?.country_iso_a2),
               })}
               {" "}{tFn("cl.warn.change")}
             </div>
@@ -154,7 +157,7 @@ export default function CleaningDialog({
                       <td>{c.kind}</td>
                       <td>{c.name}</td>
                       <td className="mono">{c.file_name}</td>
-                      <td>{issueLabel}{c.issue === "not_in_baseline" && c.country_name_zh ? `（${c.country_name_zh}）` : ""}</td>
+                      <td>{issueLabel}{c.issue === "not_in_baseline" && (c.country_name_zh || c.country_name_en) ? ` (${pickName(c.country_name_zh, c.country_name_en, c.country_iso_a2)})` : ""}</td>
                       <td className="mono">{fmtCoord(c.current_coord)}</td>
                       <td className="mono">{fmtCoord(c.fixed_coord_preview)}</td>
                       <td><span className={`badge badge-${c.default_action}`}>{c.default_action}</span></td>

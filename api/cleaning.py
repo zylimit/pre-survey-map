@@ -75,10 +75,10 @@ async def classify_points(conn, points: list[dict[str, Any]],
         pts_geom AS (
             SELECT row_id, ST_SetSRID(ST_MakePoint(lng, lat), 4326) AS g FROM pts
         )
-        SELECT p.row_id, c.iso_a2 AS country_iso_a2, c.name_zh AS country_name_zh
+        SELECT p.row_id, c.iso_a2 AS country_iso_a2, c.name_zh AS country_name_zh, c.name_en AS country_name_en
         FROM pts_geom p
         LEFT JOIN LATERAL (
-            SELECT c.iso_a2, c.name_zh
+            SELECT c.iso_a2, c.name_zh, c.name_en
             FROM countries c
             WHERE ST_DWithin(p.g, c.geom, {BUFFER_DEG})
             ORDER BY c.geom <-> p.g
@@ -101,6 +101,7 @@ async def classify_points(conn, points: list[dict[str, Any]],
         out[rid] = {
             "country_iso_a2": country,
             "country_name_zh": r["country_name_zh"],
+            "country_name_en": r["country_name_en"],
             "in_sea": in_sea,
             "not_in_baseline": not_in_baseline,
         }
@@ -122,11 +123,15 @@ async def compute_baseline_region(conn,
 
     **完全不再扫 site 全表**。固化由 imports.py commit 路径在事务末尾触发一次。
     """
-    row = await conn.fetchrow("SELECT * FROM baseline_state WHERE id = 1")
+    row = await conn.fetchrow(
+        "SELECT bs.*, c.name_en FROM baseline_state bs "
+        "LEFT JOIN countries c ON c.iso_a2 = bs.iso_a2 WHERE bs.id = 1"
+    )
     if row is not None:
         return {
             "country_iso_a2": row["iso_a2"],
             "country_name_zh": row["name_zh"],
+            "country_name_en": row["name_en"],
             "source": "baseline",
             "coverage_pct": row["coverage_pct"],
             "points_used": row["points_used"],
@@ -142,11 +147,13 @@ async def compute_baseline_region(conn,
         return {
             "country_iso_a2": None,
             "country_name_zh": None,
+            "country_name_en": None,
             "source": "current_file",
             "coverage_pct": 0,
             "points_used": 0,
             "points_total": len(current_points),
         }
+    country.setdefault("country_name_en", None)
     country["source"] = "current_file"
     country["points_total"] = len(current_points)
     return country
@@ -202,10 +209,11 @@ async def _pick_country(conn, rows) -> Optional[dict[str, Any]]:
     for r in rows:
         pct = r["cnt"] / total_classified
         if pct >= BASELINE_THRESHOLD:
-            name_zh = await _country_name_zh(conn, r["iso_a2"])
+            name_zh, name_en = await _country_names(conn, r["iso_a2"])
             return {
                 "country_iso_a2": r["iso_a2"],
                 "country_name_zh": name_zh,
+                "country_name_en": name_en,
                 "coverage_pct": round(pct * 100),
                 "points_used": r["cnt"],
             }
@@ -213,16 +221,20 @@ async def _pick_country(conn, rows) -> Optional[dict[str, Any]]:
     # 无 70% → 取最大占比
     top = rows[0]
     pct = top["cnt"] / total_classified
-    name_zh = await _country_name_zh(conn, top["iso_a2"])
+    name_zh, name_en = await _country_names(conn, top["iso_a2"])
     return {
         "country_iso_a2": top["iso_a2"],
         "country_name_zh": name_zh,
+        "country_name_en": name_en,
         "coverage_pct": round(pct * 100),
         "points_used": top["cnt"],
     }
 
 
-async def _country_name_zh(conn, iso_a2: str) -> Optional[str]:
-    return await conn.fetchval(
-        "SELECT name_zh FROM countries WHERE iso_a2 = $1 LIMIT 1", iso_a2
+async def _country_names(conn, iso_a2: str) -> tuple[Optional[str], Optional[str]]:
+    row = await conn.fetchrow(
+        "SELECT name_zh, name_en FROM countries WHERE iso_a2 = $1 LIMIT 1", iso_a2
     )
+    if row is None:
+        return None, None
+    return row["name_zh"], row["name_en"]
