@@ -10,10 +10,11 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from audit import write_audit
 from db import pool
 from exporters.kmz import build_kml, pack_kmz
 
@@ -59,8 +60,19 @@ async def _fetch_rows(where: str, params: tuple) -> dict[str, list[dict[str, Any
     }
 
 
-def _kmz_response(label: str, kmz_bytes: bytes) -> Response:
+def _build_kmz_meta(label: str, data: dict[str, list[dict[str, Any]]]) -> tuple[str, bytes, dict[str, int]]:
+    kml = build_kml(data["site"], data["road"], data["lessor"])
+    kmz_bytes = pack_kmz(kml)
     fname = f"export_{label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.kmz"
+    counts = {
+        "site": len(data["site"]),
+        "road": len(data["road"]),
+        "lessor": len(data["lessor"]),
+    }
+    return fname, kmz_bytes, counts
+
+
+def _kmz_response(fname: str, kmz_bytes: bytes) -> Response:
     return Response(
         content=kmz_bytes,
         media_type="application/vnd.google-earth.kmz",
@@ -75,10 +87,15 @@ def _kmz_response(label: str, kmz_bytes: bytes) -> Response:
 
 
 @router.get("/all")
-async def export_all():
+async def export_all(request: Request):
     data = await _fetch_rows("", ())
-    kml = build_kml(data["site"], data["road"], data["lessor"])
-    return _kmz_response("full", pack_kmz(kml))
+    fname, kmz_bytes, counts = _build_kmz_meta("full", data)
+    await write_audit(
+        action="export_full",
+        details={"file_name": fname, "counts": counts, "bytes": len(kmz_bytes)},
+        request=request,
+    )
+    return _kmz_response(fname, kmz_bytes)
 
 
 # ---------- /api/export/selection ----------
@@ -89,10 +106,16 @@ class SelectionBody(BaseModel):
 
 
 @router.post("/selection")
-async def export_selection(body: SelectionBody):
+async def export_selection(body: SelectionBody, request: Request):
     poly = body.polygon
     if not isinstance(poly, dict) or poly.get("type") != "Polygon":
         raise HTTPException(status_code=400, detail="polygon 必须是 GeoJSON Polygon 对象")
     data = await _fetch_rows(CONTAINS_CLAUSE, (json.dumps(poly),))
-    kml = build_kml(data["site"], data["road"], data["lessor"])
-    return _kmz_response("region", pack_kmz(kml))
+    fname, kmz_bytes, counts = _build_kmz_meta("region", data)
+    # Spec 雷 33：导出字段只记类型/文件名/数据计数，不记选区 WKT 几何
+    await write_audit(
+        action="export_region",
+        details={"file_name": fname, "counts": counts, "bytes": len(kmz_bytes)},
+        request=request,
+    )
+    return _kmz_response(fname, kmz_bytes)

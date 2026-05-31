@@ -41,6 +41,7 @@
 | F16 | 全局搜索结果列表（V1.x #16）| Toolbar 右上搜索框回车 → **三类要素全搜（显示名匹配，与左树过滤同口径）**；结果写入底部 Output 的**独立"搜索结果区"**（不挤占 50 条日志），封顶 200 条；区头可点汇总条"🔍 搜索匹配 N 条，飞到第一条" + **[✖ 清空结果] 按钮**；每条结果一行 = **显示名 · 核心属性 · 类型角标**，可点 → **地图飞到该要素 + 左树该节点同步高亮滚动定位**（复用 F12 双向焦点同步）|
 | F18 | 双语界面（中/英）（V1.x #21）| 默认英文；Toolbar 右上 **[EN/中]** 切换按钮；**仅切换软件自身 UI 文案**（按钮/标签/对话框/状态栏/输出日志/错误提示/树节点文件夹名/底图切换标签/基线国家名/LayerTree tooltip 与 placeholder），导入文件内容、数据字段名及字段值**不翻译**；偏好存 `localStorage`（key: `presurvey.lang`）；菲律宾工程师用英文，中国工程师可切回中文；后端 `GET /api/baseline-state` 同时返回 `name_zh` + `name_en`，前端按当前语言选择显示 |
 | F17 | 基线恢复点与回滚（V1.x #20）| **不可逆操作的安全网**。导入 commit 前 / 清除基线（F14）前 / 回滚前 **自动建恢复点**（快照 `site`/`road`/`lessor` 三表 + `baseline_state`），并提供 Toolbar [🕘 恢复点] 手动建点；保留最近 N=10 个（环形淘汰最旧）；恢复点对话框列表可**覆盖式回滚**到任一点（事务内 truncate + 从快照重灌，回滚本身也先自动建点 → 可逆）+ 快捷 [↩ 撤销上一次导入]；详见「基线恢复点与回滚机制（F17）」节 |
+| F19 | 审计日志（V1.x #23）| 记录关键操作 **12 类**（open / import / export_full / export_region / export_conflicts / restore_point_create_auto / restore_point_create_manual / restore_point_delete / restore_point_rollback / restore_point_undo_last_import / clear_baseline / **audit_log_export**）；**身份识别 = IP + User-Agent + Session ID**（V1 不做登录、不做域账号 — 浏览器限制）；**隐藏入口：连续按 3 次 `Esc`** → 弹密码框 → 输入 `mangosv5` → Modal 表格（倒序时间 + 操作类型筛选 + 分页 50/页 + **导出 Excel**）；密码不限错误次数；**UI 只读**（无删除/编辑），**右上角 [💾 导出 Excel]** 按当前筛选结果导出；后端不开 `DELETE`/`PATCH` 端点；**永久保留**；详见「审计日志（F19）」节 |
 
 ---
 
@@ -291,6 +292,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 | `countries`（地理数据，docker init 时加载）| 来自 Natural Earth | `iso_a2` / `iso_a3` / `name` / `name_zh` | — | `geom MULTIPOLYGON SRID 4326`（GIST 索引）|
 | **`restore_point`**（V1.x #20 · F17 新增）| 自增 `id` | `reason`（pre_import/pre_clear/pre_rollback/manual）/ `note` / `created_at` / `site_count` / `road_count` / `lessor_count` / `baseline_iso_a2`（摘要列，列表直接展示免反查）| — | — |
 | **`site_snapshot` / `road_snapshot` / `lessor_snapshot` / `baseline_state_snapshot`**（V1.x #20 · F17 新增）| 各自镜像源表列 + `restore_point_id`（外键 ON DELETE CASCADE）| 源表全列副本 | 同源表 | 同源表 |
+| **`audit_log`**（V1.x #23 · F19 新增）| 自增 `id BIGSERIAL` | `ts` / `session_id` / `ip` / `user_agent` / `action`（11 类枚举）/ `result`（success/failed）/ `error_msg` | `details JSONB`（按 action 不同字段不同）| — |
 
 **字段集策略（两层）**：
 - **强类型核心列**：KML 公共字段直接建列，承担去重主键、索引、空间查询
@@ -461,6 +463,107 @@ EXISTS (SELECT 1 FROM countries WHERE ST_DWithin(point.geom, countries.geom, 0.0
 - **Google Earth**：勘测员客户端，本平台输出 KMZ 由此打开
 - **腾讯云**：部署环境
 - **邮件**：派工通道（**V1 不集成发件**，工程师手动发）
+
+### 审计日志（F19 · V1.x #23）
+
+**动机**：V1 不做登录，但关键操作（导入/导出/清基线/回滚/记录点变更）必须有痕迹，方便追责和复盘。
+
+#### 身份识别 = 方案 E（仅技术信息，不识别真人）
+
+| 字段 | 来源 | 说明 |
+|------|------|------|
+| `ip` | 后端从 `X-Forwarded-For` / socket 拿 | 真实 IP，nginx 转发要传透 |
+| `user_agent` | HTTP `User-Agent` header | OS + 浏览器版本 |
+| `session_id` | 后端 cookie `presurvey_sid`（首访问时 UUID 写入） | 区分浏览器 session，跨刷新稳定 |
+
+**明确不记录的（V1 受限于浏览器安全）**：Windows 域账号、机器名、MAC 地址、登录用户。
+
+#### 12 类操作（动作枚举）
+
+| action | 触发时机 | `details` JSONB 主要字段 |
+|--------|---------|----------------------|
+| `open` | session 首次打开页面（`presurvey_sid` cookie 缺失）| — |
+| `import` | commit 入库完成 | `file_name` / `parsed_count` / `cleaning_decisions`（自动修复/保留/丢弃各 N）/ `conflict_decisions`（覆盖/忽略各 N）/ `inserted_count` / `restore_point_id`（关联自动建的点）|
+| `export_full` | 整库导出 KMZ 完成 | `file_name` / `counts: {site, road, lessor}` |
+| `export_region` | 选区导出 KMZ 完成 | `file_name` / `counts: {site, road, lessor}` / `mode: "polygon" \| "rect"` |
+| `export_conflicts` | 冲突 Excel 导出完成 | `file_name` / `conflict_count` |
+| `restore_point_create_auto` | 自动建点（commit 前 / 清基线前 / 回滚前）| `restore_point_id` / `reason: "pre_import" \| "pre_clear" \| "pre_rollback"` / `counts` |
+| `restore_point_create_manual` | 手动建点 | `restore_point_id` / `note`（用户填的备注）/ `counts` |
+| `restore_point_delete` | 删除恢复点 | `restore_point_id` / `reason_at_create` / `counts_at_create` |
+| `restore_point_rollback` | 回滚到某点 | `restore_point_id` / `new_restore_point_id`（回滚本身建的点）/ `counts_before` / `counts_after` |
+| `restore_point_undo_last_import` | F17 快捷撤销上次导入 | 等价 `restore_point_rollback`，但 `details.shortcut: true` |
+| `clear_baseline` | F14 清除基线 | `counts_before: {site, road, lessor, baseline_state}` / `restore_point_id`（关联自动建的点）|
+| `audit_log_export` | 审计日志 Modal [💾 导出 Excel] 点击后导出完成 | `filters: {action, from, to}` / `exported_rows: N` / `file_name: "audit_log_YYYYMMDD_HHMMSS.xlsx"` |
+
+**明确不记录的（噪音）**：切换底图 / 切换语言 / 框选 / 缩放 / 点击树节点 / 属性面板查看。
+
+#### 隐藏入口（F19 · 雷 C）
+
+- 全局键盘事件监听：**连续按 3 次 `Esc`**（间隔 < 1 秒）→ 弹密码框
+- 密码框 placeholder："请输入审计密码"
+- 密码硬编码：`mangosv5`（V1 不做密码哈希、不做轮换、不做用户管理）
+- 密码错误：抖动 + "密码错误" 提示；**不限错误次数**（V1 简化）
+- 验证通过 → 打开审计日志 Modal
+
+#### Modal UI
+
+- 形态：全屏遮罩 + 居中 Modal（70vw × 80vh），跟 RestorePointDialog 风格一致
+- 顶部：标题 "审计日志" + [✖ 关闭]
+- 顶部筛选条：[时间范围: 全部 / 今天 / 7天 / 30天 / 自定义] + [操作类型: 全部 / 单选枚举]
+- 主体：表格列 = 时间 ↓ / 操作 / 详情摘要 / IP / 用户代理 / Session ID 前 8 位 / 结果
+- 时间倒序（**新的在上**）
+- 分页：50 条 / 页，底部分页器
+- 行点击：展开显示完整 `details` JSON
+- **只读 + 可导出**：无删除 / 编辑 按钮；**右上角 [💾 导出 Excel] 按钮**
+- **导出范围**：**当前筛选结果**（用户能看到什么就导出什么；不能在 Modal 里看的也不能导）
+- **导出文件命名**：`audit_log_YYYYMMDD_HHMMSS.xlsx`
+- **导出内容**：Excel 列 = 时间 / 操作 / IP / User-Agent / Session ID / 结果 / 错误消息 / details JSON（最后一列原文）
+- **导出本身记审计**（**元审计**）：触发 `audit_log_export` action，记筛选条件 + 导出行数
+
+#### 后端约束
+
+- 端点：
+  - `GET /api/audit-log?action=&from=&to=&page=&page_size=` — 分页查询
+  - `GET /api/audit-log/export?action=&from=&to=` — 导出 Excel（按筛选条件返回 `.xlsx` blob）
+- **不开 `POST` / `DELETE` / `PATCH`**（业务自己在 commit / export / clear 等成功路径里通过函数直接写入 `audit_log` 表）
+- 失败的操作也要记一条（`result: "failed"` + `error_msg`）
+- 永久保留（无 TTL，无清理任务）
+- **导出 Excel 端点本身完成后必须再写一条 `audit_log_export` 记录**（**元审计**，防止有人导出大量数据后否认）
+
+#### 审计写入失败的容错
+
+写 `audit_log` 失败 **不应该让业务回滚**（如导入入库成功但审计日志写失败，业务事务仍 commit）。审计写入用独立连接 / try-catch 兜底，失败仅打 `WARNING` 到 stdout，不抛出。
+
+#### 实施补充决策（V1.x #23 · 雷 38-40）
+
+落地阶段在三处补齐定义，避免后续歧义：
+
+**雷 38 · IP 透传链路**
+
+- nginx 必须传 `X-Forwarded-For` 给 api（用 `$proxy_add_x_forwarded_for` 追加 `$remote_addr` 到已有 XFF 链）
+- 后端 `_ip_of()` 优先级：`X-Forwarded-For[0]` → `X-Real-IP` → `request.client.host`
+- 真实生产中，nginx 前若再加 LB / CDN，需在 LB 侧也开启 XFF 透传
+
+**雷 39 · `open` 仅在 GET 上记录**
+
+- `presurvey_sid` cookie 缺失时，**只有 GET 请求**会触发 `action=open` 审计
+- 不在 POST / DELETE / PATCH 上记 `open`（这些请求自带业务审计，重复无意义）
+- 极端场景：用户首次访问就是 POST（如脚本直传）→ 不记 `open`，但会记业务 audit，session_id 同样写入 cookie
+
+**雷 40 · `restore_point_create_auto` 与业务审计双条并存**
+
+`commit_import` / `clear_baseline` / `rollback` 三个路径会同时写**两条** audit：
+
+1. 业务 audit（`import` / `clear_baseline` / `restore_point_rollback`）
+2. `restore_point_create_auto`（关联自动建的点）
+
+**保留双条的理由**：
+
+- 业务和恢复点是两个独立维度（业务关心"发生了什么"，恢复点关心"快照血缘"）
+- 查 audit 时按 action 筛选互不污染（看清基线记录不会被自动建点干扰）
+- 关联通过 `details.restore_point_id` 串起（不需要靠 audit 行序）
+
+`restore_point_rollback` 与 `restore_point_undo_last_import` 二选一互斥（取决于回滚目标的 `reason` 是否 = `pre_import`），不会同时记。
 
 ---
 

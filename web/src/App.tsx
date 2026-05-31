@@ -10,14 +10,26 @@ import CleaningDialog from "./components/CleaningDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
 import RestorePointDialog from "./components/RestorePointDialog";
 import BaselineStatusBar from "./components/BaselineStatusBar";
+import AuditPasswordPrompt from "./components/AuditPasswordPrompt";
+import AuditModal from "./components/AuditModal";
+import { useEscTrigger } from "./hooks/useEscTrigger";
 import { useAppState } from "./state";
 
 export default function App() {
   const [outputOpen, setOutputOpen] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [restorePointsOpen, setRestorePointsOpen] = useState(false);
+  const [auditPwdOpen, setAuditPwdOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
   const s = useAppState();
   const tFn = useT();
+
+  // F19 隐藏入口：3 次 Esc（间隔 < 1s）→ 密码框 → Audit Modal
+  useEscTrigger(() => {
+    // 已打开任意一个就不再弹
+    if (auditPwdOpen || auditOpen) return;
+    setAuditPwdOpen(true);
+  }, 3, 1000);
 
   useEffect(() => {
     s.refresh().catch(err => s.log("error", t("log.load_err", { msg: err.message ?? String(err) })));
@@ -196,6 +208,17 @@ export default function App() {
           }}
           onCancel={() => setConfirmingClear(false)}
         />
+      )}
+
+      {/* F19 隐藏审计入口 */}
+      {auditPwdOpen && (
+        <AuditPasswordPrompt
+          onPass={() => { setAuditPwdOpen(false); setAuditOpen(true); }}
+          onCancel={() => setAuditPwdOpen(false)}
+        />
+      )}
+      {auditOpen && (
+        <AuditModal onClose={() => setAuditOpen(false)} />
       )}
     </div>
   );

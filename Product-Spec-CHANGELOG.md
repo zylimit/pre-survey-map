@@ -1086,3 +1086,150 @@ Instance B（实施侧）#11 完成报告中主动提出"Spec 对不上的潜在
 - 不改任何功能逻辑、数据规则、API、布局结构
 - 现有中文字符串需全部收归翻译 key，是一次较大的前端重构（覆盖所有组件的 UI 文案）
 - 主题切换（#19）已用 localStorage + 初始化脚本模式，本功能可复用同一模式
+
+
+---
+
+## 2026-05-31 (#23)
+
+### V1.x 重度变更 · F19 审计日志（带 Excel 导出 + 隐藏入口）
+
+**类型**：**重度变更**（新增主要功能模块 + 新增表 + 新增隐藏入口 + 新增 API 端点）
+
+**触发**：用户提出 — "暂时不做登录，但要审计关键操作"。"99% Windows 机器，能不能记域账号机器名，估计难，最多记 IP"。"查看审计日志要输密码，定死 mangosv5"。"用快捷键，不要按钮占地方"。后续追加 "审计日志我要可以导出 Excel"。
+
+**变更内容**：
+
+**1. 新增 F19 审计日志（12 类操作）**
+
+操作枚举：
+- `open` — session 首次打开
+- `import` — 导入入库完成（含清洗/冲突决策计数 + 关联自动恢复点）
+- `export_full` / `export_region` / `export_conflicts` — 三类导出（记 file_name + counts）
+- `restore_point_create_auto` / `_manual` / `_delete` / `_rollback` / `_undo_last_import` — 5 类恢复点操作
+- `clear_baseline` — F14 清基线
+- `audit_log_export` — **元审计**，导出日志本身也记一条
+
+**明确不记的（噪音）**：切换底图 / 切换语言 / 框选 / 缩放 / 点击树节点 / 属性面板查看。
+
+**2. 身份识别 = 方案 E（IP + UA + Session ID）**
+
+- 浏览器安全限制：拿不到 Windows 域账号、机器名、MAC
+- V1 接受 "只识别浏览器，不识别真人" 的底线
+- session_id 通过后端 cookie `presurvey_sid` 在首访问时 UUID 写入
+- 用户拒绝 E+（首次填名字方案），"不让大家太麻烦"
+
+**3. 隐藏入口：连续按 3 次 `Esc`**
+
+- 全局键盘监听，间隔 < 1 秒触发
+- 弹密码框，硬编码 `mangosv5`
+- 密码错误不限次数（V1 简化）
+- 一般用户偶发触发概率极低
+
+**4. Modal UI（只读 + 可导出）**
+
+- 全屏遮罩 + 居中 Modal（70vw × 80vh），跟 RestorePointDialog 风格一致
+- 倒序时间（新的在上）+ 操作类型筛选 + 时间范围筛选 + 分页 50/页
+- 行点击展开完整 `details` JSON
+- **无删除/编辑**，但**右上角 [💾 导出 Excel]** 按钮
+- 导出范围 = 当前筛选结果，文件名 `audit_log_YYYYMMDD_HHMMSS.xlsx`
+
+**5. 新表 `audit_log`**
+
+字段：`id BIGSERIAL` / `ts` / `session_id` / `ip` / `user_agent` / `action` (枚举) / `details JSONB` / `result` / `error_msg`
+索引：`(ts DESC)` + `(action)`
+
+**6. 后端 API 端点**
+
+- `GET /api/audit-log` — 分页查询
+- `GET /api/audit-log/export` — 导出 Excel（按筛选条件）
+- **不开** `POST` / `DELETE` / `PATCH`（业务自己在成功路径里 insert）
+
+**7. 容错原则**
+
+审计写入失败 **不应该让业务回滚**（如导入入库成功但审计写失败，业务事务仍 commit）。审计用独立连接 / try-catch 兜底，失败只 WARNING 不抛出。
+
+**用户拍板（追问轮次）**：
+
+- 雷 31 "打开页面" 频率：**每 session 一条**（cookie 缺失时记） ✓
+- 雷 32 展示形态：**Modal 弹窗** ✓
+- 雷 33 导出字段：**类型 + 文件名 + 数据计数**（不记选区 WKT 几何） ✓
+- 雷 34 保留策略：**永久保留** ✓
+- 雷 35 UI 只读：**锁死** + 后端不开删改端点 ✓
+- 雷 36 默认排序：**倒序**（新的在上） ✓
+- 雷 37 密码错误次数：**不限** ✓
+- **追加**：审计日志要可以**导出 Excel** ✓
+
+**Spec 改动位置**：
+
+- 功能需求表新增 F19 行
+- 「数据库设计」节新增 `audit_log` 表行
+- 「补充说明」节新增独立小节「审计日志（F19 · V1.x #23）」（含身份方案 / 操作枚举 / 隐藏入口 / Modal UI / 后端约束 / 容错原则）
+
+**对实施侧的硬约束**：
+
+1. 后端新建 migration：`audit_log` 表 + 索引
+2. 后端 cookie 中间件：首访问写 `presurvey_sid` UUID
+3. 业务路径（commit / export / clear / restore_point CRUD）每个成功/失败分支都要 insert audit_log
+4. 审计写入用独立兜底，不影响业务事务
+5. 前端全局键盘监听 `Esc` 三连 → 密码 modal → audit modal
+6. 前端 audit modal：表格 + 筛选 + 分页 + Excel 导出
+7. **导出 Excel 端点完成后必须再写一条 `audit_log_export` 记录**
+
+**已知潜在风险**：
+
+- 硬编码密码 `mangosv5` 在前端代码里可见（不混淆）—— V1 接受（用户明确）
+- 审计日志写入用同步还是异步？推荐**同步同事务**（业务成功 → 审计也成功），失败兜底独立连接补写
+- nginx 转发要传 `X-Forwarded-For` 透到后端
+
+---
+
+### V1.x #23 实施补丁（2026-05-31 落地后补充）
+
+实施完成后用户拍板的 3 项补充决策，已写入 Spec「审计日志（F19）→ 实施补充决策」小节，CHANGELOG 同步记录：
+
+**雷 38 落地 · nginx 加 XFF 头**
+
+`web/nginx.conf` `location ~ ^/(api|health)` 块新增两行：
+```nginx
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+`$proxy_add_x_forwarded_for` 会追加 `$remote_addr` 到已有 XFF 链，前置 LB 链路不会被截断。后端 `audit._ip_of()` 仍是三级 fallback（XFF[0] → X-Real-IP → request.client.host），所以即便 nginx 没传 XFF 也能拿到 IP，加这一行只是让链路更标准。
+
+**雷 39 · `open` 仅 GET 触发**
+
+`audit_middleware.py` 的实现选了 GET-only：
+```python
+if request.method == "GET":
+    await write_audit(action="open", details={"path": ...}, request=request)
+```
+
+POST / DELETE / PATCH 第一次访问时只写 cookie，不补 open（避免与业务 audit 重复）。极端场景：脚本直传 POST 上传 → 第一条 audit 是 `import` 而不是 `open` + `import` 两条。
+
+**雷 40 · 自动恢复点的双条审计**
+
+`commit_import` / `clear_baseline` / `rollback` 三个路径每次会写**两条** audit：
+
+| 路径 | 业务 audit | 关联 audit |
+|------|-----------|-----------|
+| commit | `import` | `restore_point_create_auto` (pre_import) |
+| clear_baseline | `clear_baseline` | `restore_point_create_auto` (pre_clear) |
+| rollback | `restore_point_rollback` 或 `restore_point_undo_last_import` | `restore_point_create_auto` (pre_rollback) |
+
+两条用 `details.restore_point_id` 关联，不靠行序串。
+
+**实施踩到的坑（补 DEPLOY.md）**：
+
+- macOS Docker Desktop bind mount 缓存：`init.sql` 在 host 上更新后，容器内 `/docker-entrypoint-initdb.d/01-init.sql` 仍是旧版本（gRPC FUSE 缓存）。需 `docker compose restart db` 强制重读
+- 旧 volume 升级到 V1.x #23 必走步骤：
+  ```bash
+  docker compose restart db
+  docker compose exec -T db psql -U postgres -d presurvey \
+    -f /docker-entrypoint-initdb.d/01-init.sql
+  ```
+  init.sql 全部 `CREATE TABLE IF NOT EXISTS`，幂等
+- 容错验证（实战）：api 重启时 `audit_log` 尚未建表，第一次 `open` 写入抛 `UndefinedTableError`，logger.warning 一行吞掉，业务 `GET /health` 仍返回 200 OK
+
+

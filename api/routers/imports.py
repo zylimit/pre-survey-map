@@ -22,11 +22,12 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 import session_store
+from audit import write_audit
 from cleaning import (
     _country_dist_in_db,
     classify_points,
@@ -521,7 +522,7 @@ class CommitBody(BaseModel):
 
 
 @router.post("/{sid}/commit")
-async def commit_import(sid: str, body: CommitBody):
+async def commit_import(sid: str, body: CommitBody, request: Request):
     s = session_store.get(sid)
     if s is None:
         raise HTTPException(status_code=404, detail="session 不存在或已过期")
@@ -541,11 +542,12 @@ async def commit_import(sid: str, body: CommitBody):
         "road": {"inserted": 0, "updated": 0, "ignored": 0},
         "lessor": {"inserted": 0, "updated": 0, "ignored": 0},
     }
+    rp_id: int | None = None
 
     async with pool().acquire() as conn:
         async with conn.transaction():
             # F17: commit 落库前自动建恢复点（pre_import）
-            await create_restore_point(conn, "pre_import")
+            rp_id = await create_restore_point(conn, "pre_import")
 
             for r in s["non_conflicts"]["site"]:
                 await _insert_site(conn, r)
@@ -601,6 +603,26 @@ async def commit_import(sid: str, body: CommitBody):
                         }
                     # country=None（全在海里）→ 不固化，下次 commit 再尝试（Spec 雷 30）
 
+    # F19 审计：import + restore_point_create_auto（pre_import）
+    await write_audit(
+        action="import",
+        details={
+            "file_name": s.get("file_name"),
+            "parsed_count": sum(stats[k]["inserted"] + stats[k]["updated"] + stats[k]["ignored"] for k in ("site", "road", "lessor")),
+            "cleaning_stats": s.get("cleaning_stats", {}),
+            "stats": stats,
+            "restore_point_id": rp_id,
+            "baseline_established": baseline_established,
+        },
+        request=request,
+    )
+    if rp_id is not None:
+        await write_audit(
+            action="restore_point_create_auto",
+            details={"restore_point_id": rp_id, "reason": "pre_import"},
+            request=request,
+        )
+
     session_store.drop(sid)
     return {
         "stats": stats,
@@ -626,12 +648,27 @@ async def cancel_import(sid: str):
 
 
 @router.get("/{sid}/conflicts.xlsx")
-async def conflicts_xlsx(sid: str):
+async def conflicts_xlsx(sid: str, request: Request):
     s = session_store.get(sid)
     if s is None:
         raise HTTPException(status_code=404, detail="session 不存在或已过期")
-    data = build_conflicts_xlsx(s.get("conflicts", []))
+    conflicts = s.get("conflicts", [])
+    data = build_conflicts_xlsx(conflicts)
     fname = f"conflicts_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
+    await write_audit(
+        action="export_conflicts",
+        details={
+            "file_name": fname,
+            "source_file": s.get("file_name"),
+            "counts": {
+                "total": len(conflicts),
+                "site": sum(1 for c in conflicts if c.get("kind") == "site"),
+                "lessor": sum(1 for c in conflicts if c.get("kind") == "lessor"),
+            },
+            "bytes": len(data),
+        },
+        request=request,
+    )
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

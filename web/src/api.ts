@@ -248,6 +248,76 @@ export async function deleteRestorePoint(id: number): Promise<void> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
+// ---------- F19 审计日志（Spec V1.x #23）----------
+
+export type AuditAction =
+  | "open"
+  | "import"
+  | "export_full"
+  | "export_region"
+  | "export_conflicts"
+  | "restore_point_create_auto"
+  | "restore_point_create_manual"
+  | "restore_point_delete"
+  | "restore_point_rollback"
+  | "restore_point_undo_last_import"
+  | "clear_baseline"
+  | "audit_log_export";
+
+export interface AuditLogItem {
+  id: number;
+  ts: string;
+  session_id: string | null;
+  ip: string | null;
+  user_agent: string | null;
+  action: AuditAction;
+  details: Record<string, unknown> | null;
+  result: string;
+  error_msg: string | null;
+}
+
+export interface AuditLogPage {
+  items: AuditLogItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AuditFilters {
+  action?: string;
+  from?: string;   // ISO datetime
+  to?: string;
+}
+
+function buildAuditQuery(f: AuditFilters, page: number, pageSize: number): string {
+  const q = new URLSearchParams();
+  if (f.action) q.set("action", f.action);
+  if (f.from) q.set("from", f.from);
+  if (f.to) q.set("to", f.to);
+  q.set("page", String(page));
+  q.set("page_size", String(pageSize));
+  return q.toString();
+}
+
+export async function listAuditLog(
+  filters: AuditFilters,
+  page = 1,
+  pageSize = 50,
+): Promise<AuditLogPage> {
+  const res = await fetch(`/api/audit-log?${buildAuditQuery(filters, page, pageSize)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function exportAuditLog(filters: AuditFilters): Promise<void> {
+  const q = new URLSearchParams();
+  if (filters.action) q.set("action", filters.action);
+  if (filters.from) q.set("from", filters.from);
+  if (filters.to) q.set("to", filters.to);
+  const res = await fetch(`/api/audit-log/export?${q.toString()}`);
+  await downloadResponse(res, "audit_log.xlsx");
+}
+
 // ---------- Export ----------
 
 export interface GeoJSONPolygon {

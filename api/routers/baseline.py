@@ -7,8 +7,9 @@
 V1 不做权限控制，前端弹确认 modal 防误点。
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
+from audit import write_audit
 from db import pool
 from restore_point_helper import create_restore_point
 
@@ -38,12 +39,13 @@ async def get_baseline_state():
 
 
 @router.delete("/baseline")
-async def clear_baseline():
+async def clear_baseline(request: Request):
     """F14：清空 site / road / lessor + baseline_state（换基线唯一通道）。countries 不动。"""
+    rp_id: int | None = None
     async with pool().acquire() as conn:
         async with conn.transaction():
             # F17: 清除基线前自动建恢复点（pre_clear）
-            await create_restore_point(conn, "pre_clear")
+            rp_id = await create_restore_point(conn, "pre_clear")
 
             site_n = await conn.fetchval("SELECT count(*) FROM site")
             road_n = await conn.fetchval("SELECT count(*) FROM road")
@@ -53,6 +55,24 @@ async def clear_baseline():
             await conn.execute(
                 'TRUNCATE TABLE site, road, lessor, baseline_state RESTART IDENTITY CASCADE'
             )
+    # F19 审计：clear_baseline + 关联 restore_point_create_auto（pre_clear）
+    await write_audit(
+        action="clear_baseline",
+        details={
+            "counts_before": {
+                "site": site_n, "road": road_n,
+                "lessor": lessor_n, "baseline_state": baseline_n,
+            },
+            "restore_point_id": rp_id,
+        },
+        request=request,
+    )
+    if rp_id is not None:
+        await write_audit(
+            action="restore_point_create_auto",
+            details={"restore_point_id": rp_id, "reason": "pre_clear"},
+            request=request,
+        )
     return {
         "deleted": {
             "site": site_n,

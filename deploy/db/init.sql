@@ -152,3 +152,26 @@ CREATE TABLE IF NOT EXISTS baseline_state_snapshot (
 );
 CREATE INDEX IF NOT EXISTS baseline_state_snapshot_rp_idx
     ON baseline_state_snapshot (restore_point_id);
+
+-- ============================================================
+-- F19 · 审计日志（Spec V1.x #23）
+-- ============================================================
+-- 12 类操作：open / import / export_full / export_region / export_conflicts /
+--          restore_point_create_auto / _manual / _delete / _rollback /
+--          _undo_last_import / clear_baseline / audit_log_export
+-- 写入失败不应阻塞业务（独立连接 + try/except，详见 api/audit.py）
+-- 永久保留（雷 34），不做自动清理
+CREATE TABLE IF NOT EXISTS audit_log (
+    id          BIGSERIAL  PRIMARY KEY,
+    ts          TIMESTAMP  NOT NULL DEFAULT now(),
+    session_id  TEXT,
+    ip          TEXT,
+    user_agent  TEXT,
+    action      TEXT       NOT NULL,
+    details     JSONB,
+    result      TEXT       NOT NULL DEFAULT 'success',
+    error_msg   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS audit_log_ts_idx ON audit_log (ts DESC);
+CREATE INDEX IF NOT EXISTS audit_log_action_idx ON audit_log (action);
