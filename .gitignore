@@ -31,6 +31,10 @@ api/*.log
 # 临时 / 生产 KMZ 输出（demo 文件例外，见下）
 data/*.kmz
 data/*.tmp
+
+# 大体积测试数据（勿入库）
+data/KML_Region_Province_Site_*.kml
+data/站点数据库模板*.xlsx
 !data/exports/export_full_demo.kmz
 !data/exports/export_region_demo.kmz
 !data/exports/conflicts_demo.xlsx
