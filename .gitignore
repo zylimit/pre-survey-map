@@ -44,5 +44,8 @@ data/站点数据库模板*.xlsx
 .vscode/
 *.swp
 
+# Claude Code 配置（不入库）
+.claude/
+
 # 离线部署产物（镜像 tar / 密钥，体积大且含凭证，勿入库）
 _dist/
