@@ -71,7 +71,11 @@ def parse_xlsx(data: bytes) -> ParseResult:
         lati = _to_float(row[lati_idx]) if lati_idx is not None and lati_idx < len(row) else None
         longi = _to_float(row[longi_idx]) if longi_idx is not None and longi_idx < len(row) else None
 
-        _CORE = {"SITE ID", "OPTION", "PROJECT", "SITE STATUS", "LATI", "LONGI"}
+        # F20 (V1.x #24/#25)：与 kml._SITE_CORE 对齐，排除盖戳三列源别名防重复显示
+        _CORE = {
+            "SITE ID", "OPTION", "PROJECT", "SITE STATUS", "LATI", "LONGI",
+            "OPERATOR", "CATEGORY", "TYPE", "SITE TYPE",
+        }
         extras: dict[str, str] = {}
         for h, v in zip(headers, row):
             if not h or h in _CORE:

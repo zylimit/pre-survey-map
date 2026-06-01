@@ -124,7 +124,12 @@ def _to_float(v: Optional[str]) -> Optional[float]:
         return None
 
 
-_SITE_CORE = {"SITE ID", "OPTION", "PROJECT", "SITE STATUS", "LATI", "LONGI"}
+# F20 (V1.x #24/#25)：operator/category/type 三列由图层导入盖戳写入，源文件同名属性
+# （含 type 的源别名 SITE TYPE）一律并入白名单排除，防属性面板「同字段重复显示」
+_SITE_CORE = {
+    "SITE ID", "OPTION", "PROJECT", "SITE STATUS", "LATI", "LONGI",
+    "OPERATOR", "CATEGORY", "TYPE", "SITE TYPE",
+}
 _ROAD_CORE = {"Property"}
 _LESSOR_CORE = {"fid", "Lessor Name", "Lessor Category", "Lessor Cagegory", "Relationship"}
 

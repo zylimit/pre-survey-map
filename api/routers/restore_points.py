@@ -88,9 +88,11 @@ async def rollback(rp_id: int, request: Request):
             await conn.execute(
                 """
                 INSERT INTO site
-                    (site_id, "option", project, site_status, lati, longi,
+                    (site_id, "option", project, site_status,
+                     operator, category, type, lati, longi,
                      extras, source_file, created_at, updated_at, geom)
-                SELECT site_id, "option", project, site_status, lati, longi,
+                SELECT site_id, "option", project, site_status,
+                       operator, category, type, lati, longi,
                        extras, source_file, created_at, updated_at, geom
                 FROM site_snapshot
                 WHERE restore_point_id = $1

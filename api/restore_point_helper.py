@@ -31,8 +31,10 @@ async def create_restore_point(
         """
         INSERT INTO site_snapshot
             (restore_point_id, site_id, "option", project, site_status,
+             operator, category, type,
              lati, longi, extras, source_file, created_at, updated_at, geom)
         SELECT $1, site_id, "option", project, site_status,
+               operator, category, type,
                lati, longi, extras, source_file, created_at, updated_at, geom
         FROM site
         """,
