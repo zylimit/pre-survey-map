@@ -406,7 +406,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 
 - **形状来自图层（站型 type）**，**颜色来自状态（site_status）**，二者叠加 = 地图上的最终图标（如"绿色三角""黄色五角星"）。
 - **颜色（site_status）**：positive = 🟢 绿 / negative = 🟡 黄 / undermine = 🔴 红 / 空值未知 = ⚪ 灰。
-- **形状（type）默认建议（实施侧可微调，未与用户逐一敲定）**：
+- **形状（type）映射（V1.x #25 · 已与用户敲定，接受默认）**：实施侧用 OpenLayers `RegularShape` 渲染（points/radius/angle 控形状，fill/stroke 控实心/空心）。逻辑：**实心 = 存量、空心 = 规划、菱形 = 勘测**。
 
   | type | 建议形状 |
   |------|---------|
@@ -439,7 +439,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 - **V1 旧 legend "Positive 绿 / Negative 黄 / Unknown 红"** → 新口径 **positive / negative / undermine**：**`Unknown` 状态值迁移为 `undermine`**（红色不变，仅改名）。
 - 空值 / null 状态 → 灰 fallback（未分类）。
 - 旧 Lessor `Friendly` → 迁移为 `Normal`（去掉 Friendly 一态）。
-- 旧 site 数据**没有 operator/category/type**（在浅树时代导入）：迁移需给默认归属，建议落入各运营商下的"存量"占位或一个"未分类"兜底层。**此默认归属策略未与用户逐项敲定，实施前需确认。**
+- 旧 site 数据**没有 operator/category/type**（在浅树时代导入）：**V1.x #25 拍板 = 清库重来，不做库内迁移**。现有库数据为开发/测试数据，F20 代码上线后走 F14「清除基线」truncate `site`/`road`/`lessor` + `baseline_state`，再按新图层树逐层 [导入图层] 重新灌入（盖戳写三列）。**不新增「未分类」兜底层，固定骨架保持 Globe/Smart/Dito 纯净。** 注意：库内值迁移虽免，但**导入器层面**源文件状态值规范化仍保留（源 KML 可能仍含 `Unknown`/`Friendly`，导入时映射到 `undermine`/`Normal`）。
 
 #### 实施硬约束（必须连带处理，否则数据/回滚出错）
 
