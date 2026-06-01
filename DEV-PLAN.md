@@ -35,7 +35,7 @@
 
 ---
 
-## Phase 2: 盖戳导入器 — 几何护栏 + 强制写三列 + 状态值规范化
+## Phase 2: 盖戳导入器 — 几何护栏 + 强制写三列 + 状态值规范化 ✅
 
 **交付内容**：
 - `POST /api/import` 入参新增 `operator` / `category` / `type` 三个盖戳值（由调用方=图层按钮传入；Road/Lessor 图层不传或传 null）

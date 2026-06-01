@@ -22,7 +22,7 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -75,8 +75,31 @@ def _site_key(site_id: str, option: str) -> str:
     return f"{(site_id or '').strip().lower()}|{(option or '').strip().lower()}"
 
 
+def _road_key(property: str | None) -> str:
+    """F20 V1.x #24：Road 全局去重键 = Property（trim+lower）。空 Property 无身份，返回 ''。"""
+    return (property or "").strip().lower()
+
+
 def _lessor_key(fid: str) -> str:
     return (fid or "").strip().lower()
+
+
+# ---------- F20 状态值规范化（导入器层面，V1.x #25）----------
+# 库内无旧数据要迁（清库重来），但源 KML 仍可能带旧值：导入时映射到新口径。
+
+
+def _norm_site_status(v: str | None) -> str | None:
+    """源 site_status=Unknown → 入库 undermine（红色不变，仅改名）。"""
+    if v is not None and v.strip().lower() == "unknown":
+        return "undermine"
+    return v
+
+
+def _norm_relationship(v: str | None) -> str | None:
+    """源 lessor relationship=Friendly → 入库 Normal（去掉 Friendly 一态）。"""
+    if v is not None and v.strip().lower() == "friendly":
+        return "Normal"
+    return v
 
 
 def _row_id(kind: str, key: str) -> str:
@@ -87,11 +110,15 @@ def _row_id(kind: str, key: str) -> str:
 
 
 def _site_dict(s: SiteRow, source: str) -> dict[str, Any]:
-    return {**asdict(s), "source_file": source}
+    d = {**asdict(s), "source_file": source}
+    d["site_status"] = _norm_site_status(d.get("site_status"))  # F20：Unknown→undermine
+    return d
 
 
 def _lessor_dict(l: LessorRow, source: str) -> dict[str, Any]:
-    return {**asdict(l), "source_file": source}
+    d = {**asdict(l), "source_file": source}
+    d["relationship"] = _norm_relationship(d.get("relationship"))  # F20：Friendly→Normal
+    return d
 
 
 def _normalize_jsonb(row: dict[str, Any]) -> dict[str, Any]:
@@ -106,8 +133,22 @@ def _normalize_jsonb(row: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.post("")
-async def import_file(file: UploadFile):
-    """解析单文件 → 同文件内重复折叠 → 清洗扫描 4 类 → 算主基准。"""
+async def import_file(
+    file: UploadFile,
+    operator: str | None = Form(None),
+    category: str | None = Form(None),
+    type_: str | None = Form(None, alias="type"),
+    target_kind: str | None = Form(None),
+):
+    """解析单文件 → 几何护栏 → 同文件内重复折叠 → 清洗扫描 4 类 → 算主基准。
+
+    F20 盖戳导入（V1.x #24）：
+    - target_kind（site/road/lessor）= 图层强类型，几何护栏只保留该类要素，其余跳过并报告；
+      为 None 时退回 F1 全局导入行为（不护栏、不盖戳），保向后兼容（KMZ 自反测试走此路）。
+    - operator/category/type = 图层盖戳值，commit 时强制写入 site 三列，源文件同名属性一律忽略。
+    """
+    if target_kind is not None and target_kind not in ("site", "road", "lessor"):
+        raise HTTPException(status_code=400, detail=f"非法 target_kind：{target_kind}")
     kind = _detect(file.filename or "")
     if kind == "unknown":
         raise HTTPException(
@@ -129,6 +170,24 @@ async def import_file(file: UploadFile):
     try:
         data = await file.read()
         parsed = _parse(kind, data)
+
+        # === 几何护栏（F20 V1.x #24，前置）===
+        # 图层强类型：Site 层只收点 / Road 层只收线 / Lessor 层只收面。
+        # 几何类型不匹配的要素跳过 + 报告，不阻断其余导入。target_kind=None → 不护栏（F1 全局导入）。
+        geometry_skipped = {"site": 0, "road": 0, "lessor": 0}
+        if target_kind == "site":
+            geometry_skipped["road"] = len(parsed.roads)
+            geometry_skipped["lessor"] = len(parsed.lessors)
+            parsed.roads, parsed.lessors = [], []
+        elif target_kind == "road":
+            geometry_skipped["site"] = len(parsed.sites)
+            geometry_skipped["lessor"] = len(parsed.lessors)
+            parsed.sites, parsed.lessors = [], []
+        elif target_kind == "lessor":
+            geometry_skipped["site"] = len(parsed.sites)
+            geometry_skipped["road"] = len(parsed.roads)
+            parsed.sites, parsed.roads = [], []
+
         parsed_count = len(parsed.sites) + len(parsed.roads) + len(parsed.lessors)
         file_report["parsed"] = {
             "site": len(parsed.sites),
@@ -288,6 +347,19 @@ async def import_file(file: UploadFile):
                 "country_name_en": cls.get("country_name_en"),
             })
 
+    # 几何护栏报告（F20）：跳过的非本类要素，供前端底部输出窗口展示
+    _guard_label = {"site": "非点要素", "road": "非线要素", "lessor": "非面要素"}
+    total_skipped = sum(geometry_skipped.values())
+    geometry_guard = {
+        "target_kind": target_kind,
+        "skipped": geometry_skipped,
+        "total_skipped": total_skipped,
+        "message": (
+            f"几何护栏：跳过 {total_skipped} 个{_guard_label[target_kind]}"
+            if target_kind and total_skipped else None
+        ),
+    }
+
     summary = {
         "total_parsed": parsed_count,
         "intra_file_duplicates": {
@@ -301,6 +373,7 @@ async def import_file(file: UploadFile):
             "road": len(road_pool),
             "lessor": len(lessor_pool),
         },
+        "geometry_guard": geometry_guard,
         "cleanings_count": len(cleanings),
     }
 
@@ -322,6 +395,11 @@ async def import_file(file: UploadFile):
             "road_pool": road_pool,
             "cleanings": cleanings,
             "baseline_region": baseline,
+            # F20 盖戳上下文：commit 时取用，强制写 site 三列
+            "target_kind": target_kind,
+            "stamp_operator": operator,
+            "stamp_category": category,
+            "stamp_type": type_,
         },
         state="cleaning",
     )
@@ -332,6 +410,7 @@ async def import_file(file: UploadFile):
         "summary": summary,
         "baseline_region": baseline,
         "cleanings": cleanings,
+        "geometry_guard": geometry_guard,
         "warn_all_outside_baseline": warn_all_outside,
     }
 
@@ -404,6 +483,9 @@ async def proceed_to_conflicts(sid: str, body: ProceedBody):
             "SELECT site_id, \"option\", project, site_status, lati, longi, "
             "extras, source_file FROM site"
         )
+        existing_roads = await conn.fetch(
+            "SELECT id, property, extras, source_file FROM road"
+        )
         existing_lessors = await conn.fetch(
             "SELECT fid, lessor_name, lessor_category, relationship, extras, "
             "source_file FROM lessor"
@@ -412,6 +494,12 @@ async def proceed_to_conflicts(sid: str, body: ProceedBody):
     existing_site_idx = {
         _site_key(r["site_id"], r["option"]): dict(r) for r in existing_sites
     }
+    # F20：Road 改按 Property 去重（空 Property 无身份，不入索引 → 永远当新行插入）
+    existing_road_idx: dict[str, dict[str, Any]] = {}
+    for r in existing_roads:
+        pk = _road_key(r["property"])
+        if pk:
+            existing_road_idx[pk] = dict(r)
     existing_lessor_idx = {
         _lessor_key(r["fid"]): dict(r) for r in existing_lessors
     }
@@ -419,7 +507,7 @@ async def proceed_to_conflicts(sid: str, body: ProceedBody):
     conflicts: list[dict[str, Any]] = []
     non_conflicts: dict[str, list[dict[str, Any]]] = {
         "site": [],
-        "road": road_pool,
+        "road": [],
         "lessor": [],
     }
 
@@ -433,6 +521,23 @@ async def proceed_to_conflicts(sid: str, body: ProceedBody):
                 "key": f"site:{row['site_id']}:{row['option']}",
                 "kind": "site",
                 "name": f"{row['site_id']}{' / ' + row['option'] if row['option'] else ''}",
+                "existing": existing,
+                "incoming": row,
+                "source_file": row["source_file"],
+            })
+
+    # F20：Road 纳入冲突检测（按 Property 查库判重；空 Property 永远当新行插入）
+    for row in road_pool:
+        pk = _road_key(row.get("property"))
+        existing = existing_road_idx.get(pk) if pk else None
+        if existing is None:
+            non_conflicts["road"].append(row)
+        else:
+            existing = _normalize_jsonb(existing)
+            conflicts.append({
+                "key": f"road:{row.get('property')}",
+                "kind": "road",
+                "name": row.get("property") or "(无 Property)",
                 "existing": existing,
                 "incoming": row,
                 "source_file": row["source_file"],
@@ -469,7 +574,7 @@ async def proceed_to_conflicts(sid: str, body: ProceedBody):
         },
         "road": {
             "non_conflict": len(non_conflicts["road"]),
-            "conflict": 0,
+            "conflict": sum(1 for c in conflicts if c["kind"] == "road"),
         },
         "lessor": {
             "non_conflict": len(non_conflicts["lessor"]),
@@ -537,6 +642,12 @@ async def commit_import(sid: str, body: CommitBody, request: Request):
         raise HTTPException(status_code=400, detail={"error": "invalid_state", "msg": err})
 
     decisions = {d.key: d.action for d in body.decisions}
+    # F20 盖戳值（图层强制写 site 三列；target_kind != site 时为 None → 写 NULL）
+    stamp = {
+        "operator": s.get("stamp_operator"),
+        "category": s.get("stamp_category"),
+        "type": s.get("stamp_type"),
+    }
     stats = {
         "site": {"inserted": 0, "updated": 0, "ignored": 0},
         "road": {"inserted": 0, "updated": 0, "ignored": 0},
@@ -550,7 +661,7 @@ async def commit_import(sid: str, body: CommitBody, request: Request):
             rp_id = await create_restore_point(conn, "pre_import")
 
             for r in s["non_conflicts"]["site"]:
-                await _insert_site(conn, r)
+                await _insert_site(conn, r, stamp)
                 stats["site"]["inserted"] += 1
             for r in s["non_conflicts"]["road"]:
                 await _insert_road(conn, r)
@@ -563,8 +674,11 @@ async def commit_import(sid: str, body: CommitBody, request: Request):
                 action = decisions.get(c["key"], "ignore")
                 if action == "overwrite":
                     if c["kind"] == "site":
-                        await _update_site(conn, c["existing"], c["incoming"])
+                        await _update_site(conn, c["existing"], c["incoming"], stamp)
                         stats["site"]["updated"] += 1
+                    elif c["kind"] == "road":
+                        await _update_road(conn, c["existing"], c["incoming"])
+                        stats["road"]["updated"] += 1
                     elif c["kind"] == "lessor":
                         await _update_lessor(conn, c["existing"], c["incoming"])
                         stats["lessor"]["updated"] += 1
@@ -682,35 +796,45 @@ async def conflicts_xlsx(sid: str, request: Request):
 # ---------- SQL helpers ----------
 
 
-async def _insert_site(conn, row: dict[str, Any]) -> None:
+async def _insert_site(conn, row: dict[str, Any], stamp: dict[str, Any] | None = None) -> None:
+    # F20 盖戳：operator/category/type 强制写 stamp 值，源文件这三个属性一律忽略（将错就错）。
+    stamp = stamp or {}
     await conn.execute(
         """
-        INSERT INTO site (site_id, "option", project, site_status, lati, longi,
+        INSERT INTO site (site_id, "option", project, site_status,
+                          operator, category, type, lati, longi,
                           extras, source_file, geom)
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8,
-                CASE WHEN $9::text IS NULL THEN NULL
-                     ELSE ST_GeomFromText($9, 4326) END)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11,
+                CASE WHEN $12::text IS NULL THEN NULL
+                     ELSE ST_GeomFromText($12, 4326) END)
         ON CONFLICT (site_id, "option") DO NOTHING
         """,
         row["site_id"], row["option"], row.get("project"), row.get("site_status"),
+        stamp.get("operator"), stamp.get("category"), stamp.get("type"),
         row.get("lati"), row.get("longi"),
         json.dumps(row.get("extras") or {}),
         row.get("source_file"), row.get("wkt"),
     )
 
 
-async def _update_site(conn, existing: dict[str, Any], row: dict[str, Any]) -> None:
+async def _update_site(conn, existing: dict[str, Any], row: dict[str, Any],
+                       stamp: dict[str, Any] | None = None) -> None:
+    # F20 盖戳：overwrite 同样强制写 stamp 三列（incoming 归属本图层导入）。
+    stamp = stamp or {}
     await conn.execute(
         """
         UPDATE site SET
             site_id = $1, "option" = $2,
-            project = $3, site_status = $4, lati = $5, longi = $6,
-            extras = $7::jsonb, source_file = $8, updated_at = now(),
-            geom = CASE WHEN $9::text IS NULL THEN NULL
-                        ELSE ST_GeomFromText($9, 4326) END
-        WHERE site_id = $10 AND "option" = $11
+            project = $3, site_status = $4,
+            operator = $5, category = $6, type = $7,
+            lati = $8, longi = $9,
+            extras = $10::jsonb, source_file = $11, updated_at = now(),
+            geom = CASE WHEN $12::text IS NULL THEN NULL
+                        ELSE ST_GeomFromText($12, 4326) END
+        WHERE site_id = $13 AND "option" = $14
         """,
         row["site_id"], row["option"], row.get("project"), row.get("site_status"),
+        stamp.get("operator"), stamp.get("category"), stamp.get("type"),
         row.get("lati"), row.get("longi"),
         json.dumps(row.get("extras") or {}),
         row.get("source_file"), row.get("wkt"),
@@ -730,6 +854,24 @@ async def _insert_road(conn, row: dict[str, Any]) -> None:
         json.dumps(row.get("extras") or {}),
         row.get("source_file"),
         row.get("wkt"),
+    )
+
+
+async def _update_road(conn, existing: dict[str, Any], row: dict[str, Any]) -> None:
+    # F20：Road 按 Property 去重，overwrite 按 id 精确更新（避免同 property 多行误伤）。
+    await conn.execute(
+        """
+        UPDATE road SET
+            property = $1, extras = $2::jsonb, source_file = $3,
+            geom = CASE WHEN $4::text IS NULL THEN NULL
+                        ELSE ST_GeomFromText($4, 4326) END
+        WHERE id = $5
+        """,
+        row.get("property"),
+        json.dumps(row.get("extras") or {}),
+        row.get("source_file"),
+        row.get("wkt"),
+        existing["id"],
     )
 
 
