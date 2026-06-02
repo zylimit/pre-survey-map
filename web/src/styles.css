@@ -435,18 +435,26 @@ button, input, select, textarea {
   box-shadow: var(--glow);
 }
 .tree .layer-label {
-  flex: 1;
+  flex: 0 1 auto;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* #27-2：计数靠右（label 不再 flex:1，靠 count 的 auto margin 占满中间） */
+.tree .layer-row .layer-count {
+  margin-left: auto;
+}
 
-/* 按钮组 */
+/* 按钮组：#27-2 紧跟文字，默认隐藏，hover 行才显示 */
 .tree .layer-actions {
-  display: flex;
+  display: none;
   gap: 3px;
   flex-shrink: 0;
+  margin-left: 6px;
+}
+.tree .layer-row:hover .layer-actions {
+  display: flex;
 }
 .tree .layer-btn {
   font-family: var(--font-ui);
@@ -516,7 +524,7 @@ button, input, select, textarea {
   top: 96px;
   left: 50%;
   transform: translateX(-50%);
-  width: 380px;
+  width: 560px;
   max-width: calc(100vw - 48px);
   max-height: calc(100vh - 160px);
   display: flex;
@@ -597,31 +605,55 @@ button, input, select, textarea {
   color: var(--text-muted, var(--text));
   opacity: 0.7;
 }
-/* 虚拟滚动容器：固定行高 translateY 绝对定位 */
+/* #27-1 多列表格：单一滚动容器（两轴），sticky 表头 + 固定行高虚拟化 */
 .lfl-scroll {
   flex: 1;
   min-height: 120px;
-  overflow-y: auto;
+  overflow: auto;          /* 纵向虚拟滚动 + 横向（site 9 列宽于面板）*/
   position: relative;
 }
+.lfl-table {
+  position: relative;      /* 宽度由内联 totalW 给 */
+}
+/* sticky 表头：纵滚时钉顶，横滚时随内容左右移动（normal flow 天然） */
+.lfl-thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  background: var(--bg-input);
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, var(--text));
+  text-transform: uppercase;
+}
+.lfl-th {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .lfl-virt {
-  position: relative;
-  width: 100%;
+  position: relative;      /* 高度/宽度由内联给（total*ROW_H / totalW）*/
 }
 .lfl-row {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
   box-sizing: border-box;
   font-size: 12px;
   color: var(--text);
   cursor: pointer;
   border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--border);
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 .lfl-row:hover {
@@ -630,25 +662,15 @@ button, input, select, textarea {
 .lfl-row.selected {
   background: var(--accent-bg);
   border-left-color: var(--accent);
-  color: var(--accent);
 }
-.lfl-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+.lfl-cell {
   flex-shrink: 0;
-}
-.lfl-name {
-  flex: 1;
+  box-sizing: border-box;
+  padding: 0 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.lfl-secondary {
-  flex-shrink: 0;
-  font-size: 10px;
   font-family: var(--font-mono);
-  opacity: 0.65;
 }
 
 /* ============ Resize Handles ============ */

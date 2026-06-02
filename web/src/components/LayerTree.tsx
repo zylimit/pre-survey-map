@@ -279,8 +279,8 @@ function LayerTree({
           {open ? "−" : "+"}
         </span>
         <CB ids={ids} />
+        {/* #27-2：两按钮紧跟文字后，默认隐藏，hover 行才显示（CSS）；计数靠右 */}
         <span className="folder-title layer-label">🔺 {label}</span>
-        <span className="folder-count">{cnt}</span>
         <div className="layer-actions">
           <button
             className="layer-btn"
@@ -303,6 +303,7 @@ function LayerTree({
             {tFn("lt.btn.view_features")}
           </button>
         </div>
+        <span className="folder-count layer-count">{cnt}</span>
       </div>
     );
   };

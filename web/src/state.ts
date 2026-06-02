@@ -183,62 +183,11 @@ export function useAppState() {
     }
   }, [log]);
 
-  const importFiles = useCallback(
-    async (files: File[]) => {
-      if (!files.length) return;
-
-      // Spec F1 #12：V1 单文件强制。拖入多个 → 只取首个 + warn
-      if (files.length > 1) {
-        const dropped = files.length - 1;
-        const droppedNames = files.slice(1).map(f => f.name).join(", ");
-        log("warn", t("log.multi_file", { n: dropped, names: droppedNames }));
-        files = [files[0]];
-      }
-
-      const f0 = files[0];
-      if (f0.size > MAX_FILE_BYTES) {
-        log("error", t("log.file_too_large", { name: f0.name, size: fmtMB(f0.size), limit: MAX_FILE_MB }));
-        return;
-      }
-
-      setPhase("uploading");
-      log("info", t("log.upload_start", { name: f0.name }));
-      try {
-        const resp = await uploadFile(f0);
-        const sm = resp.summary;
-        log("info", t("log.parse_ok", {
-          count: sm.total_parsed,
-          groups: sm.intra_file_duplicates.site_groups + sm.intra_file_duplicates.lessor_groups,
-          discarded: sm.intra_file_duplicates.site_discarded + sm.intra_file_duplicates.lessor_discarded,
-          cleanings: sm.cleanings_count,
-        }));
-
-        // 默认决策按后端给的 default_action
-        const decisions: Record<string, CleaningAction> = {};
-        for (const c of resp.cleanings) decisions[c.row_id] = c.default_action;
-
-        setImportSession({
-          sessionId: resp.session_id,
-          fileName: f0.name,
-          cleanings: resp.cleanings,
-          cleaningDecisions: decisions,
-          baselineRegion: resp.baseline_region,
-          warnAllOutsideBaseline: Boolean(resp.warn_all_outside_baseline),
-          phase1Summary: sm,
-          conflicts: [],
-          conflictDecisions: {},
-          step: "cleaning",
-        });
-        setPhase("cleaning");
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        log("error", t("log.upload_err", { msg }));
-        setPhase("idle");
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [log]
-  );
+  // #28：地图拖拽导入已禁用（堵开盖戳旁路）。原 importFiles 是拖拽唯一调用方，
+  // 随之移除；拖入文件改为只 warn 提示走图层 [导入图层]。
+  const notifyDropDisabled = useCallback(() => {
+    log("warn", t("log.drop_disabled"));
+  }, [log]);
 
   // F20 Phase 3：图层 [导入图层] 按钮触发（传盖戳入参+几何护栏）
   const importLayerFile = useCallback(
@@ -252,9 +201,8 @@ export function useAppState() {
       try {
         const resp = await uploadFile(file, stamp);
         const sm = resp.summary;
-        // 几何护栏跳过报告
-        const gg = ((resp as unknown) as Record<string, unknown>)["geometry_guard"] as { message?: string | null } | undefined;
-        if (gg?.message) log("info", gg.message);
+        // 几何护栏跳过报告（geometry_guard 现已在 Phase1Response 显式声明）
+        if (resp.geometry_guard?.message) log("info", resp.geometry_guard.message);
         log("info", t("log.parse_ok", {
           count: sm.total_parsed,
           groups: sm.intra_file_duplicates.site_groups + sm.intra_file_duplicates.lessor_groups,
@@ -567,7 +515,7 @@ export function useAppState() {
     log,
     clearLogs,
     refresh,
-    importFiles,
+    notifyDropDisabled,
     importLayerFile,
     goToConflicts,
     goBackToCleaning,

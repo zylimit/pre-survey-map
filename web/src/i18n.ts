@@ -47,7 +47,7 @@ const en = {
   // MapView basemap labels + drag
   "map.basemap.esri":      "Esri Sat",
   "map.basemap.google":    "Google Sat",
-  "map.drop.hint":         "Drop to import file",
+  "map.drop.hint":         "Drag-drop import disabled — use a layer's [Import] button",
 
   // LayerTree
   "lt.filter.placeholder": "🔍 Filter nodes...",
@@ -189,6 +189,7 @@ const en = {
   "log.baseline_err":      "Baseline state fetch failed: {msg}",
   "log.multi_file":        "Ignored {n} extra file(s) (V1 accepts one at a time): {names}",
   "log.file_too_large":    "File {name} ({size}MB) exceeds {limit}MB limit, rejected",
+  "log.drop_disabled":     "Drag-drop import is disabled — import from a layer's [Import] button instead (keeps the operator/category/type stamp)",
   "log.upload_start":      "Uploading: {name}",
   "log.parse_ok":          "Parsed {count} rows; dedup {groups} groups (−{discarded}); {cleanings} cleaning issues pending",
   "log.upload_err":        "Upload failed: {msg}",
@@ -255,6 +256,22 @@ const en = {
   "lfl.empty":                   "This layer has no features",
   "lfl.empty.filtered":          "No features match the filter",
   "lfl.close":                   "Close",
+  // #27-1 列表框列标题
+  "lfl.col.project":             "PROJECT",
+  "lfl.col.site_id":             "SITE ID",
+  "lfl.col.option":              "OPTION",
+  "lfl.col.site_status":         "SITE STATUS",
+  "lfl.col.lati":                "LATI",
+  "lfl.col.longi":               "LONGI",
+  "lfl.col.operator":            "OPERATOR",
+  "lfl.col.category":            "CATEGORY",
+  "lfl.col.type":                "TYPE",
+  "lfl.col.property":            "Property",
+  "lfl.col.start_lng":           "Start Lng",
+  "lfl.col.start_lat":           "Start Lat",
+  "lfl.col.lessor_name":         "Lessor Name",
+  "lfl.col.lessor_category":     "Lessor Category",
+  "lfl.col.relationship":        "Relationship",
 
   // F19 Audit (Spec V1.x #23)
   "audit.title":                       "Audit Log",
@@ -327,7 +344,7 @@ const zh: Record<keyof typeof en, string> = {
   // MapView basemap labels + drag
   "map.basemap.esri":      "Esri 卫星",
   "map.basemap.google":    "Google 卫星",
-  "map.drop.hint":         "释放鼠标导入文件",
+  "map.drop.hint":         "拖拽导入已禁用 · 请用图层的 [导入图层] 按钮",
 
   // LayerTree
   "lt.filter.placeholder": "🔍 过滤节点...",
@@ -458,6 +475,7 @@ const zh: Record<keyof typeof en, string> = {
   "log.baseline_err":      "获取基线状态失败：{msg}",
   "log.multi_file":        "已忽略其他 {n} 个文件（V1 一次只能传一个）：{names}",
   "log.file_too_large":    "文件 {name}（{size}MB）超过 {limit}MB 上限，已拒绝",
+  "log.drop_disabled":     "已禁用地图拖拽导入 · 请用对应图层的 [导入图层] 按钮导入（会带上 运营商/类别/站型 盖戳）",
   "log.upload_start":      "开始上传：{name}",
   "log.parse_ok":          "解析 {count} 条；文件内重复去重 {groups} 组（丢弃 {discarded}）；检测异常 {cleanings} 条，等待用户决策（尚未写库）",
   "log.upload_err":        "导入失败：{msg}",
@@ -524,6 +542,22 @@ const zh: Record<keyof typeof en, string> = {
   "lfl.empty":                   "本图层暂无要素",
   "lfl.empty.filtered":          "筛选无匹配要素",
   "lfl.close":                   "关闭",
+  // #27-1 列表框列标题
+  "lfl.col.project":             "项目",
+  "lfl.col.site_id":             "站点 ID",
+  "lfl.col.option":              "选项",
+  "lfl.col.site_status":         "状态",
+  "lfl.col.lati":                "纬度",
+  "lfl.col.longi":               "经度",
+  "lfl.col.operator":            "运营商",
+  "lfl.col.category":            "类别",
+  "lfl.col.type":                "站型",
+  "lfl.col.property":            "路产",
+  "lfl.col.start_lng":           "起点经度",
+  "lfl.col.start_lat":           "起点纬度",
+  "lfl.col.lessor_name":         "产权方名称",
+  "lfl.col.lessor_category":     "产权方类别",
+  "lfl.col.relationship":        "关系",
 
   "audit.title":                       "审计日志",
   "audit.password":                    "请输入审计密码",

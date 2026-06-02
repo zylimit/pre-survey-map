@@ -82,6 +82,7 @@ export interface Phase1Response {
   baseline_region: BaselineRegion | null;
   cleanings: CleaningRow[];
   warn_all_outside_baseline?: boolean;  // Spec #15 雷 29
+  geometry_guard?: { message?: string | null };  // F20 Phase 2 几何护栏跳过报告
 }
 
 export interface Phase2Response {

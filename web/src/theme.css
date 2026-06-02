@@ -21,20 +21,12 @@
   --warn: #f59e0b;                /* amber-500，两主题共用 */
   --success: #10b981;             /* 同 accent */
 
-  /* ---- 要素颜色（地图护栏：不参与主题切换，两主题恒定）---- */
-  --feat-site-positive: #10b981;
-  --feat-site-negative: #f59e0b;
-  --feat-site-unknown: #ef4444;
+  /* ---- 要素 UI chrome 色（地图护栏：不参与主题切换）----
+     ⚠️ 数据语义色（site_status / relationship / road）已于 F20 Phase5 迁到
+        utils.ts 的 STATUS_COLOR 硬编码，原 --feat-site-positive/negative/unknown、
+        --feat-lessor-*、--feat-road 共 10 个变量已无人引用，删除。
+        此处仅保留 2 个 UI chrome 色（图标白描边 / 选中高亮）+ 框选色。 */
   --feat-site-stroke: #ffffff;
-
-  --feat-lessor-friendly: #10b981;
-  --feat-lessor-friendly-fill: rgba(16, 185, 129, 0.30);
-  --feat-lessor-normal: #f59e0b;
-  --feat-lessor-normal-fill: rgba(245, 158, 11, 0.30);
-  --feat-lessor-unfriendly: #ef4444;
-  --feat-lessor-unfriendly-fill: rgba(239, 68, 68, 0.30);
-
-  --feat-road: #92400e;           /* amber-800，深棕色线，在浅底图上清晰 */
 
   --selection-stroke: var(--accent);
   --selection-fill: var(--accent-10);

@@ -44,7 +44,7 @@ interface Props {
   hiddenIds: Set<string>;
   fitAllEpoch: number;
   layoutEpoch: number;
-  onDropFiles: (files: File[]) => void;
+  onDropDisabled: () => void;   // #28：地图拖拽导入已禁用，拖入只提示不导入
   onSelectFeature: (f: Feature | null) => void;
   onSelectionDrawn: (polygon: GeoJSONPolygon) => void;
   onFitAll: () => void;
@@ -142,7 +142,7 @@ function lessorStyle(feature: FeatureLike, selected: boolean): Style {
 function MapView({
   sites, roads, lessors, selectedId, flyTarget,
   drawMode, selectionPolygon, hiddenIds, fitAllEpoch, layoutEpoch,
-  onDropFiles, onSelectFeature, onSelectionDrawn, onFitAll,
+  onDropDisabled, onSelectFeature, onSelectionDrawn, onFitAll,
 }: Props) {
   const tFn = useT();
   const basemapLabel: Record<BasemapKey, string> = {
@@ -436,8 +436,9 @@ function MapView({
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const files = Array.from(e.dataTransfer.files ?? []);
-    if (files.length) onDropFiles(files);  // 多文件 warn 在 state.importFiles 统一处理（Spec F1）
+    // #28：地图拖拽导入已禁用（堵开盖戳旁路）。拖入只提示，不导入。
+    const hasFiles = Array.from(e.dataTransfer.types ?? []).includes("Files");
+    if (hasFiles) onDropDisabled();
   };
 
   return (

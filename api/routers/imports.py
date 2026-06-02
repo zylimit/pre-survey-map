@@ -195,12 +195,9 @@ async def import_file(
             "lessor": len(parsed.lessors),
         }
 
-        # 同文件内重复折叠：dict 替换；统计被丢弃的
+        # 同文件内重复折叠：同 key 后者覆盖前者（组数/丢弃数在下方按 seen 计数算）
         for s in parsed.sites:
             k = _site_key(s.site_id, s.option)
-            if k in site_pool:
-                if site_dups_groups == 0 or k not in {sk for sk in site_pool}:
-                    pass  # 简化：统计在下面
             site_pool[k] = _site_dict(s, file.filename or "")
         # 用 parsed.sites 的总数减去 dict 后的数 = discarded
         site_dups_discarded = len(parsed.sites) - len(site_pool)

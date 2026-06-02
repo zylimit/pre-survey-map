@@ -137,7 +137,7 @@ export default function App() {
         hiddenIds={s.hiddenIds}
         fitAllEpoch={s.fitAllEpoch}
         layoutEpoch={s.layoutEpoch}
-        onDropFiles={s.importFiles}
+        onDropDisabled={s.notifyDropDisabled}
         onSelectFeature={s.selectFeature}
         onSelectionDrawn={s.onSelectionDrawn}
         onFitAll={s.fitAll}
