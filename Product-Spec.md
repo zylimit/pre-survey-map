@@ -382,6 +382,11 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
   - **[导入图层] 按钮改图标**：纯图标（**lucide `Download`**，箭头入托盘——导入 = 数据向下进入当前界面的通用惯例），去掉文字；i18n 全称移到 `title`（hover tooltip）+ `aria-label`（无障碍）。
   - **[查看图层要素] 按钮改图标**：纯图标（**lucide `Eye`**，view/preview 通用惯例），去掉文字；title/aria-label 同上。
   - 图标方案：引入 `lucide-react`（描线单色 SVG，stroke=currentColor 自动随主题/hover 由灰变 accent），与 #29 灰色图标族风格统一；两按钮仍保持「hover 整行才显示」（#27-2）不变。
+- **选中态独立色（V1.x #34）**：「选中」高亮统一改用**独立蓝色 `--selected: #3b82f6`**，不再复用全局 `--accent`（emerald 绿 `#10b981`）——绿选中与 positive 绿要素撞色。覆盖**同一 selectedId 的三个视图**：
+  - 🌳 树：`.node.selected` / `.layer-row.node-highlighted` / `.style-row.node-highlighted`（左边条 + 文字 + 淡蓝垫底 + 蓝辉光）
+  - 🗺️ 地图：选中要素描边 `--feat-selected-stroke` 改指 `--selected`（MapView 经 `cssVar()` 读 CSS 变量，自动跟，不改 MapView.tsx）
+  - 📋 列表框：`.lfl-row.selected`（左边条 + 淡蓝垫底）
+  - 新增 `--selected`（主题无关，放 :root）+ `--selected-bg`（淡蓝垫底，暗/亮各一）+ `--selected-glow`（蓝辉光，亮色 none）；**全局 `--accent` 主题色及 hover 态的 `--accent-bg` 一律不动**——只换"选中态"，不动悬停/按钮/主题。选中蓝避开所有状态色（绿 positive / 红 negative / 黄 undermine / 棕 road）。
 
 #### 数据模型变更
 
@@ -426,6 +431,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
   - **可缩放**：右下角缩放手柄（复用 `ResizeHandle`），最小 480×320、最大视口 − 32px 边距
   - **尺寸持久化**：宽高存 localStorage（key 如 `presurvey.lfl.w/h`，参照 #11 面板套路）下次恢复；**位置不持久化**（每次首次靠近触发节点，会话内拖动有效）
   - **层级**：z-index 600，低于导入向导 / 审计 Modal（1000）——被 Modal 盖住是对的（Modal 优先）
+  - **眼睛按钮 toggle 开关（V1.x #34）**：图层 [查看图层要素]（👁 Eye）按钮是**开关**——点 👁 弹列表框；**再点同一图层的 👁 → 关闭**列表框。判定"同一图层" = `target`（kind/operator/category/type）全等：相等则关（set viewLayer = null），不等则切换到新层（保持 #30 同窗口换内容）。提升易用性（同一按钮开/关，不必去点窗口的 ✖）。实现：`onViewLayer` 接 `toggleLayerFeatures(target, anchor)`，按当前 `viewLayer.target` 与点击 `target` 是否相等决定关/开切。✖ 关闭按钮（`closeLayerFeatures`）保留不变。
   - **表格随窗口宽度自适应（V1.x #31）**：表格列宽**跟随窗口宽度伸缩填满**，不再固定列宽、右侧留白：
     - 各列按其基准宽度（Site 9 列 / Road / Lessor 各自列集的 `col.w`）**等比拉伸**占满内容区（窗口越宽列越宽，基准宽大的列分得多）
     - 表格有**最小宽度 = 该列集各列基准宽之和**（Site≈802 / Road=400 / Lessor=420），**列不压缩到基准以下**

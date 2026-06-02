@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-06-02 (#34)
+
+### F20 优化 · 选中态独立蓝色（避绿撞色）+ 眼睛按钮 toggle 开关
+
+**类型**：中度变更（两个易用性优化，来自腾讯云手验）
+
+**触发**：用户提两条优化：① 选中节点高亮是绿色（`--accent` emerald），和 positive 绿要素撞色，要换独立显眼色；② 图层 [查看图层要素] 眼睛按钮，点同一节点再点应能关闭列表框（toggle），提升易用性。
+
+**变更**：
+
+1. **选中态独立蓝色（`--selected: #3b82f6`）**：根因——`--accent: #10b981`(emerald 绿) 同时被"选中态"和全局主题（按钮 hover/复选框/focus）用，绿选中撞 positive 绿。修法是**引入独立选中色变量、只换选中态**，不动全局 accent：
+   - theme.css 新增 `--selected`(:root 主题无关) + `--selected-bg`(淡蓝垫底，暗 rgba/亮 blue-50) + `--selected-glow`(蓝辉光/亮 none)；`--feat-selected-stroke` 由 `var(--accent)` 改指 `var(--selected)`。
+   - styles.css 选中态四处换 selected 系：`.node.selected` / `.layer-row.node-highlighted` / `.style-row.node-highlighted` / `.lfl-row.selected`（border-left/color/bg/glow）。
+   - **三处统一**（同一 selectedId）：树高亮 / 地图选中描边（MapView 经 `cssVar("--feat-selected-stroke")` 自动跟，不改 .tsx）/ 列表框选中行。
+   - hover 态的 `--accent-bg`、全局 `--accent` 一律不动。选中蓝避开全部状态色（绿/红/黄/棕）。
+2. **眼睛按钮 toggle**：state.ts 新增 `sameTarget(a,b)`(比 kind/operator/category/type) + `toggleLayerFeatures(target, anchor)`（当前 viewLayer.target 与点击 target 相等→set null 关，否则 set 新→开/切）；App.tsx `onViewLayer` 由 `openLayerFeatures` 改接 `toggleLayerFeatures`。✖ 关闭按钮 / closeLayerFeatures 保留。不破坏 #30 切层行为（异 target 仍同窗口换内容）。
+
+**决策（AskUserQuestion 拍板）**：选中色 = 蓝 #3b82f6；覆盖范围 = 树+地图+列表框统一。
+
+**Spec 改动**：「完整树结构」加「选中态独立色（V1.x #34）」条；「浮动窗口交互」加「眼睛按钮 toggle 开关（V1.x #34）」条。
+
+---
+
 ## 2026-06-02 (#33)
 
 ### F20 修正 · 样式节点固定骨架 + 撤销 #32 空层 leaf + 状态色红黄对调
