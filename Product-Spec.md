@@ -120,6 +120,15 @@
 - **无顶部树搜索框**（树是固定骨架，要素检索改由列表框「筛选」+ F16 右上「搜索」承担）
 - **三种节点**：📁 文件夹（无按钮，逻辑分组；**V1.x #35：运营商/类别节点显示子树要素总数**）/ 🔺 图层（[导入图层] [查看图层要素] 两按钮）/ 🎨 样式（按状态分色图例，无按钮）
 - **类别英文文案（V1.x #35）**：存量类别英文 `Legacy` → `Existing`（中文"存量"不变）
+- **树节点对齐重构（V1.x #36）**：统一三种节点行的图标尺寸与缩进，修"叶子节点缩进跑到父节点前面"+ 图标忽大忽小不对齐：
+  - **根因**：🎨 样式行缺展开符占位（FolderRow/LayerRow 首列是 16px 展开符，StyleRow 直接是 checkbox）→ 样式行整体左移、叶子 checkbox 缩回对准父图标；且 📁 emoji 彩色尺寸不可控，展开符/checkbox/站型字符/圆点五种图标尺寸基线各异。
+  - **统一行结构**（各列 `flex-shrink:0` 固定宽）：`[缩进 paddingLeft = BASE + depth×INDENT] [展开符 16px] [checkbox 统一尺寸] [类型图标 16px 居中] [label flex:1] [count 靠右]`。
+  - **展开符 → lucide**：可展开节点用 `ChevronDown`(展开)/`ChevronRight`(折叠)；**叶子（🎨 样式行）补 16px 空占位**保持列对齐。
+  - **文件夹图标 → lucide**：📁 emoji 改 `Folder`(折叠)/`FolderOpen`(展开)，灰色描线 16px；从 label 文字抽到独立类型图标列。
+  - **类型图标列统一 16px 居中**：FolderRow = lucide Folder、LayerRow = 站型字符（▲●■… #29）、StyleRow = 圆点（style-dot）。
+  - **checkbox 统一尺寸**（固定 width/height + flex-shrink:0），三行一致。
+  - **缩进基准统一**：三行统一 margin-left / box-sizing / paddingLeft 公式，层级阶梯清晰（子比父右移一级，不再跑前面）。
+  - 全树图标统一灰色描线，与 #29 站型字符 / #32 lucide 按钮图标族风格一致；FolderRow 的分组标题文字样式（uppercase/muted）可保留作层级区分，但图标列与缩进必须对齐。
 - **层级**：Site → 运营商（Globe/Smart/Dito）→ 类别（存量/规划/勘测）→ 站型图层 → 状态样式；Road / Lessor 为与 Site 平级的图层根
 - 各节点带复选框：📁 文件夹三态控后代、🔺 图层控全层、🎨 样式控该状态子集显隐
 - **单要素不进树**：点 🔺 图层的 [查看图层要素] → 浮动列表框（虚拟化）展示该层要素；点列表行 → 地图飞到该要素 + 属性面板（复用 F12）

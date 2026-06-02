@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-06-02 (#36)
+
+### F20 收尾 · 树节点对齐重构（修叶子跑前面 + 图标统一 lucide 对齐）
+
+**类型**：中度偏重变更（树行布局重构 + 图标族统一，来自腾讯云手验）
+
+**触发**：用户报树缩进乱——① 叶子节点（🎨 样式）缩进跑到父节点前面、checkbox 对准父图标；② 要求每个节点图标（含 checkbox、文件夹）一样大、对齐、缩进规整。
+
+**根因**：
+- 🎨 样式行（StyleRow）JSX **缺展开符占位**——FolderRow/LayerRow 首列是 16px 展开符 `±`，StyleRow 直接 checkbox → 样式行整体左移约 `16+gap`，每级仅缩进 14px 补不回 → 叶子缩回对准父图标。
+- 五种图标尺寸/基线各异：展开符字符 / 原生 checkbox / 📁 彩色 emoji（尺寸不可控）/ 站型字符 1.1em / 圆点 10px → 列对不齐。
+
+**变更（树行布局重构）**：
+- **统一行结构**（各列 flex-shrink:0 固定宽）：`[缩进 paddingLeft=BASE+depth×INDENT] [展开符 16px] [checkbox 统一尺寸] [类型图标 16px居中] [label flex:1] [count]`。
+- **展开符 → lucide** ChevronDown/ChevronRight；**StyleRow 补 16px 空占位**对齐。
+- **文件夹 → lucide** Folder/FolderOpen（从 label 抽出 📁 emoji 到独立图标列），灰描线 16px。
+- **类型图标列统一 16px 居中**：Folder=lucide / Layer=站型字符 / Style=圆点。
+- **checkbox 统一尺寸**（固定 w/h + flex-shrink:0）三行一致；**缩进基准统一**（margin-left/box-sizing/paddingLeft 公式）。
+- 全树图标灰描线，与 #29/#32 图标族统一。lucide-react 已装（#32），不加依赖。
+
+**决策（AskUserQuestion 拍板）**：图标方案 = lucide 统一图标族（emoji 是"不一样大"主因）。
+
+**Spec 改动**：「完整树结构」加「树节点对齐重构（V1.x #36）」条。
+
+---
+
 ## 2026-06-02 (#35)
 
 ### F20 收尾 · xlsx 新模板兼容 + 文件夹节点显要素总数 + Legacy→Existing
