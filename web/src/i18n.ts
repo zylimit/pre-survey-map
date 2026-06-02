@@ -226,8 +226,8 @@ const en = {
 
   // F20 Phase 3 LayerTree (V1.x #24)
   "lt.tree.site":                "📁 Site",
-  "lt.tree.road":                "🔺 Road",
-  "lt.tree.lessor":              "🔺 Lessor",
+  "lt.tree.road":                "Road",
+  "lt.tree.lessor":              "Lessor",
   "lt.tree.op.Globe":            "Globe",
   "lt.tree.op.Smart":            "Smart",
   "lt.tree.op.Dito":             "Dito",
@@ -512,8 +512,8 @@ const zh: Record<keyof typeof en, string> = {
 
   // F20 Phase 3 LayerTree
   "lt.tree.site":                "📁 站点",
-  "lt.tree.road":                "🔺 道路",
-  "lt.tree.lessor":              "🔺 产权方",
+  "lt.tree.road":                "道路",
+  "lt.tree.lessor":              "产权方",
   "lt.tree.op.Globe":            "Globe",
   "lt.tree.op.Smart":            "Smart",
   "lt.tree.op.Dito":             "Dito",

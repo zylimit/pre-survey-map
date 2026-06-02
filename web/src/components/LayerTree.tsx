@@ -41,6 +41,19 @@ const SITE_STATUSES = ["positive", "negative", "undermine"] as const;
 
 // 🎨 样式圆点色统一引用 utils.STATUS_COLOR（单一真源，与 MapView/LayerFeatureList 同源）
 
+// #29：🔺 图层节点图标按站型形状渲染（统一灰色，状态分色仍在下面 🎨 样式节点）。
+// 实心字符 ▲●■◆ = 存量/勘测实心，空心字符 △○◇ = 规划空心——天然对应地图渲染口径。
+const LAYER_ICON: Record<string, string> = {
+  Macro: "▲", Micro: "●", IBS: "■",
+  "Macro NP": "△", "Micro NP": "○",
+  "Macro-ongoing": "◆", "Micro-ongoing": "◇",
+};
+function iconFor(stamp: LayerStamp): string {
+  if (stamp.target_kind === "road") return "▬";    // 线形
+  if (stamp.target_kind === "lessor") return "◼";  // 面形
+  return LAYER_ICON[stamp.type ?? ""] ?? "▲";       // 站型缺失/未知 → 退化实心三角
+}
+
 // ─── 辅助 ────────────────────────────────────────────────────────────────────
 
 type TriState = "all" | "none" | "partial";
@@ -279,8 +292,11 @@ function LayerTree({
           {open ? "−" : "+"}
         </span>
         <CB ids={ids} />
-        {/* #27-2：两按钮紧跟文字后，默认隐藏，hover 行才显示（CSS）；计数靠右 */}
-        <span className="folder-title layer-label">🔺 {label}</span>
+        {/* #27-2：两按钮紧跟文字后，默认隐藏，hover 行才显示（CSS）；计数靠右
+            #29：图标按站型形状（灰色），替代统一 🔺 */}
+        <span className="folder-title layer-label">
+          <span className="layer-icon">{iconFor(stamp)}</span> {label}
+        </span>
         <div className="layer-actions">
           <button
             className="layer-btn"

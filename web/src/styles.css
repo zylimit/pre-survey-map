@@ -441,6 +441,15 @@ button, input, select, textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* #29：图层节点站型图标——统一灰色，不按状态分色（状态色在 🎨 样式节点）。
+   inline-block + 等宽对齐，避免不同字符宽度让文字基线抖动 */
+.tree .layer-icon {
+  display: inline-block;
+  width: 1.1em;
+  text-align: center;
+  color: #9e9e9e;
+  font-style: normal;
+}
 /* #27-2：计数靠右（label 不再 flex:1，靠 count 的 auto margin 占满中间） */
 .tree .layer-row .layer-count {
   margin-left: auto;
