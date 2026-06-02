@@ -37,19 +37,37 @@ def parse_xlsx(data: bytes) -> ParseResult:
     wb = load_workbook(io.BytesIO(data), data_only=True, read_only=True)
     ws = wb.worksheets[0]
 
+    # #35：自动探测表头行（前 5 行内找含 SITE ID 的行）。
+    # 旧模板第 1 行是分类横幅、表头落第 2 行；新模板无横幅、表头落第 1 行——都能认。
+    # break 后生成器 rows 剩余即表头之后的数据行，下方数据循环原样不动。
     rows = ws.iter_rows(values_only=True)
-    try:
-        next(rows)  # 第 1 行：分类横幅
-        header_row = next(rows)  # 第 2 行：真正的字段名
-    except StopIteration:
-        raise ParseError("Excel 至少要有 2 行表头 + 1 行数据")
+    SCAN = 5
+    header_row = None
+    scanned = []
+    for _ in range(SCAN):
+        try:
+            r = next(rows)
+        except StopIteration:
+            break
+        scanned.append(r)
+        norm = [(_norm(h) if h is not None else "") for h in r]
+        if "SITE ID" in norm:
+            header_row = r
+            break
+    if header_row is None:
+        # 列名变体友好报错（如 Site_ID）：从扫描过的行里找候选
+        candidates = []
+        for r in scanned:
+            for h in r:
+                s = _norm(h)
+                if s and "site" in s.lower() and "id" in s.lower():
+                    candidates.append(s)
+        raise ParseError(
+            f"找不到表头行：前 {SCAN} 行内未发现 'SITE ID' 列"
+            + (f"（检测到候选列：{', '.join(candidates)}）" if candidates else "")
+        )
 
     headers = [(_norm(h) if h is not None else "") for h in header_row]
-    if "SITE ID" not in headers:
-        candidates = [h for h in headers if h and "site" in h.lower() and "id" in h.lower()]
-        raise ParseError(
-            f"必填字段 SITE ID 找不到（检测到候选列：{', '.join(candidates) or '无'}）"
-        )
 
     sid_idx = headers.index("SITE ID")
     opt_idx = headers.index("OPTION") if "OPTION" in headers else None
@@ -74,7 +92,7 @@ def parse_xlsx(data: bytes) -> ParseResult:
         # F20 (V1.x #24/#25)：与 kml._SITE_CORE 对齐，排除盖戳三列源别名防重复显示
         _CORE = {
             "SITE ID", "OPTION", "PROJECT", "SITE STATUS", "LATI", "LONGI",
-            "OPERATOR", "CATEGORY", "TYPE", "SITE TYPE",
+            "OPERATOR", "CATEGORY", "SITE CATEGORY", "TYPE", "SITE TYPE",
         }
         extras: dict[str, str] = {}
         for h, v in zip(headers, row):

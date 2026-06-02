@@ -261,6 +261,8 @@ function LayerTree({
         </span>
         <CB ids={ids} />
         <span className="folder-title">{label}</span>
+        {/* #35：运营商/类别节点显子树要素总数（Site 根不显）；folder-title flex:1 推 count 靠右 */}
+        {nodeKey !== "site" && <span className="folder-count">{ids.length}</span>}
       </h3>
     );
   };

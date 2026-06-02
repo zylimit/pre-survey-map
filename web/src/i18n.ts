@@ -231,7 +231,7 @@ const en = {
   "lt.tree.op.Globe":            "Globe",
   "lt.tree.op.Smart":            "Smart",
   "lt.tree.op.Dito":             "Dito",
-  "lt.tree.cat.legacy":          "Legacy",
+  "lt.tree.cat.legacy":          "Existing",
   "lt.tree.cat.planned":         "Planned",
   "lt.tree.cat.survey":          "Survey",
   "lt.tree.status.positive":     "Positive",
