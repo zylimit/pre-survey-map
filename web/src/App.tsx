@@ -94,7 +94,6 @@ export default function App() {
   return (
     <div className={`app ${s.selected ? "" : "no-attr"}`} style={gridStyle}>
       <Toolbar
-        onImport={s.importFiles}
         busy={s.phase === "loading" || s.phase === "uploading" || s.phase === "committing" || s.phase === "exporting"}
         drawMode={s.drawMode}
         hasSelection={s.selectionPolygon !== null}

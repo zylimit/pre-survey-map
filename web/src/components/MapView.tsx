@@ -6,8 +6,8 @@ import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
 import XYZ from "ol/source/XYZ";
 import GeoJSONFormat from "ol/format/GeoJSON";
-import { Style, Fill, Stroke, Circle as CircleStyle } from "ol/style";
-import { fromLonLat } from "ol/proj";
+import { Style, Fill, Stroke, Circle as CircleStyle, RegularShape } from "ol/style";
+import { fromLonLat, toLonLat } from "ol/proj";
 import { defaults as defaultControls, ScaleLine, MousePosition } from "ol/control";
 import { createStringXY } from "ol/coordinate";
 import { createEmpty, extend, isEmpty } from "ol/extent";
@@ -15,11 +15,16 @@ import Draw, { createBox } from "ol/interaction/Draw";
 import type { DrawEvent } from "ol/interaction/Draw";
 import type { FeatureLike } from "ol/Feature";
 import OlFeature from "ol/Feature";
-import { Polygon } from "ol/geom";
+import { Polygon, Point, Circle as CircleGeom } from "ol/geom";
 
 import { Feature, FeatureCollection, GeoJSONPolygon } from "../api";
 import { DrawMode } from "../state";
 import { useT } from "../i18n";
+import {
+  siteStatusColor, siteShape, lessorLineColor,
+  metersToProjRadius, withAlpha, STATUS_COLOR, RADIATION_RADIUS_M,
+  type ShapeKind,
+} from "../utils";
 
 type BasemapKey = "positron" | "osm" | "esri" | "google";
 
@@ -45,85 +50,92 @@ interface Props {
   onFitAll: () => void;
 }
 
-// 所有要素色从 theme.css 读出来缓存。组件 mount 时 initColors() 填充。
-// 这里不放任何硬编码兜底 —— theme.css 是唯一允许定色的地方。
+// 仅「UI chrome 色」从 theme.css 读（选中高亮 / 选区框）。
+// ⚠️ 要素「数据语义色」（site_status / relationship / road）不在这里——它们硬编码在
+//    utils.ts 的 STATUS_COLOR，不参与主题切换（#19 地图区护栏）。
 const COLOR = {
-  sitePositive: "",
-  siteNegative: "",
-  siteUnknown: "",
-  siteStroke: "",
-  lessorFriendly: "",
-  lessorFriendlyFill: "",
-  lessorNormal: "",
-  lessorNormalFill: "",
-  lessorUnfriendly: "",
-  lessorUnfriendlyFill: "",
-  road: "",
-  selected: "",
-  selectionStroke: "",
-  selectionFill: "",
+  siteStroke: "",       // site 实心图标的描边（白边，UI chrome）
+  selected: "",         // 选中高亮描边
+  selectionStroke: "",  // 框选边
+  selectionFill: "",    // 框选填充
 };
 
 function initColors() {
-  COLOR.sitePositive = cssVar("--feat-site-positive");
-  COLOR.siteNegative = cssVar("--feat-site-negative");
-  COLOR.siteUnknown = cssVar("--feat-site-unknown");
   COLOR.siteStroke = cssVar("--feat-site-stroke");
-  COLOR.lessorFriendly = cssVar("--feat-lessor-friendly");
-  COLOR.lessorFriendlyFill = cssVar("--feat-lessor-friendly-fill");
-  COLOR.lessorNormal = cssVar("--feat-lessor-normal");
-  COLOR.lessorNormalFill = cssVar("--feat-lessor-normal-fill");
-  COLOR.lessorUnfriendly = cssVar("--feat-lessor-unfriendly");
-  COLOR.lessorUnfriendlyFill = cssVar("--feat-lessor-unfriendly-fill");
-  COLOR.road = cssVar("--feat-road");
   COLOR.selected = cssVar("--feat-selected-stroke");
   COLOR.selectionStroke = cssVar("--selection-stroke");
   COLOR.selectionFill = cssVar("--selection-fill");
 }
 
-function sitePinColor(status: string | null | undefined): string {
-  const s = (status ?? "").toLowerCase();
-  if (s === "positive") return COLOR.sitePositive;
-  if (s === "negative") return COLOR.siteNegative;
-  return COLOR.siteUnknown;
-}
+// RegularShape 形状参数：三角/正方/菱形（圆走 CircleStyle）。
+// radiusFactor 补偿不同形状的视觉面积差，让各图标看着差不多大。
+const SHAPE_CFG: Record<Exclude<ShapeKind, "circle">, { points: number; angle: number; radiusFactor: number }> = {
+  triangle: { points: 3, angle: 0,            radiusFactor: 1.3 },   // 顶点朝上三角
+  square:   { points: 4, angle: Math.PI / 4,  radiusFactor: 1.1 },   // 正方（旋转 45° 平边朝上）
+  diamond:  { points: 4, angle: 0,            radiusFactor: 1.25 },  // 菱形（顶点朝上）
+};
 
-function lessorColors(rel: string | null | undefined): { line: string; fill: string } {
-  const r = (rel ?? "").toLowerCase();
-  if (r === "friendly") return { line: COLOR.lessorFriendly, fill: COLOR.lessorFriendlyFill };
-  if (r === "normal") return { line: COLOR.lessorNormal, fill: COLOR.lessorNormalFill };
-  return { line: COLOR.lessorUnfriendly, fill: COLOR.lessorUnfriendlyFill };
-}
-
-function siteStyle(feature: FeatureLike, selected: boolean): Style {
+// F20 Phase 5：site 要素 = 形状(type) × 颜色(site_status)
+// 实心=存量 / 空心=规划 / 菱形=勘测；颜色按状态；type 缺失退化为默认圆点。
+// 规划类（Macro NP / Micro NP）额外叠一个 50m 透明辐射圈（仅渲染不入库）。
+function siteStyle(feature: FeatureLike, selected: boolean): Style[] {
   const status = feature.get("site_status") as string | undefined;
-  return new Style({
-    image: new CircleStyle({
-      radius: selected ? 9 : 6,
-      fill: new Fill({ color: sitePinColor(status) }),
-      stroke: new Stroke({
-        color: selected ? COLOR.selected : COLOR.siteStroke,
-        width: selected ? 3 : 1.5,
-      }),
-    }),
-  });
+  const type = feature.get("type") as string | undefined;
+  const color = siteStatusColor(status);
+  const spec = siteShape(type);
+
+  const radius = selected ? 9 : 6;
+  // 实心：fill 有色 + 描边白/选中色；空心：无 fill，描边 = 状态色（选中时盖为高亮色）
+  const fill = spec.filled ? new Fill({ color }) : undefined;
+  const strokeColor = selected ? COLOR.selected : (spec.filled ? COLOR.siteStroke : color);
+  const strokeWidth = selected ? 3 : (spec.filled ? 1.5 : 2);
+  const stroke = new Stroke({ color: strokeColor, width: strokeWidth });
+
+  const image = spec.shape === "circle"
+    ? new CircleStyle({ radius, fill, stroke })
+    : new RegularShape({
+        points: SHAPE_CFG[spec.shape].points,
+        radius: radius * SHAPE_CFG[spec.shape].radiusFactor,
+        angle: SHAPE_CFG[spec.shape].angle,
+        fill,
+        stroke,
+      });
+
+  const styles: Style[] = [new Style({ image })];
+
+  // 50m 辐射圈：用 geometry 函数把点替换成真实 50m 半径的 Circle（地图单位，缩放自适应）
+  if (spec.ring) {
+    styles.push(new Style({
+      geometry: (feat) => {
+        const g = (feat as OlFeature).getGeometry();
+        if (!g || g.getType() !== "Point") return undefined;
+        const coord = (g as Point).getCoordinates();
+        const lat = toLonLat(coord)[1];
+        return new CircleGeom(coord, metersToProjRadius(RADIATION_RADIUS_M, lat));
+      },
+      stroke: new Stroke({ color, width: 1, lineDash: [4, 3] }),
+      fill: new Fill({ color: withAlpha(color, 0.08) }),
+    }));
+  }
+  return styles;
 }
 
 function roadStyle(_f: FeatureLike, selected: boolean): Style {
   return new Style({
     stroke: new Stroke({
-      color: selected ? COLOR.selected : COLOR.road,
+      color: selected ? COLOR.selected : STATUS_COLOR.road,
       width: selected ? 5 : 3,
     }),
   });
 }
 
+// Lessor 面：去 Friendly，只剩 Unfriendly 红 / Normal 黄（线色来自单一真源，面 = 线色 30% 透明）
 function lessorStyle(feature: FeatureLike, selected: boolean): Style {
   const rel = feature.get("relationship") as string | undefined;
-  const c = lessorColors(rel);
+  const line = lessorLineColor(rel);
   return new Style({
-    stroke: new Stroke({ color: selected ? COLOR.selected : c.line, width: selected ? 4 : 2 }),
-    fill: new Fill({ color: c.fill }),
+    stroke: new Stroke({ color: selected ? COLOR.selected : line, width: selected ? 4 : 2 }),
+    fill: new Fill({ color: withAlpha(line, 0.30) }),
   });
 }
 

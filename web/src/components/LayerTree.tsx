@@ -22,6 +22,7 @@ import { FeatureCollection, LayerStamp } from "../api";
 import { PANEL_LIMITS } from "../state";
 import type { Phase, ViewLayerTarget } from "../state";
 import { useT } from "../i18n";
+import { STATUS_COLOR } from "../utils";
 import ResizeHandle from "./ResizeHandle";
 
 // ─── 骨架定义 ────────────────────────────────────────────────────────────────
@@ -38,16 +39,7 @@ const CATEGORIES = ["存量", "规划", "勘测"] as const;
 
 const SITE_STATUSES = ["positive", "negative", "undermine"] as const;
 
-// 颜色映射（仅用于 🎨 样式圆点）
-const STATUS_COLOR: Record<string, string> = {
-  positive:   "#4caf50",  // 绿
-  negative:   "#ffb300",  // 黄
-  undermine:  "#f44336",  // 红
-  "":         "#9e9e9e",  // 灰（null/unknown）
-  Unfriendly: "#f44336",
-  Normal:     "#ffb300",
-  road:       "#795548",  // 棕
-};
+// 🎨 样式圆点色统一引用 utils.STATUS_COLOR（单一真源，与 MapView/LayerFeatureList 同源）
 
 // ─── 辅助 ────────────────────────────────────────────────────────────────────
 

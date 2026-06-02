@@ -18,10 +18,7 @@ type Vars = Record<string, string | number>;
 // ---------- 字典 ----------
 
 const en = {
-  // Toolbar
-  "tb.import.tip":         "Import KML / KMZ / Excel",
-  "tb.import.busy":        "⏳ Processing...",
-  "tb.import.label":       "📁 Import",
+  // Toolbar (F20 Phase 5：全局 [📁 导入] 按钮已移除，tb.import.* 文案随之删除)
   "tb.export.label":       "💾 Export KMZ ▾",
   "tb.export.all":         "Export All",
   "tb.export.selection":   "Export Selection",
@@ -302,9 +299,6 @@ const en = {
 } as const;
 
 const zh: Record<keyof typeof en, string> = {
-  "tb.import.tip":         "导入 KML / KMZ / Excel",
-  "tb.import.busy":        "⏳ 处理中...",
-  "tb.import.label":       "📁 导入",
   "tb.export.label":       "💾 导出 KMZ ▾",
   "tb.export.all":         "导出整库",
   "tb.export.selection":   "导出选区",

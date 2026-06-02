@@ -115,7 +115,7 @@
 
 ---
 
-## Phase 5: 渲染 — 形状×颜色 + 50m 辐射圈 + 去 Friendly + 移除全局导入按钮
+## Phase 5: 渲染 — 形状×颜色 + 50m 辐射圈 + 去 Friendly + 移除全局导入按钮 ✅
 
 **交付内容**：
 - **要素样式 = 形状(type) × 颜色(site_status)**：用 OpenLayers `RegularShape` 按站型画形状（Macro ▲ / Micro ● / IBS ■ / Macro NP △ / Micro NP ○ / Macro-ongoing ◆ / Micro-ongoing ◇；points/radius/angle 控形状，fill/stroke 控实心/空心），颜色按状态（positive 绿 / negative 黄 / undermine 红 / 空值灰）

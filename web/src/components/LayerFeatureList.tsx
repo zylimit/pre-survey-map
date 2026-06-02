@@ -14,22 +14,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Feature, FeatureCollection } from "../api";
 import type { ViewLayerTarget } from "../state";
 import { useT } from "../i18n";
-import { nameOf } from "../utils";
+import { nameOf, STATUS_COLOR } from "../utils";
 
 // ─── 虚拟化常量（沿用 #16 范式）────────────────────────────────────────────────
 const ROW_H = 30;
 const OVERSCAN = 8;
 
-// 状态/类型 → 圆点色（与 LayerTree 的 STATUS_COLOR 同口径）
-const DOT_COLOR: Record<string, string> = {
-  positive:   "#4caf50",
-  negative:   "#ffb300",
-  undermine:  "#f44336",
-  "":         "#9e9e9e",
-  Unfriendly: "#f44336",
-  Normal:     "#ffb300",
-  road:       "#795548",
-};
+// 圆点色统一引用 utils.STATUS_COLOR（单一真源，与 MapView/LayerTree 同源）
 
 interface Props {
   target: ViewLayerTarget;
@@ -137,7 +128,7 @@ export default function LayerFeatureList({
       dotKey = rel;
       secondary = rel ? tFn(`lt.tree.status.${rel.toLowerCase()}` as Parameters<typeof tFn>[0]) : "";
     }
-    const color = DOT_COLOR[dotKey] ?? DOT_COLOR[""];
+    const color = STATUS_COLOR[dotKey] ?? STATUS_COLOR[""];
     return (
       <div
         key={id}

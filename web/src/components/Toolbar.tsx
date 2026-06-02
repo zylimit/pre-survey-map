@@ -3,7 +3,6 @@ import { DrawMode } from "../state";
 import { useLang, useT } from "../i18n";
 
 interface Props {
-  onImport: (files: File[]) => void;
   busy: boolean;
   drawMode: DrawMode;
   hasSelection: boolean;
@@ -18,11 +17,10 @@ interface Props {
 }
 
 export default function Toolbar({
-  onImport, busy, drawMode, hasSelection,
+  busy, drawMode, hasSelection,
   onStartDraw, onClearSelection, onExportAll, onExportSelection,
   onRefresh, onSearch, onClearBaseline, onOpenRestorePoints,
 }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [openMenu, setOpenMenu] = useState<"export" | "draw" | null>(null);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -50,13 +48,6 @@ export default function Toolbar({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [openMenu]);
 
-  const pick = () => inputRef.current?.click();
-  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (files.length) onImport(files);
-    e.target.value = "";
-  };
-
   const submitSearch = () => {
     const q = query.trim();
     if (q) onSearch(q);
@@ -68,17 +59,8 @@ export default function Toolbar({
 
   return (
     <div className="toolbar" ref={rootRef}>
-      <button onClick={pick} disabled={busy} title={tFn("tb.import.tip")}>
-        {busy ? tFn("tb.import.busy") : tFn("tb.import.label")}
-      </button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".kml,.kmz,.xlsx"
-        style={{ display: "none" }}
-        onChange={onChange}
-      />
-
+      {/* F20 Phase 5：顶部全局 [📁 导入] 按钮已移除——导入唯一入口下沉到图层
+          [导入图层]（Phase 3 接通）。地图拖拽导入（onDropFiles）仍保留为 F1 旁路。 */}
       <div className="dropdown">
         <button
           onClick={() => setOpenMenu(openMenu === "export" ? null : "export")}
