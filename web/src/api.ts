@@ -180,6 +180,20 @@ export async function cancelImport(sessionId: string): Promise<void> {
   await fetch(`/api/import/${sessionId}`, { method: "DELETE" });
 }
 
+// #39：commit 写库进度（前端轮询）
+export interface ImportProgress {
+  done: number;
+  total: number;
+  pct: number;
+  phase: "committing" | "done" | "idle";
+}
+
+export async function fetchImportProgress(sessionId: string): Promise<ImportProgress> {
+  const res = await fetch(`/api/import/${sessionId}/progress`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 // F14 清除基线（Spec #15：truncate 范围扩到 4 张表，含 baseline_state）
 export async function clearBaseline(): Promise<{
   deleted: { site: number; road: number; lessor: number; baseline_state: number };

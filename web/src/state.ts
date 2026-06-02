@@ -9,6 +9,8 @@ import {
   CleaningRow,
   clearBaseline,
   commitImport,
+  fetchImportProgress,
+  ImportProgress,
   ConflictRow,
   Decision,
   downloadConflictsXlsx,
@@ -169,6 +171,9 @@ export function useAppState() {
   const [layoutEpoch, setLayoutEpoch] = useState(0);
   // F20 Phase 4/#30：当前打开的「查看图层要素」浮动窗口（null = 未打开）
   const [viewLayer, setViewLayer] = useState<ViewLayerState | null>(null);
+  // #39：commit 写库进度（null = 未在提交）；轮询 /progress 填充
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number; pct: number } | null>(null);
+  const progressTimerRef = useRef<number | null>(null);
 
   const log = useCallback((level: LogEntry["level"], msg: string) => {
     const locale = getLang() === "zh" ? "zh-CN" : "en-US";
@@ -304,11 +309,30 @@ export function useAppState() {
   const confirmConflicts = useCallback(
     async (decisions: Record<string, Decision>) => {
       if (!importSession) return;
+      const sid = importSession.sessionId;
       setPhase("committing");
+      setImportProgress({ done: 0, total: 0, pct: 0 });
       log("info", t("log.committing", { file: importSession.fileName }));
+
+      // #39：轮询写库进度（每 500ms）。停止条件：done===total / phase=done / finally 兜底。
+      const stopPoll = () => {
+        if (progressTimerRef.current != null) {
+          clearInterval(progressTimerRef.current);
+          progressTimerRef.current = null;
+        }
+      };
+      stopPoll();
+      progressTimerRef.current = window.setInterval(async () => {
+        try {
+          const p: ImportProgress = await fetchImportProgress(sid);
+          setImportProgress({ done: p.done, total: p.total, pct: p.pct });
+          if (p.phase === "done" || (p.total > 0 && p.done >= p.total)) stopPoll();
+        } catch { /* 轮询失败忽略，commit await 兜底 */ }
+      }, 500);
+
       try {
         const list = Object.entries(decisions).map(([key, action]) => ({ key, action }));
-        const resp = await commitImport(importSession.sessionId, list);
+        const resp = await commitImport(sid, list);
         const s = resp.stats;
         const cs = resp.cleaning_stats;
         log("info", t("log.commit_ok", {
@@ -327,6 +351,8 @@ export function useAppState() {
         const msg = e instanceof Error ? e.message : String(e);
         log("error", t("log.commit_err", { msg }));
       } finally {
+        stopPoll();
+        setImportProgress(null);
         setImportSession(null);
         setPhase("idle");
       }
@@ -546,6 +572,7 @@ export function useAppState() {
     goToConflicts,
     goBackToCleaning,
     confirmConflicts,
+    importProgress,
     abortImport,
     doClearBaseline,
     baselineState,

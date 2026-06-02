@@ -13,6 +13,7 @@ interface Props {
   warnAllOutsideBaseline?: boolean;
   onProceed: (decisions: Record<string, CleaningAction>) => void;
   onCancel: () => void;
+  busy?: boolean;   // #39：处理中 → 禁用按钮、不可关
 }
 
 const ISSUE_KEY: Record<string, I18nKey> = {
@@ -35,7 +36,7 @@ function defaultsOf(rows: CleaningRow[]): Record<string, CleaningAction> {
 
 export default function CleaningDialog({
   fileName, cleanings, baselineRegion, summary, initial,
-  warnAllOutsideBaseline, onProceed, onCancel,
+  warnAllOutsideBaseline, onProceed, onCancel, busy = false,
 }: Props) {
   const tFn = useT();
   const { lang } = useLang();
@@ -186,9 +187,9 @@ export default function CleaningDialog({
         </div>
 
         <div className="modal-footer">
-          <button className="cancel" onClick={onCancel}>{tFn("cl.cancel")}</button>
-          <button className="primary" onClick={() => onProceed(decisions)}>
-            {tFn("cl.next")}
+          <button className="cancel" onClick={onCancel} disabled={busy}>{tFn("cl.cancel")}</button>
+          <button className="primary" onClick={() => onProceed(decisions)} disabled={busy}>
+            {busy ? tFn("dlg.committing") : tFn("cl.next")}
           </button>
         </div>
       </div>

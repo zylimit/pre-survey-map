@@ -656,67 +656,95 @@ async def commit_import(sid: str, body: CommitBody, request: Request):
     }
     rp_id: int | None = None
 
-    async with pool().acquire() as conn:
-        async with conn.transaction():
-            # F17: commit 落库前自动建恢复点（pre_import）
-            rp_id = await create_restore_point(conn, "pre_import")
+    # #39：commit 进度（分批上报，单事务原子性不变——全成功 or 全回滚）。
+    # 进度写内存 session_store（独立于事务），每 _EVERY 条更新一次，供前端轮询。
+    non_site = s["non_conflicts"]["site"]
+    non_road = s["non_conflicts"]["road"]
+    non_lessor = s["non_conflicts"]["lessor"]
+    _total = len(non_site) + len(non_road) + len(non_lessor) + len(s["conflicts"])
+    _done = 0
+    _EVERY = 500
+    session_store.set_progress(sid, 0, _total, "committing")
 
-            for r in s["non_conflicts"]["site"]:
-                await _insert_site(conn, r, stamp)
-                stats["site"]["inserted"] += 1
-            for r in s["non_conflicts"]["road"]:
-                await _insert_road(conn, r)
-                stats["road"]["inserted"] += 1
-            for r in s["non_conflicts"]["lessor"]:
-                await _insert_lessor(conn, r)
-                stats["lessor"]["inserted"] += 1
+    baseline_established = None
+    try:
+        async with pool().acquire() as conn:
+            async with conn.transaction():
+                # F17: commit 落库前自动建恢复点（pre_import）
+                rp_id = await create_restore_point(conn, "pre_import")
 
-            for c in s["conflicts"]:
-                action = decisions.get(c["key"], "ignore")
-                if action == "overwrite":
-                    if c["kind"] == "site":
-                        await _update_site(conn, c["existing"], c["incoming"], stamp)
-                        stats["site"]["updated"] += 1
-                    elif c["kind"] == "road":
-                        await _update_road(conn, c["existing"], c["incoming"])
-                        stats["road"]["updated"] += 1
-                    elif c["kind"] == "lessor":
-                        await _update_lessor(conn, c["existing"], c["incoming"])
-                        stats["lessor"]["updated"] += 1
-                else:
-                    stats[c["kind"]]["ignored"] += 1
+                for r in non_site:
+                    await _insert_site(conn, r, stamp)
+                    stats["site"]["inserted"] += 1
+                    _done += 1
+                    if _done % _EVERY == 0:
+                        session_store.set_progress(sid, _done, _total, "committing")
+                for r in non_road:
+                    await _insert_road(conn, r)
+                    stats["road"]["inserted"] += 1
+                    _done += 1
+                    if _done % _EVERY == 0:
+                        session_store.set_progress(sid, _done, _total, "committing")
+                for r in non_lessor:
+                    await _insert_lessor(conn, r)
+                    stats["lessor"]["inserted"] += 1
+                    _done += 1
+                    if _done % _EVERY == 0:
+                        session_store.set_progress(sid, _done, _total, "committing")
 
-            # Spec V1.x #15：第一次 commit 成功 + site 新增 > 0 + baseline_state 空 → 固化主基准
-            # 在同一事务内，确保入库 + 固化原子性
-            baseline_established = None
-            site_added = stats["site"]["inserted"] + stats["site"]["updated"]
-            if site_added > 0:
-                exists = await conn.fetchval(
-                    "SELECT 1 FROM baseline_state WHERE id = 1"
-                )
-                if not exists:
-                    country = await _country_dist_in_db(conn)
-                    if country and country.get("country_iso_a2"):
-                        await conn.execute(
-                            """
-                            INSERT INTO baseline_state
-                                (id, iso_a2, name_zh, coverage_pct, points_used)
-                            VALUES (1, $1, $2, $3, $4)
-                            ON CONFLICT (id) DO NOTHING
-                            """,
-                            country["country_iso_a2"],
-                            country.get("country_name_zh"),
-                            country.get("coverage_pct"),
-                            country.get("points_used"),
-                        )
-                        baseline_established = {
-                            "iso_a2": country["country_iso_a2"],
-                            "name_zh": country.get("country_name_zh"),
-                            "name_en": country.get("country_name_en"),
-                            "coverage_pct": country.get("coverage_pct"),
-                            "points_used": country.get("points_used"),
-                        }
-                    # country=None（全在海里）→ 不固化，下次 commit 再尝试（Spec 雷 30）
+                for c in s["conflicts"]:
+                    action = decisions.get(c["key"], "ignore")
+                    if action == "overwrite":
+                        if c["kind"] == "site":
+                            await _update_site(conn, c["existing"], c["incoming"], stamp)
+                            stats["site"]["updated"] += 1
+                        elif c["kind"] == "road":
+                            await _update_road(conn, c["existing"], c["incoming"])
+                            stats["road"]["updated"] += 1
+                        elif c["kind"] == "lessor":
+                            await _update_lessor(conn, c["existing"], c["incoming"])
+                            stats["lessor"]["updated"] += 1
+                    else:
+                        stats[c["kind"]]["ignored"] += 1
+                    _done += 1
+                    if _done % _EVERY == 0:
+                        session_store.set_progress(sid, _done, _total, "committing")
+
+                # Spec V1.x #15：第一次 commit 成功 + site 新增 > 0 + baseline_state 空 → 固化主基准
+                # 在同一事务内，确保入库 + 固化原子性
+                site_added = stats["site"]["inserted"] + stats["site"]["updated"]
+                if site_added > 0:
+                    exists = await conn.fetchval(
+                        "SELECT 1 FROM baseline_state WHERE id = 1"
+                    )
+                    if not exists:
+                        country = await _country_dist_in_db(conn)
+                        if country and country.get("country_iso_a2"):
+                            await conn.execute(
+                                """
+                                INSERT INTO baseline_state
+                                    (id, iso_a2, name_zh, coverage_pct, points_used)
+                                VALUES (1, $1, $2, $3, $4)
+                                ON CONFLICT (id) DO NOTHING
+                                """,
+                                country["country_iso_a2"],
+                                country.get("country_name_zh"),
+                                country.get("coverage_pct"),
+                                country.get("points_used"),
+                            )
+                            baseline_established = {
+                                "iso_a2": country["country_iso_a2"],
+                                "name_zh": country.get("country_name_zh"),
+                                "name_en": country.get("country_name_en"),
+                                "coverage_pct": country.get("coverage_pct"),
+                                "points_used": country.get("points_used"),
+                            }
+                        # country=None（全在海里）→ 不固化，下次 commit 再尝试（Spec 雷 30）
+        # 事务上下文正常退出 = 已 COMMIT → 标完成
+        session_store.set_progress(sid, _total, _total, "done")
+    except Exception:
+        session_store.clear_progress(sid)   # #39 坑1：回滚清进度
+        raise
 
     # F19 审计：import + restore_point_create_auto（pre_import）
     await write_audit(
@@ -755,6 +783,21 @@ async def commit_import(sid: str, body: CommitBody, request: Request):
 async def cancel_import(sid: str):
     dropped = session_store.drop(sid)
     return {"dropped": dropped}
+
+
+# =====================================================================
+# GET /api/import/{sid}/progress  (#39：commit 写库进度，前端轮询)
+# =====================================================================
+
+
+@router.get("/{sid}/progress")
+async def import_progress(sid: str):
+    p = session_store.get_progress(sid)
+    if p is None:
+        return {"done": 0, "total": 0, "pct": 0, "phase": "idle"}
+    done, total = p["done"], p["total"]
+    pct = int(done * 100 / total) if total > 0 else 0
+    return {"done": done, "total": total, "pct": pct, "phase": p["phase"]}
 
 
 # =====================================================================

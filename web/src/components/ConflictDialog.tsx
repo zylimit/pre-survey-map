@@ -10,6 +10,7 @@ interface Props {
   onConfirm: (decisions: Record<string, Decision>) => void;
   onCancel: () => void;
   onBack?: () => void;
+  busy?: boolean;   // #39：提交中 → 禁用确认/取消/返回、不可关、显示「正在写入…」
 }
 
 function summarize(row: Record<string, unknown>, kind: "site" | "lessor", noCoord: string): string {
@@ -27,7 +28,7 @@ function summarize(row: Record<string, unknown>, kind: "site" | "lessor", noCoor
   ].join(" · ");
 }
 
-export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel, onBack }: Props) {
+export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel, onBack, busy = false }: Props) {
   const tFn = useT();
   const [decisions, setDecisions] = useState<Record<string, Decision>>(initial);
 
@@ -113,12 +114,14 @@ export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel
         </div>
 
         <div className="modal-footer">
-          {onBack && <button onClick={onBack}>{tFn("co.back")}</button>}
-          <button className="cancel" onClick={onCancel}>
+          {onBack && <button onClick={onBack} disabled={busy}>{tFn("co.back")}</button>}
+          <button className="cancel" onClick={onCancel} disabled={busy}>
             {tFn("co.cancel")}
           </button>
-          <button className="primary" onClick={() => onConfirm(decisions)}>
-            {tFn("co.confirm", { ov: formatCount(counts.ov), ig: formatCount(counts.ig) })}
+          <button className="primary" onClick={() => onConfirm(decisions)} disabled={busy}>
+            {busy
+              ? tFn("dlg.committing")
+              : tFn("co.confirm", { ov: formatCount(counts.ov), ig: formatCount(counts.ig) })}
           </button>
         </div>
       </div>

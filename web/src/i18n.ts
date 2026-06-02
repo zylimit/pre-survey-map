@@ -78,6 +78,7 @@ const en = {
   "op.db.checking":        "DB checking",
   "op.db.ok":              "DB connected",
   "op.db.error":           "DB disconnected",
+  "op.commit_progress":    "Committing {done}/{total} · {pct}%",
   "op.search.summary":     "🔍 {count} results · flying to first",
   "op.search.header":      "Search Results",
   "op.search.clear.tip":   "Clear results only, keep logs",
@@ -178,6 +179,7 @@ const en = {
   // ConfirmDialog defaults
   "dlg.ok":                "OK",
   "dlg.cancel":            "Cancel",
+  "dlg.committing":        "Committing…",
 
   // App — clear baseline confirm
   "app.clear.title":       "Clear Baseline Data",
@@ -373,6 +375,7 @@ const zh: Record<keyof typeof en, string> = {
   "op.db.checking":        "DB 检测中",
   "op.db.ok":              "DB 已连接",
   "op.db.error":           "DB 断开",
+  "op.commit_progress":    "写入 {done}/{total} · {pct}%",
   "op.search.summary":     "🔍 搜索匹配 {count} 条，飞到第一条",
   "op.search.header":      "搜索结果",
   "op.search.clear.tip":   "只清搜索结果，不动日志",
@@ -467,6 +470,7 @@ const zh: Record<keyof typeof en, string> = {
 
   "dlg.ok":                "确定",
   "dlg.cancel":            "取消",
+  "dlg.committing":        "正在写入…",
 
   "app.clear.title":       "清除基线数据",
   "app.clear.body":        "此操作将清空 site / road / lessor 三表的所有数据。\n本操作不可撤销，主基准区域也会被重置。\n确定继续吗?",

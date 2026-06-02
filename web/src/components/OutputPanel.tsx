@@ -16,6 +16,7 @@ interface Props {
   searchResults: SearchResults | null;
   onResultClick: (f: Feature) => void;
   onClearSearch: () => void;
+  importProgress: { done: number; total: number; pct: number } | null;  // #39
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -97,7 +98,7 @@ function coreInfo(f: Feature): string {
 
 export default function OutputPanel({
   open, onToggle, logs, phase, onClearLogs, onResize, onResizeEnd,
-  searchResults, onResultClick, onClearSearch,
+  searchResults, onResultClick, onClearSearch, importProgress,
 }: Props) {
   const tFn = useT();
   const [dbOk, setDbOk] = useState<boolean | null>(null);
@@ -144,10 +145,26 @@ export default function OutputPanel({
         <span className="phase-label">
           {showBar ? tFn(PHASE_KEY[phase]) : latest ? `${latest.ts} ${latest.msg}` : tFn("phase.idle")}
         </span>
+        {/* #39：committing 且有进度 → determinate 真百分比；其余 busy 态保持 indeterminate */}
         {showBar && (
-          <div className={`progress ${PHASE_BUSY[phase] ? "indeterminate" : "paused"}`}>
-            <div className="bar-inner" />
-          </div>
+          phase === "committing" && importProgress && importProgress.total > 0 ? (
+            <div className="progress determinate">
+              <div className="bar-inner" style={{ width: `${importProgress.pct}%` }} />
+            </div>
+          ) : (
+            <div className={`progress ${PHASE_BUSY[phase] ? "indeterminate" : "paused"}`}>
+              <div className="bar-inner" />
+            </div>
+          )
+        )}
+        {phase === "committing" && importProgress && importProgress.total > 0 && (
+          <span className="commit-progress-text">
+            {tFn("op.commit_progress", {
+              done: importProgress.done,
+              total: importProgress.total,
+              pct: importProgress.pct,
+            })}
+          </span>
         )}
         {!open && searchResults && searchResults.total > 0 && firstResult && (
           <span className="search-summary-collapsed" onClick={onCollapsedSummary}>

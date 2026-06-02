@@ -21,6 +21,10 @@ TTL_SECONDS = 30 * 60
 _lock = threading.Lock()
 _sessions: dict[str, dict[str, Any]] = {}
 
+# #39：commit 写库进度（内存，独立于 DB 事务——事务未提交也能让前端轮询看到进度）。
+# 单独一张 dict，生命周期由 commit 显式管理（set 期间写 / done 标完成 / drop 清理）。
+_progress: dict[str, dict[str, Any]] = {}
+
 # 合法状态转换图：当前状态 → 允许的下一状态
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "cleaning":  {"conflicts"},
@@ -75,4 +79,23 @@ def transition(sid: str, to_state: str) -> Optional[str]:
 
 def drop(sid: str) -> bool:
     with _lock:
+        _progress.pop(sid, None)   # #39：会话清理时一并清进度
         return _sessions.pop(sid, None) is not None
+
+
+# ─── #39 commit 进度（内存，独立于事务）──────────────────────────────────────
+
+def set_progress(sid: str, done: int, total: int, phase: str = "committing") -> None:
+    with _lock:
+        _progress[sid] = {"done": done, "total": total, "phase": phase}
+
+
+def get_progress(sid: str) -> Optional[dict[str, Any]]:
+    with _lock:
+        p = _progress.get(sid)
+        return dict(p) if p is not None else None
+
+
+def clear_progress(sid: str) -> None:
+    with _lock:
+        _progress.pop(sid, None)

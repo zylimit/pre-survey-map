@@ -11,14 +11,18 @@ export function useEscTrigger(
   onTrigger: () => void,
   times = 3,
   windowMs = 1000,
+  enabled = true,   // #39：导入提交中传 false → 屏蔽 ESC（不弹审计、不中断对话框）
 ): void {
   const stampsRef = useRef<number[]>([]);
   const cbRef = useRef(onTrigger);
   cbRef.current = onTrigger;
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
+      if (!enabledRef.current) { stampsRef.current = []; return; }  // #39 屏蔽期清栈
       const now = Date.now();
       const arr = stampsRef.current;
       arr.push(now);

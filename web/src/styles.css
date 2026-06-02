@@ -1025,6 +1025,18 @@ button, input, select, textarea {
   width: 70%;
   background: var(--warn);
 }
+/* #39：确定进度（committing 真百分比），width 来自内联，平滑过渡，无动画 */
+.output .progress.determinate .bar-inner {
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.output .commit-progress-text {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
 
 @keyframes indet {
   0% { left: -30%; }

@@ -26,11 +26,13 @@ export default function App() {
   const tFn = useT();
 
   // F19 隐藏入口：3 次 Esc（间隔 < 1s）→ 密码框 → Audit Modal
+  // #39：导入提交中（uploading/committing）屏蔽 ESC，防误弹审计 / 防中断对话框
+  const importBusy = s.phase === "uploading" || s.phase === "committing";
   useEscTrigger(() => {
     // 已打开任意一个就不再弹
     if (auditPwdOpen || auditOpen) return;
     setAuditPwdOpen(true);
-  }, 3, 1000);
+  }, 3, 1000, !importBusy);
 
   useEffect(() => {
     s.refresh().catch(err => s.log("error", t("log.load_err", { msg: err.message ?? String(err) })));
@@ -159,6 +161,7 @@ export default function App() {
         searchResults={s.searchResults}
         onResultClick={s.flyTo}
         onClearSearch={s.clearSearch}
+        importProgress={s.importProgress}
       />
 
       {/* F20 Phase 4/#30：查看图层要素浮动窗口（非 modal，可拖可缩）。
@@ -188,6 +191,7 @@ export default function App() {
           warnAllOutsideBaseline={s.importSession.warnAllOutsideBaseline}
           onProceed={s.goToConflicts}
           onCancel={s.abortImport}
+          busy={importBusy}
         />
       )}
       {s.importSession && s.importSession.step === "conflicts" && (
@@ -197,6 +201,7 @@ export default function App() {
           onConfirm={s.confirmConflicts}
           onCancel={s.abortImport}
           onBack={s.goBackToCleaning}
+          busy={importBusy}
         />
       )}
 
