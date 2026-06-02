@@ -288,7 +288,7 @@ export default function LayerFeatureList({
       <div
         key={id}
         className={`lfl-row${sel ? " selected" : ""}`}
-        style={{ transform: `translateY(${index * ROW_H}px)`, height: ROW_H, width: totalW }}
+        style={{ transform: `translateY(${index * ROW_H}px)`, height: ROW_H, width: "100%" }}
         onClick={() => onPick(f)}
         title={nameOf(f)}
       >
@@ -298,7 +298,7 @@ export default function LayerFeatureList({
             ? (STATUS_COLOR[String(f.properties?.[col.key] ?? "")] ?? STATUS_COLOR[""])
             : undefined;
           return (
-            <span key={col.key} className="lfl-cell" style={{ width: col.w, color }}>
+            <span key={col.key} className="lfl-cell" style={{ flex: `${col.w} 0 ${col.w}px`, color }}>
               {txt}
             </span>
           );
@@ -343,15 +343,16 @@ export default function LayerFeatureList({
           ref={scrollRef}
           onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
         >
-          <div className="lfl-table" style={{ width: totalW }}>
-            <div className="lfl-thead" style={{ width: totalW, height: HEAD_H }}>
+          {/* #31：列宽随窗口等比拉伸填满，minWidth=totalW 保横滚下限 */}
+          <div className="lfl-table" style={{ minWidth: totalW, width: "100%" }}>
+            <div className="lfl-thead" style={{ minWidth: totalW, width: "100%", height: HEAD_H }}>
               {cols.map(col => (
-                <span key={col.key} className="lfl-th" style={{ width: col.w }}>
+                <span key={col.key} className="lfl-th" style={{ flex: `${col.w} 0 ${col.w}px` }}>
                   {tFn(col.labelKey as Parameters<typeof tFn>[0])}
                 </span>
               ))}
             </div>
-            <div className="lfl-virt" style={{ height: total * ROW_H, width: totalW }}>
+            <div className="lfl-virt" style={{ height: total * ROW_H, minWidth: totalW, width: "100%" }}>
               {visible.map((f, i) => renderRow(f, start + i))}
             </div>
           </div>

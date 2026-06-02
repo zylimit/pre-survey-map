@@ -647,7 +647,7 @@ button, input, select, textarea {
   text-transform: uppercase;
 }
 .lfl-th {
-  flex-shrink: 0;
+  /* #31：列宽走内联 flex(grow:col.w / shrink:0 / basis:col.w)，不在此设 flex-shrink */
   box-sizing: border-box;
   padding: 0 8px;
   overflow: hidden;
@@ -679,7 +679,7 @@ button, input, select, textarea {
   border-left-color: var(--accent);
 }
 .lfl-cell {
-  flex-shrink: 0;
+  /* #31：列宽走内联 flex(grow:col.w / shrink:0 / basis:col.w)，不在此设 flex-shrink */
   box-sizing: border-box;
   padding: 0 8px;
   overflow: hidden;
