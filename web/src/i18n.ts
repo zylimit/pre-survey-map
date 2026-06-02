@@ -246,7 +246,18 @@ const en = {
   "lt.btn.import_layer":         "Import",
   "lt.btn.import_layer.tip":     "Import Layer",
   "lt.btn.view_features":        "View",
-  "lt.btn.view_features.tip":    "View Layer Features (Phase 4)",
+  "lt.btn.view_features.tip":    "View Layer Features",
+
+  // F20 Phase 4 LayerFeatureList (V1.x #24)
+  "lfl.title":                   "Layer Features",
+  "lfl.kind.road":               "Road",
+  "lfl.kind.lessor":             "Lessor",
+  "lfl.filter.placeholder":      "🔍 Filter this layer...",
+  "lfl.count":                   "{total} features",
+  "lfl.count.filtered":          "{shown} / {total}",
+  "lfl.empty":                   "This layer has no features",
+  "lfl.empty.filtered":          "No features match the filter",
+  "lfl.close":                   "Close",
 
   // F19 Audit (Spec V1.x #23)
   "audit.title":                       "Audit Log",
@@ -507,7 +518,18 @@ const zh: Record<keyof typeof en, string> = {
   "lt.btn.import_layer":         "导入",
   "lt.btn.import_layer.tip":     "导入图层",
   "lt.btn.view_features":        "查看",
-  "lt.btn.view_features.tip":    "查看图层要素（Phase 4）",
+  "lt.btn.view_features.tip":    "查看图层要素",
+
+  // F20 Phase 4 LayerFeatureList
+  "lfl.title":                   "图层要素",
+  "lfl.kind.road":               "道路",
+  "lfl.kind.lessor":             "产权方",
+  "lfl.filter.placeholder":      "🔍 筛选本图层...",
+  "lfl.count":                   "共 {total} 个要素",
+  "lfl.count.filtered":          "{shown} / 共 {total}",
+  "lfl.empty":                   "本图层暂无要素",
+  "lfl.empty.filtered":          "筛选无匹配要素",
+  "lfl.close":                   "关闭",
 
   "audit.title":                       "审计日志",
   "audit.password":                    "请输入审计密码",

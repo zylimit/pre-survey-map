@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { t, useT } from "./i18n";
 import Toolbar from "./components/Toolbar";
 import LayerTree from "./components/LayerTree";
+import LayerFeatureList from "./components/LayerFeatureList";
 import MapView from "./components/MapView";
 import AttributePanel from "./components/AttributePanel";
 import OutputPanel from "./components/OutputPanel";
@@ -116,6 +117,7 @@ export default function App() {
         hiddenIds={s.hiddenIds}
         onSetKindVisible={s.setKindVisible}
         onImportLayer={s.importLayerFile}
+        onViewLayer={s.openLayerFeatures}
         phase={s.phase}
         onResize={onResizeLeft}
         onResizeEnd={onResizeEndLeft}
@@ -159,6 +161,21 @@ export default function App() {
         onResultClick={s.flyTo}
         onClearSearch={s.clearSearch}
       />
+
+      {/* F20 Phase 4：查看图层要素浮动列表框（非 modal）。
+          key 含目标标识 → 切换图层时整组件重挂载，筛选框/滚动位置自动复位 */}
+      {s.viewLayer && (
+        <LayerFeatureList
+          key={`${s.viewLayer.kind}/${s.viewLayer.operator ?? ""}/${s.viewLayer.category ?? ""}/${s.viewLayer.type ?? ""}`}
+          target={s.viewLayer}
+          sites={s.sites}
+          roads={s.roads}
+          lessors={s.lessors}
+          selectedId={selectedId}
+          onPick={s.flyTo}
+          onClose={s.closeLayerFeatures}
+        />
+      )}
 
       {/* Spec #12 两步向导：步骤 1 清洗 / 步骤 2 冲突 */}
       {s.importSession && s.importSession.step === "cleaning" && (

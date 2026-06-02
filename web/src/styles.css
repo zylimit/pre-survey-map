@@ -508,6 +508,149 @@ button, input, select, textarea {
   white-space: nowrap;
 }
 
+/* ============ F20 Phase 4 · 查看图层要素浮动列表框 ============ */
+/* 非 modal：无遮罩、不挡地图交互；固定居中偏上浮动，z-index 在地图控件之上、
+   modal(1000) 之下，保证两步导入向导/审计 Modal 仍能盖住它 */
+.lfl-panel {
+  position: fixed;
+  top: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 380px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 160px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.4));
+  z-index: 600;
+  overflow: hidden;
+}
+.lfl-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-input);
+}
+.lfl-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lfl-count {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted, var(--text));
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+.lfl-close {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast);
+}
+.lfl-close:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.lfl-filter {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.lfl-filter input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  color: var(--text);
+}
+.lfl-filter input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.lfl-empty {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted, var(--text));
+  opacity: 0.7;
+}
+/* 虚拟滚动容器：固定行高 translateY 绝对定位 */
+.lfl-scroll {
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  position: relative;
+}
+.lfl-virt {
+  position: relative;
+  width: 100%;
+}
+.lfl-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.lfl-row:hover {
+  background: var(--accent-bg);
+}
+.lfl-row.selected {
+  background: var(--accent-bg);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+.lfl-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.lfl-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lfl-secondary {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  opacity: 0.65;
+}
+
 /* ============ Resize Handles ============ */
 
 /* 三个面板的拖拽条统一：6px 宽、常驻浅色便于发现、悬停/拖动变绿，

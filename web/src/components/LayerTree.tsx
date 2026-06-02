@@ -20,7 +20,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { FeatureCollection, LayerStamp } from "../api";
 import { PANEL_LIMITS } from "../state";
-import type { Phase } from "../state";
+import type { Phase, ViewLayerTarget } from "../state";
 import { useT } from "../i18n";
 import ResizeHandle from "./ResizeHandle";
 
@@ -63,6 +63,7 @@ interface Props {
   hiddenIds: Set<string>;
   onSetKindVisible: (ids: string[], visible: boolean) => void;
   onImportLayer: (file: File, stamp: LayerStamp) => void;
+  onViewLayer: (target: ViewLayerTarget) => void;
   phase: Phase;
   onResize: (px: number) => void;
   onResizeEnd: () => void;
@@ -73,7 +74,7 @@ interface Props {
 function LayerTree({
   sites, roads, lessors,
   selectedId, hiddenIds,
-  onSetKindVisible, onImportLayer, phase,
+  onSetKindVisible, onImportLayer, onViewLayer, phase,
   onResize, onResizeEnd,
 }: Props) {
   const tFn = useT();
@@ -299,7 +300,12 @@ function LayerTree({
           </button>
           <button
             className="layer-btn layer-btn-view"
-            disabled
+            onClick={() => onViewLayer({
+              kind: stamp.target_kind,
+              operator: stamp.operator ?? null,
+              category: stamp.category ?? null,
+              type: stamp.type ?? null,
+            })}
             title={tFn("lt.btn.view_features.tip")}
           >
             {tFn("lt.btn.view_features")}

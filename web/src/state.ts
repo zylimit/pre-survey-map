@@ -65,6 +65,15 @@ export type Phase =
 // F9 框选模式
 export type DrawMode = "polygon" | "rectangle" | null;
 
+// F20 Phase 4：「查看图层要素」浮动列表框的目标图层标识
+// 与 Phase 3 树计数同源——site 按 operator/category/type 三列过滤，road/lessor 整层。
+export interface ViewLayerTarget {
+  kind: "site" | "road" | "lessor";
+  operator: string | null;  // site only
+  category: string | null;  // site only
+  type: string | null;      // site only
+}
+
 // 三面板缩放（Spec V1.x #11）
 export type PanelKey = "left" | "right" | "bottom";
 
@@ -142,6 +151,8 @@ export function useAppState() {
   }));
   // 拖拽中通知地图 updateSize() 的 epoch
   const [layoutEpoch, setLayoutEpoch] = useState(0);
+  // F20 Phase 4：当前打开的「查看图层要素」浮动列表框目标（null = 未打开）
+  const [viewLayer, setViewLayer] = useState<ViewLayerTarget | null>(null);
 
   const log = useCallback((level: LogEntry["level"], msg: string) => {
     const locale = getLang() === "zh" ? "zh-CN" : "en-US";
@@ -473,6 +484,10 @@ export function useAppState() {
 
   const fitAll = useCallback(() => setFitAllEpoch(Date.now()), []);
 
+  // F20 Phase 4：打开/关闭「查看图层要素」浮动列表框
+  const openLayerFeatures = useCallback((target: ViewLayerTarget) => setViewLayer(target), []);
+  const closeLayerFeatures = useCallback(() => setViewLayer(null), []);
+
   // 拖拽中实时改 panel size 并通知地图重绘
   // layoutEpoch 用 rAF 节流：pointermove 可能比帧率更密，避免地图每个事件都 updateSize
   const layoutRafRef = useRef<number | null>(null);
@@ -576,5 +591,8 @@ export function useAppState() {
     clearSearch,
     setPanelSize,
     persistPanelSize,
+    viewLayer,
+    openLayerFeatures,
+    closeLayerFeatures,
   };
 }
