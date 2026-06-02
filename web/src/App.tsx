@@ -116,7 +116,7 @@ export default function App() {
         hiddenIds={s.hiddenIds}
         onSetKindVisible={s.setKindVisible}
         onImportLayer={s.importLayerFile}
-        onViewLayer={s.openLayerFeatures}
+        onViewLayer={s.toggleLayerFeatures}
         phase={s.phase}
         onResize={onResizeLeft}
         onResizeEnd={onResizeEndLeft}

@@ -18,6 +18,10 @@
   --accent-10: rgba(16, 185, 129, 0.10);  /* 半透明叠加（dropdown hover / 选区填充） */
   --accent-20: rgba(16, 185, 129, 0.18);
 
+  /* #34：选中态独立色（蓝），避开状态绿/红/黄/棕；两主题共用。
+     仅用于 selectedId 选中高亮，不替代全局 accent（按钮/复选框/focus 仍用 accent）。 */
+  --selected: #3b82f6;            /* blue-500 */
+
   --warn: #f59e0b;                /* amber-500，两主题共用 */
   --success: #10b981;             /* 同 accent */
 
@@ -30,7 +34,7 @@
 
   --selection-stroke: var(--accent);
   --selection-fill: var(--accent-10);
-  --feat-selected-stroke: var(--accent);
+  --feat-selected-stroke: var(--selected);   /* #34：地图选中描边走独立蓝（MapView 经 cssVar 自动跟）*/
 
   /* ---- 地图护栏（恒亮，防重蹈 #7）---- */
   --map-backdrop: #fafafa;        /* 地图容器底色（瓦片加载时露出）：恒为亮色，不随主题暗化 */
@@ -57,6 +61,7 @@
   --text-disabled: #64748b;       /* slate-500，比 muted 更暗 */
 
   --accent-bg: rgba(16, 185, 129, 0.14);  /* 选中态半透明绿垫底 */
+  --selected-bg: rgba(59, 130, 246, 0.16);  /* #34：选中蓝半透明垫底（暗）*/
 
   --warn-bg: rgba(245, 158, 11, 0.16);     /* warning banner 暗底 */
   --error: #f87171;               /* 暗底亮一档红 */
@@ -76,6 +81,7 @@
 
   /* 暗色微交互：选中节点 / 激活按钮薄荷绿辉光（克制使用）*/
   --glow: 0 0 8px rgba(16, 185, 129, 0.45);
+  --selected-glow: 0 0 8px rgba(59, 130, 246, 0.5);  /* #34：选中蓝辉光（暗）*/
 }
 
 /* ============ Light（原 Mint Tech 值，仅覆盖主题相关令牌）============ */
@@ -92,6 +98,7 @@
   --text-disabled: #94a3b8;
 
   --accent-bg: #ecfdf5;           /* emerald-50 实底 */
+  --selected-bg: #eff6ff;         /* #34：选中蓝实底（亮，blue-50）*/
 
   --warn-bg: #fef3c7;             /* amber-100 */
   --error: #ef4444;               /* red-500 */
@@ -109,4 +116,5 @@
   --mask-modal: rgba(15, 23, 42, 0.40);
 
   --glow: none;                   /* 亮色不发光 */
+  --selected-glow: none;          /* #34：亮色选中不发光 */
 }

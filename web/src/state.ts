@@ -74,6 +74,13 @@ export interface ViewLayerTarget {
   type: string | null;      // site only
 }
 
+// #34：两个图层目标是否同一层（toggle 判定）。road/lessor 的 op/cat/type 均 null，
+// null===null 成立，安全。
+function sameTarget(a: ViewLayerTarget, b: ViewLayerTarget): boolean {
+  return a.kind === b.kind && a.operator === b.operator
+    && a.category === b.category && a.type === b.type;
+}
+
 // F20 #30：列表框=可拖可缩浮动窗口。单 state 复用——首次开窗用 anchor（触发按钮坐标）
 // 定位；已开时切图层只换 target、anchor 仅在组件首次挂载读取，位置尺寸不动。
 export interface ViewLayerState {
@@ -445,6 +452,12 @@ export function useAppState() {
       setViewLayer({ target, anchor }),
     [],
   );
+  // #34：眼睛按钮 toggle——同图层再点关闭、异图层切内容（用函数式更新拿最新 prev）
+  const toggleLayerFeatures = useCallback(
+    (target: ViewLayerTarget, anchor: { x: number; y: number } | null) =>
+      setViewLayer(prev => (prev && sameTarget(prev.target, target) ? null : { target, anchor })),
+    [],
+  );
   const closeLayerFeatures = useCallback(() => setViewLayer(null), []);
 
   // 拖拽中实时改 panel size 并通知地图重绘
@@ -552,6 +565,7 @@ export function useAppState() {
     persistPanelSize,
     viewLayer,
     openLayerFeatures,
+    toggleLayerFeatures,
     closeLayerFeatures,
   };
 }

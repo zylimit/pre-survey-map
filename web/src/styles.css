@@ -383,10 +383,10 @@ button, input, select, textarea {
 }
 
 .tree .node.selected {
-  background: var(--accent-bg);
-  border-left-color: var(--accent);
-  color: var(--accent);
-  box-shadow: var(--glow);  /* #19 暗色辉光（亮色为 none）*/
+  background: var(--selected-bg);
+  border-left-color: var(--selected);
+  color: var(--selected);
+  box-shadow: var(--selected-glow);  /* #34 选中蓝辉光（亮色为 none）*/
 }
 
 .tree .node.hidden-node .node-label {
@@ -429,10 +429,10 @@ button, input, select, textarea {
   background: var(--accent-bg);
 }
 .tree .layer-row.node-highlighted {
-  background: var(--accent-bg);
-  border-left-color: var(--accent);
-  color: var(--accent);
-  box-shadow: var(--glow);
+  background: var(--selected-bg);
+  border-left-color: var(--selected);
+  color: var(--selected);
+  box-shadow: var(--selected-glow);
 }
 .tree .layer-label {
   flex: 0 1 auto;
@@ -516,9 +516,9 @@ button, input, select, textarea {
   background: var(--accent-bg);
 }
 .tree .style-row.node-highlighted {
-  background: var(--accent-bg);
-  border-left-color: var(--accent);
-  box-shadow: var(--glow);
+  background: var(--selected-bg);
+  border-left-color: var(--selected);
+  box-shadow: var(--selected-glow);
 }
 .tree .style-dot {
   width: 10px;
@@ -683,8 +683,8 @@ button, input, select, textarea {
   background: var(--accent-bg);
 }
 .lfl-row.selected {
-  background: var(--accent-bg);
-  border-left-color: var(--accent);
+  background: var(--selected-bg);
+  border-left-color: var(--selected);
 }
 .lfl-cell {
   /* #31：列宽走内联 flex(grow:col.w / shrink:0 / basis:col.w)，不在此设 flex-shrink */
