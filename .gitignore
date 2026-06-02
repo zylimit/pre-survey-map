@@ -35,6 +35,9 @@ data/*.tmp
 # 大体积测试数据（勿入库）
 data/KML_Region_Province_Site_*.kml
 data/站点数据库模板*.xlsx
+# data/ 根下所有测试 kml/xlsx（1234.xlsx / Integrated_Libraries_*.kml 等；demo 在 data/exports/，下方 ! 例外）
+data/*.kml
+data/*.xlsx
 !data/exports/export_full_demo.kmz
 !data/exports/export_region_demo.kmz
 !data/exports/conflicts_demo.xlsx
