@@ -13,7 +13,9 @@ import RestorePointDialog from "./components/RestorePointDialog";
 import BaselineStatusBar from "./components/BaselineStatusBar";
 import AuditPasswordPrompt from "./components/AuditPasswordPrompt";
 import AuditModal from "./components/AuditModal";
+import BackupRestoreDialog from "./components/BackupRestoreDialog";
 import { useEscTrigger } from "./hooks/useEscTrigger";
+import { useKeyTrigger } from "./hooks/useKeyTrigger";
 import { useAppState } from "./state";
 
 export default function App() {
@@ -22,6 +24,10 @@ export default function App() {
   const [restorePointsOpen, setRestorePointsOpen] = useState(false);
   const [auditPwdOpen, setAuditPwdOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  // #42：3×B → 密码门 → 备份恢复 Modal
+  const [backupPwdOpen, setBackupPwdOpen] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
+  const [backupPwd, setBackupPwd] = useState("");
   const s = useAppState();
   const tFn = useT();
 
@@ -32,6 +38,12 @@ export default function App() {
     // 已打开任意一个就不再弹
     if (auditPwdOpen || auditOpen) return;
     setAuditPwdOpen(true);
+  }, 3, 1000, !importBusy);
+
+  // #42 隐藏入口：连按 3 次 B → 密码框 → 备份恢复 Modal（输入态/导入中屏蔽）
+  useKeyTrigger("KeyB", () => {
+    if (backupPwdOpen || backupOpen) return;
+    setBackupPwdOpen(true);
   }, 3, 1000, !importBusy);
 
   useEffect(() => {
@@ -241,6 +253,24 @@ export default function App() {
       )}
       {auditOpen && (
         <AuditModal onClose={() => setAuditOpen(false)} />
+      )}
+
+      {/* #42 隐藏备份恢复入口（3×B） */}
+      {backupPwdOpen && (
+        <AuditPasswordPrompt
+          onPass={(pwd) => { setBackupPwd(pwd); setBackupPwdOpen(false); setBackupOpen(true); }}
+          onCancel={() => setBackupPwdOpen(false)}
+        />
+      )}
+      {backupOpen && (
+        <BackupRestoreDialog
+          password={backupPwd}
+          onClose={() => { setBackupOpen(false); setBackupPwd(""); }}
+          onRestored={async () => {
+            await s.refresh();
+            await s.refreshBaselineState();
+          }}
+        />
       )}
     </div>
   );

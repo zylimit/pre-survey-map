@@ -96,13 +96,20 @@ CREATE TABLE IF NOT EXISTS restore_point (
     id              BIGSERIAL   PRIMARY KEY,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     reason          TEXT        NOT NULL
-                    CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual')),
+                    CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual','auto_backup')),
     note            TEXT,
     site_count      INT,
     road_count      INT,
     lessor_count    INT,
     baseline_iso_a2 TEXT
 );
+
+-- #42：reason 增加 'auto_backup'（定时自动备份）。
+-- 已部署库 CREATE TABLE IF NOT EXISTS 不会重跑 → 用幂等 ALTER 重建 CHECK 约束。
+-- 内联 CHECK 的默认约束名 = restore_point_reason_check。
+ALTER TABLE restore_point DROP CONSTRAINT IF EXISTS restore_point_reason_check;
+ALTER TABLE restore_point ADD CONSTRAINT restore_point_reason_check
+    CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual','auto_backup'));
 
 -- site_snapshot: 镜像 site 全列 + restore_point_id
 CREATE TABLE IF NOT EXISTS site_snapshot (

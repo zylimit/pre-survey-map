@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Callable
 
@@ -10,9 +11,10 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.formparsers import MultiPartParser
 
 from audit_middleware import SessionCookieMiddleware
+from backup_scheduler import backup_loop
 from db import close_pool, init_pool, ping, pool
 from geo_loader import ensure_countries_loaded
-from routers import audit, baseline, exports, imports, lessors, restore_points, roads, sites
+from routers import audit, backups, baseline, exports, imports, lessors, restore_points, roads, sites
 
 # SpooledTemporaryFile 默认 1MB 触发磁盘溢写，溢写路径调用 run_in_threadpool，
 # 在 k8s pod 线程耗尽时抛出 RuntimeError: can't start new thread。
@@ -58,8 +60,17 @@ async def lifespan(_: FastAPI):
         # 加载失败不阻塞启动；地理判定会退化（in_sea / not_in_baseline 不触发）
         import logging
         logging.getLogger("startup").error(f"countries 加载失败：{e}")
-    yield
-    await close_pool()
+    # #42：起后台定时备份任务（每 12h + 启动补偿）
+    backup_task = asyncio.create_task(backup_loop())
+    try:
+        yield
+    finally:
+        backup_task.cancel()
+        try:
+            await backup_task
+        except asyncio.CancelledError:
+            pass
+        await close_pool()
 
 
 app = FastAPI(title="pre-survey-map api", version="0.1.0", lifespan=lifespan)
@@ -90,4 +101,5 @@ app.include_router(imports.router, prefix="/api/import", tags=["import"])
 app.include_router(exports.router, prefix="/api/export", tags=["export"])
 app.include_router(baseline.router, prefix="/api", tags=["baseline"])
 app.include_router(restore_points.router, prefix="/api/restore-points", tags=["restore_points"])
+app.include_router(backups.router, prefix="/api/backups", tags=["backups"])
 app.include_router(audit.router, prefix="/api", tags=["audit"])

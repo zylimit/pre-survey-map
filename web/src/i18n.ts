@@ -108,6 +108,17 @@ const en = {
   "rp.confirm.ok":         "Confirm Rollback",
   "rp.confirm.cancel":     "Cancel",
 
+  // #42 BackupRestoreDialog
+  "bk.title":              "🗄️ Auto Backups",
+  "bk.loading":            "Loading...",
+  "bk.empty":              "No auto backups yet",
+  "bk.badge":              "Auto Backup",
+  "bk.restore":            "Restore",
+  "bk.confirm.title":      "Restore from Backup",
+  "bk.confirm.body":       "Restore to auto backup\n({time}, site {s} · road {r} · lessor {l})\n\nCurrent data will be completely replaced.\nA [Before Rollback] point will be auto-created so you can undo.\n\nContinue?",
+  "bk.confirm.ok":         "Confirm Restore",
+  "bk.confirm.cancel":     "Cancel",
+
   // CleaningDialog
   "cl.step":               "Step 1: Data Cleaning · {file}",
   "cl.baseline.none":      "Baseline region: unidentified (no country detected from DB or file)",
@@ -403,6 +414,17 @@ const zh: Record<keyof typeof en, string> = {
   "rp.confirm.body":       "回滚到「{reason}」恢复点\n（{time}，site {s} · road {r} · lessor {l}）\n\n当前数据将被完全替换。\n回滚前会自动建一个「回滚前」恢复点，可再退回。\n\n确定继续？",
   "rp.confirm.ok":         "确定回滚",
   "rp.confirm.cancel":     "取消",
+
+  // #42 BackupRestoreDialog
+  "bk.title":              "🗄️ 自动备份",
+  "bk.loading":            "加载中...",
+  "bk.empty":              "暂无自动备份",
+  "bk.badge":              "自动备份",
+  "bk.restore":            "还原",
+  "bk.confirm.title":      "从备份还原",
+  "bk.confirm.body":       "还原到自动备份\n（{time}，site {s} · road {r} · lessor {l}）\n\n当前数据将被完全替换。\n还原前会自动建一个「回滚前」恢复点，可再退回。\n\n确定继续？",
+  "bk.confirm.ok":         "确定还原",
+  "bk.confirm.cancel":     "取消",
 
   "cl.step":               "步骤 1：数据清洗 · {file}",
   "cl.baseline.none":      "基准区域：未识别（库与本文件都无法定位到任何国家）",

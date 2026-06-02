@@ -277,6 +277,34 @@ export async function deleteRestorePoint(id: number): Promise<void> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
+// ---------- #42 定时自动备份 ----------
+
+export interface Backup {
+  id: number;
+  created_at: string;
+  reason: string;          // 恒为 'auto_backup'
+  note: string | null;
+  site_count: number | null;
+  road_count: number | null;
+  lessor_count: number | null;
+  baseline_iso_a2: string | null;
+}
+
+export async function listBackups(): Promise<Backup[]> {
+  const res = await fetch("/api/backups");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function restoreBackup(id: number, password: string): Promise<void> {
+  const res = await fetch(`/api/backups/${id}/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
 // ---------- F19 审计日志（Spec V1.x #23）----------
 
 export type AuditAction =

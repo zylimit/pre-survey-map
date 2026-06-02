@@ -9,7 +9,7 @@ import { useT } from "../i18n";
 const AUDIT_PASSWORD = "mangosv5";
 
 interface Props {
-  onPass: () => void;
+  onPass: (password: string) => void;   // #42：把验证通过的密码传回（备份还原复用）
   onCancel: () => void;
 }
 
@@ -24,7 +24,7 @@ export default function AuditPasswordPrompt({ onPass, onCancel }: Props) {
 
   const submit = () => {
     if (value === AUDIT_PASSWORD) {
-      onPass();
+      onPass(value);
       return;
     }
     setError(true);

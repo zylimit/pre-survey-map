@@ -12,7 +12,7 @@ from typing import Optional
 
 from audit import write_audit
 from db import pool
-from restore_point_helper import create_restore_point
+from restore_point_helper import create_restore_point, restore_from_snapshot
 
 router = APIRouter()
 
@@ -81,56 +81,8 @@ async def rollback(rp_id: int, request: Request):
             # 防止环形淘汰把目标点连同快照一起删掉导致回滚后数据全空。
             pre_rollback_rp_id = await create_restore_point(conn, "pre_rollback", protect_id=rp_id)
 
-            # 覆盖式回滚：TRUNCATE + 从快照重灌
-            await conn.execute("TRUNCATE TABLE site, road, lessor")
-            await conn.execute("DELETE FROM baseline_state")
-
-            await conn.execute(
-                """
-                INSERT INTO site
-                    (site_id, "option", project, site_status,
-                     operator, category, type, lati, longi,
-                     extras, source_file, created_at, updated_at, geom)
-                SELECT site_id, "option", project, site_status,
-                       operator, category, type, lati, longi,
-                       extras, source_file, created_at, updated_at, geom
-                FROM site_snapshot
-                WHERE restore_point_id = $1
-                """,
-                rp_id,
-            )
-            await conn.execute(
-                """
-                INSERT INTO road (id, property, extras, source_file, created_at, geom)
-                SELECT id, property, extras, source_file, created_at, geom
-                FROM road_snapshot
-                WHERE restore_point_id = $1
-                """,
-                rp_id,
-            )
-            await conn.execute(
-                """
-                INSERT INTO lessor
-                    (fid, lessor_name, lessor_category, relationship,
-                     extras, source_file, created_at, updated_at, geom)
-                SELECT fid, lessor_name, lessor_category, relationship,
-                       extras, source_file, created_at, updated_at, geom
-                FROM lessor_snapshot
-                WHERE restore_point_id = $1
-                """,
-                rp_id,
-            )
-            await conn.execute(
-                """
-                INSERT INTO baseline_state
-                    (id, iso_a2, name_zh, coverage_pct, points_used, established_at)
-                SELECT id, iso_a2, name_zh, coverage_pct, points_used, established_at
-                FROM baseline_state_snapshot
-                WHERE restore_point_id = $1
-                ON CONFLICT (id) DO NOTHING
-                """,
-                rp_id,
-            )
+            # 覆盖式回滚：TRUNCATE + 从快照重灌（#42 抽到 restore_point_helper 复用）
+            await restore_from_snapshot(conn, rp_id)
 
     # F19 审计：rollback + 关联 pre_rollback auto 恢复点
     # Spec 12 类操作含 restore_point_undo_last_import → 业务逻辑：
