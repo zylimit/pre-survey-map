@@ -136,7 +136,7 @@
   - 右上：缩放 +/- 按钮、定位（fit bounds 到全部数据）按钮、底图切换
   - 右下：比例尺 + 当前鼠标经纬度
 - 要素样式（**V1.x #24 · F20：形状来自图层站型、颜色来自状态**）：
-  - Site：**形状 = type**（Macro ▲ / Micro ● / IBS ■ / Macro NP △ / Micro NP ○ / Macro-ongoing ◆ / Micro-ongoing ◇，形状为默认建议可微调）× **颜色 = site_status**（positive 绿 / negative 黄 / undermine 红 / 空值灰）
+  - Site：**形状 = type**（Macro ▲ / Micro ● / IBS ■ / Macro NP △ / Micro NP ○ / Macro-ongoing ◆ / Micro-ongoing ◇，形状为默认建议可微调）× **颜色 = site_status**（positive 绿 / negative 红 / undermine 黄 / 空值灰）**【V1.x #33：negative 与 undermine 红黄对调】**
   - Lessor：Unfriendly 红面 / Normal 黄面（**去掉 Friendly 绿面**）
   - Road：棕色线
   - 规划类（Macro NP / Micro NP）额外画 50m 透明辐射圈（仅渲染不入库，详见 F20）
@@ -335,7 +335,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 |------|------|------|--------|------|
 | 📁 | **文件夹** | 无 | 三态（控制后代显隐） | 纯逻辑分组：Site 根、各运营商、各类别 |
 | 🔺 | **图层** | **2 个**（[导入图层] / [查看图层要素]；**V1.x #27：紧跟节点文字后、hover 该节点行才显示、平时隐藏**） | 有（控制整层显隐） | 一个 SITE TYPE（站型）= 一个图层；导入与查看的唯一入口；显示该层要素总数 |
-| 🎨 | **样式** | 无 | 有（控制该状态子集显隐） | 图层下按 site_status 分色的图例（绿/黄/红 + 灰 fallback）；显示该状态要素数；**不含要素节点**，要素在列表框 |
+| 🎨 | **样式** | 无 | 有（控制该状态子集显隐） | 图层下按 site_status 分色的图例（positive 绿 / negative 红 / undermine 黄 + 灰 fallback，#33 起红黄对调）；**固定挂载、0 要素也显示**（#33）；显示该状态要素数；**不含要素节点**，要素在列表框 |
 
 #### 完整树结构（固定骨架）
 
@@ -367,11 +367,17 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 
 - **类别 → 站型映射（写死）**：存量 = {Macro, Micro, IBS}；规划 = {Macro NP, Micro NP}；勘测 = {Macro-ongoing, Micro-ongoing}。
 - 每个 Site 图层下固定挂 3 个状态样式节点（positive/negative/undermine）；**空值/未知状态的点渲染为灰**，归入隐式「未分类 🎨 ⚪」（仅当存在空值点时显示）。
+- **样式节点是固定骨架，不随计数消失（V1.x #33）**：🎨 样式节点代表「样式类目」，是图层的**固定子骨架**——**即使该样式下 0 要素也照常显示**（显示计数 0 + 复选框 + 色点），不因空而隐藏。所以**图层节点永远有子节点、永远可展开**。
+  - Site 图层：固定挂 **positive / negative / undermine** 三个样式节点（恒显示，即使全 0）。
+  - **灰色「未分类 ⚪」例外**：它是 catch-all（site_status 空值或区配不上 pos/neg/und 的点才归入），**仅当存在这类点时才显示**，不固定常驻。
+  - Road 图层：固定挂 **🎨 棕线** 单样式（恒显示）。
+  - Lessor 图层：固定挂 **🎨 Unfriendly 红 / Normal 黄** 两样式（恒显示）。
+  - **撤销 V1.x #32 改动1**：#32 当时给"空层"做的「disclose 显灰 `−` 不可点（leaf 态）」是**建立在样式节点被错误隐藏之上的错误补丁**——根因是 `StyleRow` 写了 `ids.length===0 return null` 违背本节"固定挂"原意。#33 修正后图层永远可展开，#32 leaf 逻辑作废回退（disclose 恢复始终 `+`/`−` 可点）。#32 其余三条（空层 [查看] 置灰 / 两按钮图标化）**保留不变**。
 - **树搜索框移除**：原 F7 顶部树搜索框删掉（树是固定骨架，无需搜索）；要素检索改由列表框「筛选」+ F16 右上「搜索」承担。
 - 节点总数固定约 100 个，**不再需要树虚拟化**（虚拟化转移到列表框）。
 - **图层节点图标（V1.x #29）**：🔺 图层节点图标**按站型形状渲染**（▲Macro / ●Micro / ■IBS / △Macro NP / ○Micro NP / ◆Macro-ongoing / ◇Micro-ongoing；Road 图层根 = 线形 ▬、Lessor 图层根 = 面形 ◼），**统一灰色**（与地图形状一致、便于树图对照）；图层含多状态点，图标只表形状不表状态，**状态分色仍在下面 🎨 样式节点**。原统一 🔺 emoji 作废（#24 完整树结构里的 🔺 仅为示意）。
 - **图层节点交互细化（V1.x #32）**：四条收尾，去掉误导、空层禁用、按钮图标化：
-  - **空层不显示 `+`（无子节点 → leaf 态）**：🔺 图层节点若**该层要素数为 0**（cnt=0 → 展开后 🎨 样式行全为空、什么都没有），左侧展开符**固定显灰 `−`、不可点**（leaf 态），不再显 `+`——`+` 会让人误以为下面还有节点。仅图层节点适用；📁 文件夹层骨架固定有下层图层行（即使计数 0 仍渲染），不受影响，照常 `+`/`−` 可展开。
+  - ~~**空层不显示 `+`（无子节点 → leaf 态）**：cnt=0 时 disclose 显灰 `−` 不可点~~ **【V1.x #33 作废回退】**：此条基于"样式节点被隐藏"的错误前提；#33 改样式节点为固定骨架后，图层永远有子、永远可展开，disclose 恢复始终 `+`/`−` 可点（详见上「样式节点是固定骨架」条）。
   - **空层 [查看图层要素] 按钮置灰**：cnt=0 时 view 按钮 `disabled`（灰 + not-allowed），空层查看无意义；cnt>0 才可点。导入按钮不受要素数影响（空层正是要导入的）。
   - **[导入图层] 按钮改图标**：纯图标（**lucide `Download`**，箭头入托盘——导入 = 数据向下进入当前界面的通用惯例），去掉文字；i18n 全称移到 `title`（hover tooltip）+ `aria-label`（无障碍）。
   - **[查看图层要素] 按钮改图标**：纯图标（**lucide `Eye`**，view/preview 通用惯例），去掉文字；title/aria-label 同上。
@@ -430,7 +436,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 #### 样式与渲染（形状 × 颜色）
 
 - **形状来自图层（站型 type）**，**颜色来自状态（site_status）**，二者叠加 = 地图上的最终图标（如"绿色三角""黄色五角星"）。
-- **颜色（site_status）**：positive = 🟢 绿 / negative = 🟡 黄 / undermine = 🔴 红 / 空值未知 = ⚪ 灰。
+- **颜色（site_status）**：positive = 🟢 绿 / negative = 🔴 红 / undermine = 🟡 黄 / 空值未知 = ⚪ 灰。**（V1.x #33 起 negative 红、undermine 黄；单一真源 `utils.STATUS_COLOR`）**
 - **形状（type）映射（V1.x #25 · 已与用户敲定，接受默认）**：实施侧用 OpenLayers `RegularShape` 渲染（points/radius/angle 控形状，fill/stroke 控实心/空心）。逻辑：**实心 = 存量、空心 = 规划、菱形 = 勘测**。
 
   | type | 建议形状 |
@@ -461,7 +467,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 
 #### 配色与状态迁移（实施需处理的存量数据）
 
-- **V1 旧 legend "Positive 绿 / Negative 黄 / Unknown 红"** → 新口径 **positive / negative / undermine**：**`Unknown` 状态值迁移为 `undermine`**（红色不变，仅改名）。
+- **V1 旧 legend "Positive 绿 / Negative 黄 / Unknown 红"** → 新口径 **positive / negative / undermine**：**`Unknown` 状态值迁移为 `undermine`**（仅状态值改名，数据层 `_norm_site_status` 不变）。**配色 V1.x #33 起调整：negative = 红、undermine = 黄（与旧 legend 的红黄分布不同，以 #33 为准）。**
 - 空值 / null 状态 → 灰 fallback（未分类）。
 - 旧 Lessor `Friendly` → 迁移为 `Normal`（去掉 Friendly 一态）。
 - 旧 site 数据**没有 operator/category/type**（在浅树时代导入）：**V1.x #25 拍板 = 清库重来，不做库内迁移**。现有库数据为开发/测试数据，F20 代码上线后走 F14「清除基线」truncate `site`/`road`/`lessor` + `baseline_state`，再按新图层树逐层 [导入图层] 重新灌入（盖戳写三列）。**不新增「未分类」兜底层，固定骨架保持 Globe/Smart/Dito 纯净。** 注意：库内值迁移虽免，但**导入器层面**源文件状态值规范化仍保留（源 KML 可能仍含 `Unknown`/`Friendly`，导入时映射到 `undermine`/`Normal`）。
