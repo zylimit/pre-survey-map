@@ -21,6 +21,7 @@ import type { ChangeEvent } from "react";
 import { FeatureCollection, LayerStamp } from "../api";
 import { PANEL_LIMITS } from "../state";
 import type { Phase, ViewLayerTarget } from "../state";
+import { Download, Eye } from "lucide-react";
 import { useT } from "../i18n";
 import { STATUS_COLOR } from "../utils";
 import ResizeHandle from "./ResizeHandle";
@@ -284,13 +285,18 @@ function LayerTree({
         className={`layer-row${highlighted ? " node-highlighted" : ""}`}
         style={{ paddingLeft: 4 + depth * 14 }}
       >
-        <span
-          className={`folder-disclose ${open ? "open" : "closed"}`}
-          onClick={() => toggleOpen(nodeKey)}
-          title={open ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
-        >
-          {open ? "−" : "+"}
-        </span>
+        {/* #32：空图层（cnt===0）→ 灰 leaf `−` 不可点；有要素 → +/− 可点 */}
+        {cnt > 0 ? (
+          <span
+            className={`folder-disclose ${open ? "open" : "closed"}`}
+            onClick={() => toggleOpen(nodeKey)}
+            title={open ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
+          >
+            {open ? "−" : "+"}
+          </span>
+        ) : (
+          <span className="folder-disclose leaf" aria-hidden="true" title={tFn("lt.layer.empty")}>−</span>
+        )}
         <CB ids={ids} />
         {/* #27-2：两按钮紧跟文字后，默认隐藏，hover 行才显示（CSS）；计数靠右
             #29：图标按站型形状（灰色），替代统一 🔺 */}
@@ -298,16 +304,19 @@ function LayerTree({
           <span className="layer-icon">{iconFor(stamp)}</span> {label}
         </span>
         <div className="layer-actions">
+          {/* #32：两按钮改纯 lucide 图标，文字进 title/aria-label */}
           <button
-            className="layer-btn"
+            className="layer-btn layer-btn-icon"
             disabled={busy}
             onClick={() => openPicker(stamp)}
             title={tFn("lt.btn.import_layer.tip")}
+            aria-label={tFn("lt.btn.import_layer")}
           >
-            {tFn("lt.btn.import_layer")}
+            <Download size={14} strokeWidth={1.8} />
           </button>
           <button
-            className="layer-btn layer-btn-view"
+            className="layer-btn layer-btn-view layer-btn-icon"
+            disabled={busy || cnt === 0}
             onClick={e => {
               const r = e.currentTarget.getBoundingClientRect();
               onViewLayer({
@@ -318,8 +327,9 @@ function LayerTree({
               }, { x: r.right, y: r.bottom });
             }}
             title={tFn("lt.btn.view_features.tip")}
+            aria-label={tFn("lt.btn.view_features")}
           >
-            {tFn("lt.btn.view_features")}
+            <Eye size={14} strokeWidth={1.8} />
           </button>
         </div>
         <span className="folder-count layer-count">{cnt}</span>
