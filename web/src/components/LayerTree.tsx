@@ -285,18 +285,14 @@ function LayerTree({
         className={`layer-row${highlighted ? " node-highlighted" : ""}`}
         style={{ paddingLeft: 4 + depth * 14 }}
       >
-        {/* #32：空图层（cnt===0）→ 灰 leaf `−` 不可点；有要素 → +/− 可点 */}
-        {cnt > 0 ? (
-          <span
-            className={`folder-disclose ${open ? "open" : "closed"}`}
-            onClick={() => toggleOpen(nodeKey)}
-            title={open ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
-          >
-            {open ? "−" : "+"}
-          </span>
-        ) : (
-          <span className="folder-disclose leaf" aria-hidden="true" title={tFn("lt.layer.empty")}>−</span>
-        )}
+        {/* #33：撤回 #32 空层 leaf——🎨 样式节点是固定骨架，图层永远可展开 */}
+        <span
+          className={`folder-disclose ${open ? "open" : "closed"}`}
+          onClick={() => toggleOpen(nodeKey)}
+          title={open ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
+        >
+          {open ? "−" : "+"}
+        </span>
         <CB ids={ids} />
         {/* #27-2：两按钮紧跟文字后，默认隐藏，hover 行才显示（CSS）；计数靠右
             #29：图标按站型形状（灰色），替代统一 🔺 */}
@@ -350,7 +346,8 @@ function LayerTree({
     depth?: number;
     highlighted?: boolean;
   }) => {
-    if (ids.length === 0) return null;
+    // #33：🎨 样式节点是图层固定子骨架，0 计数也显示（不再 null-return）。
+    // 「未分类」灰色节点的「有才显示」由调用处单独包条件控制。
     const ts = triOf(ids);
     return (
       <div
@@ -453,11 +450,12 @@ function LayerTree({
                                   />
                                 );
                               })}
-                              {/* null/unknown status（仅当存在时显示）*/}
+                              {/* #33：灰色「未分类」例外——仅当有空值点时显示
+                                  （其余 pos/neg/und 已是固定骨架，0 计数也显示）*/}
                               {(() => {
                                 const nullKey = `${layerKey}/`;
                                 const nullIds = siteMap.get(nullKey) ?? [];
-                                return (
+                                return nullIds.length > 0 ? (
                                   <StyleRow
                                     nodeKey={nullKey}
                                     label={tFn("lt.tree.status.null")}
@@ -466,7 +464,7 @@ function LayerTree({
                                     depth={4}
                                     highlighted={hl === nullKey}
                                   />
-                                );
+                                ) : null;
                               })()}
                             </>
                           )}

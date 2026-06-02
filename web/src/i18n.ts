@@ -245,7 +245,6 @@ const en = {
   "lt.btn.import_layer.tip":     "Import Layer",
   "lt.btn.view_features":        "View",
   "lt.btn.view_features.tip":    "View Layer Features",
-  "lt.layer.empty":              "No features in this layer",
 
   // F20 Phase 4 LayerFeatureList (V1.x #24)
   "lfl.title":                   "Layer Features",
@@ -532,7 +531,6 @@ const zh: Record<keyof typeof en, string> = {
   "lt.btn.import_layer.tip":     "导入图层",
   "lt.btn.view_features":        "查看",
   "lt.btn.view_features.tip":    "查看图层要素",
-  "lt.layer.empty":              "该图层暂无要素",
 
   // F20 Phase 4 LayerFeatureList
   "lfl.title":                   "图层要素",

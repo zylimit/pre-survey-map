@@ -23,13 +23,13 @@ export function nameOf(f: Feature): string {
 //    不许再各抄一份色表（收敛 Phase 4 遗留的坑6）。
 
 // 状态 / 关系 / 类型 → 色。键沿用历史口径（LayerTree/LayerFeatureList 原样）：
-//   site_status: positive 绿 / negative 黄 / undermine 红 / ""(空值未知) 灰
+//   site_status: positive 绿 / negative 红 / undermine 黄 / ""(空值未知) 灰（#33 红黄对调）
 //   lessor relationship: Unfriendly 红 / Normal 黄（去 Friendly）
 //   road: 单色棕
 export const STATUS_COLOR: Record<string, string> = {
   positive:   "#4caf50",
-  negative:   "#ffb300",
-  undermine:  "#f44336",
+  negative:   "#f44336",
+  undermine:  "#ffb300",
   "":         "#9e9e9e",
   Unfriendly: "#f44336",
   Normal:     "#ffb300",

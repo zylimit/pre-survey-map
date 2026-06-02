@@ -331,17 +331,10 @@ button, input, select, textarea {
               border-color var(--transition-fast);
 }
 
-.tree .folder-disclose:not(.leaf):hover {
+.tree .folder-disclose:hover {
   color: var(--accent);
   background: var(--accent-bg);
   border-color: var(--accent);
-}
-/* #32：空图层的 disclose = 灰色 leaf `−`，不可点、不 hover 高亮 */
-.tree .folder-disclose.leaf {
-  cursor: default;
-  color: var(--text-disabled);
-  background: transparent;
-  border-color: transparent;
 }
 
 .tree .folder-title {
