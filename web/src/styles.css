@@ -1031,11 +1031,20 @@ button, input, select, textarea {
 }
 
 .output .status {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
+}
+/* #38：版本号 + 构建时间。margin-left:auto 把 version + DB 状态一起推到折叠条右端 */
+.output .app-version {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: default;
+  font-family: var(--font-mono);
 }
 
 .output .dot {

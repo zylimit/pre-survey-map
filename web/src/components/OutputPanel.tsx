@@ -154,6 +154,14 @@ export default function OutputPanel({
             {tFn("op.search.summary", { count: searchResults.total })}
           </span>
         )}
+        {/* #38：软件版本号 + 构建时间（构建时注入，DB 状态圆点旁）*/}
+        <span
+          className="app-version"
+          onClick={e => e.stopPropagation()}
+          title={`版本 ${__APP_VERSION__} · 构建 ${__BUILD_TIME__}`}
+        >
+          v{__APP_VERSION__} · {__BUILD_TIME__}
+        </span>
         <div className="status">
           <span className={dotClass} />
           <span>{dotLabel}</span>
