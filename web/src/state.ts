@@ -74,6 +74,13 @@ export interface ViewLayerTarget {
   type: string | null;      // site only
 }
 
+// F20 #30：列表框=可拖可缩浮动窗口。单 state 复用——首次开窗用 anchor（触发按钮坐标）
+// 定位；已开时切图层只换 target、anchor 仅在组件首次挂载读取，位置尺寸不动。
+export interface ViewLayerState {
+  target: ViewLayerTarget;
+  anchor: { x: number; y: number } | null;  // 触发按钮的右下角视口坐标
+}
+
 // 三面板缩放（Spec V1.x #11）
 export type PanelKey = "left" | "right" | "bottom";
 
@@ -151,8 +158,8 @@ export function useAppState() {
   }));
   // 拖拽中通知地图 updateSize() 的 epoch
   const [layoutEpoch, setLayoutEpoch] = useState(0);
-  // F20 Phase 4：当前打开的「查看图层要素」浮动列表框目标（null = 未打开）
-  const [viewLayer, setViewLayer] = useState<ViewLayerTarget | null>(null);
+  // F20 Phase 4/#30：当前打开的「查看图层要素」浮动窗口（null = 未打开）
+  const [viewLayer, setViewLayer] = useState<ViewLayerState | null>(null);
 
   const log = useCallback((level: LogEntry["level"], msg: string) => {
     const locale = getLang() === "zh" ? "zh-CN" : "en-US";
@@ -432,8 +439,12 @@ export function useAppState() {
 
   const fitAll = useCallback(() => setFitAllEpoch(Date.now()), []);
 
-  // F20 Phase 4：打开/关闭「查看图层要素」浮动列表框
-  const openLayerFeatures = useCallback((target: ViewLayerTarget) => setViewLayer(target), []);
+  // F20 Phase 4/#30：打开/关闭「查看图层要素」浮动窗口。anchor=触发按钮坐标（首次开窗定位用）
+  const openLayerFeatures = useCallback(
+    (target: ViewLayerTarget, anchor: { x: number; y: number } | null) =>
+      setViewLayer({ target, anchor }),
+    [],
+  );
   const closeLayerFeatures = useCallback(() => setViewLayer(null), []);
 
   // 拖拽中实时改 panel size 并通知地图重绘

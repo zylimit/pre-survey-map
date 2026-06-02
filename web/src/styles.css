@@ -528,14 +528,10 @@ button, input, select, textarea {
 /* ============ F20 Phase 4 · 查看图层要素浮动列表框 ============ */
 /* 非 modal：无遮罩、不挡地图交互；固定居中偏上浮动，z-index 在地图控件之上、
    modal(1000) 之下，保证两步导入向导/审计 Modal 仍能盖住它 */
+/* #30：可拖可缩浮动窗口。left/top/width/height 全由组件内联 style 驱动，
+   这里只给 chrome（位置:fixed、外观、层级）。overflow:hidden 让圆角/缩放手柄裁切。 */
 .lfl-panel {
   position: fixed;
-  top: 96px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 560px;
-  max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 160px);
   display: flex;
   flex-direction: column;
   background: var(--bg-panel);
@@ -545,6 +541,7 @@ button, input, select, textarea {
   z-index: 600;
   overflow: hidden;
 }
+/* header 兼作拖动手柄（#30）：cursor:move + 禁选；关闭按钮自身仍可点 */
 .lfl-head {
   display: flex;
   align-items: center;
@@ -552,6 +549,9 @@ button, input, select, textarea {
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-input);
+  cursor: move;
+  user-select: none;
+  flex-shrink: 0;
 }
 .lfl-title {
   flex: 1;
@@ -591,6 +591,7 @@ button, input, select, textarea {
 .lfl-filter {
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .lfl-filter input {
   width: 100%;
@@ -607,7 +608,12 @@ button, input, select, textarea {
   outline: none;
   border-color: var(--accent);
 }
+/* 空态：占满 body 区（窗口固定高，不塌成一条）*/
 .lfl-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 24px 12px;
   text-align: center;
   font-size: 12px;
@@ -680,6 +686,24 @@ button, input, select, textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
+}
+/* #30 右下角缩放手柄：16×16，斜纹光标，悬停显 accent */
+.lfl-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 3;
+  background:
+    linear-gradient(135deg, transparent 0 6px, var(--border) 6px 8px,
+      transparent 8px 10px, var(--border) 10px 12px, transparent 12px);
+}
+.lfl-resize:hover {
+  background:
+    linear-gradient(135deg, transparent 0 6px, var(--accent) 6px 8px,
+      transparent 8px 10px, var(--accent) 10px 12px, transparent 12px);
 }
 
 /* ============ Resize Handles ============ */

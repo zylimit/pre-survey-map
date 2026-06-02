@@ -161,12 +161,13 @@ export default function App() {
         onClearSearch={s.clearSearch}
       />
 
-      {/* F20 Phase 4：查看图层要素浮动列表框（非 modal）。
-          key 含目标标识 → 切换图层时整组件重挂载，筛选框/滚动位置自动复位 */}
+      {/* F20 Phase 4/#30：查看图层要素浮动窗口（非 modal，可拖可缩）。
+          不再用 key 重挂载——切图层只换 target、窗口位置/尺寸不动（#30 拍板）；
+          筛选/滚动复位改由组件内 useEffect([target]) 处理。anchor=首次开窗定位锚。 */}
       {s.viewLayer && (
         <LayerFeatureList
-          key={`${s.viewLayer.kind}/${s.viewLayer.operator ?? ""}/${s.viewLayer.category ?? ""}/${s.viewLayer.type ?? ""}`}
-          target={s.viewLayer}
+          target={s.viewLayer.target}
+          anchor={s.viewLayer.anchor}
           sites={s.sites}
           roads={s.roads}
           lessors={s.lessors}

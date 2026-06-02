@@ -68,7 +68,7 @@ interface Props {
   hiddenIds: Set<string>;
   onSetKindVisible: (ids: string[], visible: boolean) => void;
   onImportLayer: (file: File, stamp: LayerStamp) => void;
-  onViewLayer: (target: ViewLayerTarget) => void;
+  onViewLayer: (target: ViewLayerTarget, anchor: { x: number; y: number }) => void;
   phase: Phase;
   onResize: (px: number) => void;
   onResizeEnd: () => void;
@@ -308,12 +308,15 @@ function LayerTree({
           </button>
           <button
             className="layer-btn layer-btn-view"
-            onClick={() => onViewLayer({
-              kind: stamp.target_kind,
-              operator: stamp.operator ?? null,
-              category: stamp.category ?? null,
-              type: stamp.type ?? null,
-            })}
+            onClick={e => {
+              const r = e.currentTarget.getBoundingClientRect();
+              onViewLayer({
+                kind: stamp.target_kind,
+                operator: stamp.operator ?? null,
+                category: stamp.category ?? null,
+                type: stamp.type ?? null,
+              }, { x: r.right, y: r.bottom });
+            }}
             title={tFn("lt.btn.view_features.tip")}
           >
             {tFn("lt.btn.view_features")}
