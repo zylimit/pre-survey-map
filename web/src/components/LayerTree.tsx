@@ -25,6 +25,7 @@ import { ChevronRight, ChevronDown, Folder, FolderOpen, Download, Eye } from "lu
 import { useT } from "../i18n";
 import { STATUS_COLOR } from "../utils";
 import ResizeHandle from "./ResizeHandle";
+import SiteShapeIcon from "./SiteShapeIcon";
 
 // ─── 骨架定义 ────────────────────────────────────────────────────────────────
 
@@ -42,18 +43,8 @@ const SITE_STATUSES = ["positive", "negative", "undermine"] as const;
 
 // 🎨 样式圆点色统一引用 utils.STATUS_COLOR（单一真源，与 MapView/LayerFeatureList 同源）
 
-// #29：🔺 图层节点图标按站型形状渲染（统一灰色，状态分色仍在下面 🎨 样式节点）。
-// 实心字符 ▲●■◆ = 存量/勘测实心，空心字符 △○◇ = 规划空心——天然对应地图渲染口径。
-const LAYER_ICON: Record<string, string> = {
-  Macro: "▲", Micro: "●", IBS: "■",
-  "Macro NP": "△", "Micro NP": "○",
-  "Macro-ongoing": "◆", "Micro-ongoing": "◇",
-};
-function iconFor(stamp: LayerStamp): string {
-  if (stamp.target_kind === "road") return "▬";    // 线形
-  if (stamp.target_kind === "lessor") return "◼";  // 面形
-  return LAYER_ICON[stamp.type ?? ""] ?? "▲";       // 站型缺失/未知 → 退化实心三角
-}
+// #29→#37：🔺 图层节点图标已改自绘 SVG（SiteShapeIcon），形状读 utils.siteShape，
+// 颜色 currentColor 继承灰。原 Unicode 字符映射（LAYER_ICON/iconFor）已移除。
 
 // ─── 辅助 ────────────────────────────────────────────────────────────────────
 
@@ -115,7 +106,8 @@ function LayerTree({
       const op  = String(p.operator  ?? "");
       const cat = String(p.category  ?? "");
       const tp  = String(p.type      ?? "");
-      const st  = String(p.site_status ?? "");
+      // #37：site_status 统一小写化分组（源值可能大写 Negative）→ 与小写枚举/STATUS_COLOR 对齐
+      const st  = String(p.site_status ?? "").toLowerCase();
       push("site",                      id);
       push(op,                          id);
       push(`${op}/${cat}`,              id);
@@ -186,7 +178,8 @@ function LayerTree({
       const op  = String(p.operator    ?? "");
       const cat = String(p.category   ?? "");
       const tp  = String(p.type       ?? "");
-      const st  = String(p.site_status ?? "");
+      // #37：与 siteMap 分组同口径，小写化
+      const st  = String(p.site_status ?? "").toLowerCase();
       setHighlightedKey(`${op}/${cat}/${tp}/${st}`);
       setExpanded(prev => ({
         ...prev,
@@ -300,8 +293,8 @@ function LayerTree({
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
         <CB ids={ids} />
-        {/* #29 站型字符 #36 移入统一 node-type-icon 列（16px 居中灰） */}
-        <span className="node-type-icon">{iconFor(stamp)}</span>
+        {/* #37：站型自绘 SVG（替代 #29 Unicode 字符），居中在 #36 的 16px 列 */}
+        <span className="node-type-icon"><SiteShapeIcon stamp={stamp} size={14} /></span>
         {/* #27-2：两按钮紧跟文字后，默认隐藏，hover 行才显示（CSS）；计数靠右 */}
         <span className="folder-title layer-label">{label}</span>
         <div className="layer-actions">

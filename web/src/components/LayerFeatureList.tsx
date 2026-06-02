@@ -21,7 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Feature, FeatureCollection } from "../api";
 import type { ViewLayerTarget } from "../state";
 import { useT } from "../i18n";
-import { nameOf, STATUS_COLOR } from "../utils";
+import { nameOf, STATUS_COLOR, siteStatusColor } from "../utils";
 
 // ─── 虚拟化常量（沿用 #16 范式）────────────────────────────────────────────────
 const ROW_H = 30;   // 数据行高（与 .lfl-row 一致）
@@ -294,9 +294,13 @@ export default function LayerFeatureList({
       >
         {cols.map(col => {
           const txt = col.get(f);
-          const color = col.status
-            ? (STATUS_COLOR[String(f.properties?.[col.key] ?? "")] ?? STATUS_COLOR[""])
-            : undefined;
+          // #37：site_status 走 siteStatusColor（已 toLowerCase，修大写退灰）；
+          //      relationship 维持 STATUS_COLOR 原值查（Unfriendly/Normal 是大写 key，不能 lower）
+          const color = !col.status
+            ? undefined
+            : col.key === "site_status"
+              ? siteStatusColor(f.properties?.site_status as string | null | undefined)
+              : (STATUS_COLOR[String(f.properties?.[col.key] ?? "")] ?? STATUS_COLOR[""]);
           return (
             <span key={col.key} className="lfl-cell" style={{ flex: `${col.w} 0 ${col.w}px`, color }}>
               {txt}
