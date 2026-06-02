@@ -164,6 +164,18 @@ docker compose up -d --build   # 重建有变化的镜像，db 数据保留
 ```
 
 > ⚠️ `deploy/db/init.sql` **只在 pgdata 卷为空（首次）时执行**。后续改了表结构不会自动重跑 —— 要么写迁移 SQL 手动 `psql` 执行，要么 `down -v` 重置（清数据）。
+>
+> **F20 起 `init.sql` 全幂等**（`CREATE TABLE IF NOT EXISTS` + `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`），已有库升级可直接 re-apply，无需写一次性迁移脚本：
+>
+> ```bash
+> # 把幂等 init.sql 重新灌进运行中的库（ALTER ... IF NOT EXISTS 安全重入）
+> docker exec presurvey-db psql -U postgres -d presurvey \
+>   -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/01-init.sql
+> # 输出全是 ALTER TABLE + 已存在对象的 NOTICE skip，无 ERROR 即成功
+> # 改了 api/*.py 需连带重建镜像：docker compose up -d --build api
+> ```
+>
+> ⚠️ `docker compose restart db` **不会**重跑 init.sql（卷非空），必须用上面的 `psql -f` re-apply；或按 #25「清库重来」直接 `down -v` 重建空卷走首次初始化。
 
 ---
 
@@ -185,4 +197,4 @@ docker compose up -d --build   # 重建有变化的镜像，db 数据保留
 | api 日志 `countries 加载失败` | geo_data 没拷过去 / 卷挂载路径错 | 确认 `deploy/db/geo_data/*.geojson` 存在；加载失败不阻塞启动，但海陆判定会退化 |
 | 前端能开但导入/接口 500/502 | api 没起来 or db 没 healthy | `docker compose logs api db` 排查 |
 | 底图空白 | 内部网访问不了瓦片源 | 放通 cartocdn / arcgisonline 或挂代理 |
-| 改了 init.sql 没生效 | 卷非空不重跑 | 手动 psql 执行，或 `down -v` 重置（清数据） |
+| 改了 init.sql 没生效 | 卷非空不重跑 | 手动 psql 执行（见第 7 节具体命令），或 `down -v` 重置（清数据） |

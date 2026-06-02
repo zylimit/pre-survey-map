@@ -4,6 +4,40 @@
 
 ---
 
+## 2026-06-02 (#26)
+
+### F20 Phase 1+2 实施回写（数据层 + 盖戳导入器）
+
+**类型**：轻度变更（实施回写 · 固化 Phase 1/2 落地的工程决策与顺带修复）
+
+**来源**：实施侧 Phase 1（`ada2030`）+ Phase 2（`d93c681`）完成报告；规划侧逐项读 diff 验收通过（Phase 1 F17 三处同步、Phase 2 14/14）。
+
+**Phase 1 · 数据层**：
+- 三列 `TEXT` 可空无 DEFAULT；`init.sql` 用 `CREATE` 内建 + `ALTER ADD COLUMN IF NOT EXISTS` 双写，已有 volume 幂等升级
+- 快照/回滚 SQL 全用显式列名，不依赖列位置（CREATE 与 ALTER 列序不一致无影响）
+- `extras` 白名单取源侧大写别名超集 `OPERATOR/CATEGORY/TYPE/SITE TYPE`——`type` 源属性名是 `SITE TYPE`，必须连同排除否则属性面板重复显示
+- `api/db.py` 仅连接池，无 site 显式列读写，无需改
+
+**Phase 2 · 盖戳导入器（7 项工程决策）**：
+1. `type` 参数必须 `alias="type"`（变量 `type_`），否则遮蔽内置 `type()`，异常处理 `type(e).__name__` 静默出错
+2. `target_kind=None` 退回 F1 全局导入（不护栏/不盖戳），保 F1–F19 调用方 + KMZ 自反测试不破；Phase 5 移除全局按钮后自然废弃
+3. 空 Property 的 road 无去重身份（`_road_key` 返回 `''` 不入索引 → 当新行插），退化数据可能重复，可接受
+4. Road overwrite 按 `WHERE id` 精确更新（proceed 多查 road.id），不按 property，否则同 property 多行被一条 UPDATE 误伤
+5. 状态规范化（`Unknown→undermine`/`Friendly→Normal`）置于 `_site_dict`/`_lessor_dict` 单一漏斗，清洗预览/冲突列表/入库三处一致
+6. **顺带修复 KMZ road 自反一致性**（旧隐患）：旧版 road 无去重，导出重导入会重复插入破坏自反契约；Property 去重让 road 也自反（验收 conflict=2/non_conflict=0）
+7. 盖戳「将错就错」+ 防重复显示双验：源带 `OPERATOR=Dito` 导入 Globe 图层 → operator=Globe（Dito 忽略）且 extras={}
+
+**部署相关（按已定 / 本机坑 / 待定 三类区分）**：
+- **已定 → DEPLOY.md 第 7 节**：命名卷 + initdb 只首跑，`restart` 不重跑 init.sql；已有库升级用 `docker exec ... psql -f /docker-entrypoint-initdb.d/01-init.sql` re-apply（F20 起全幂等可安全重入）。此机制 Linux/ARM 服务器通用
+- **本机开发坑（不进 DEPLOY.md）**：Docker Desktop crash-loop 是实施侧 macOS x86 本机联调问题（import 资源尖峰 + docker exec 触发），与服务器部署无关；本机联调建议调大内存或走宿主端口直连
+- **跨架构部署链路 [待开发完细化]**：本机 x86 / 内部 Beta 服务器 ARM64 / 公司 Windows PC 作跳板（装不了 Docker Desktop）/ 服务器全隔离不通外网。预想链路：Mac `buildx` 出 arm64 镜像 → 公有云对象存储中转 → 内网 Windows 下载 + 开 VPN 上传 → ARM 服务器 `load`+`up`（Windows 仅搬运 tar，不需 Docker）。**按「先本地开发调通再议部署」的决定，DEPLOY.md 跨架构节留到开发收尾再写**
+
+**测试遗留**（不影响交付）：dev 库残留 P2*/ZZTEST_F20 测试行 + pre_import 恢复点，DELETE 被安全 hook 拦；#25 清库重来上线前会清
+
+**仍开放**：F13 清洗 keep/discard 两路径未单独造数据（仅测 auto_fix），Phase 2 未碰清洗决策应用逻辑，按「未改动即不回归」处理
+
+---
+
 ## 2026-06-02 (#25)
 
 ### F20 实施前敲定 · 两个待定雷拍板（形状映射 + 存量数据归属）
