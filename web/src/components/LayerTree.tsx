@@ -23,7 +23,7 @@ import { PANEL_LIMITS } from "../state";
 import type { Phase, ViewLayerTarget } from "../state";
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Download, Eye } from "lucide-react";
 import { useT } from "../i18n";
-import { STATUS_COLOR } from "../utils";
+import { STATUS_COLOR, statusBucket } from "../utils";
 import ResizeHandle from "./ResizeHandle";
 import SiteShapeIcon from "./SiteShapeIcon";
 
@@ -106,8 +106,8 @@ function LayerTree({
       const op  = String(p.operator  ?? "");
       const cat = String(p.category  ?? "");
       const tp  = String(p.type      ?? "");
-      // #37：site_status 统一小写化分组（源值可能大写 Negative）→ 与小写枚举/STATUS_COLOR 对齐
-      const st  = String(p.site_status ?? "").toLowerCase();
+      // #37 小写化 + #41 归桶：三标准状态取原值，其余统一 "other"（空值/pending 都进 other）
+      const st  = statusBucket(p.site_status);
       push("site",                      id);
       push(op,                          id);
       push(`${op}/${cat}`,              id);
@@ -178,8 +178,8 @@ function LayerTree({
       const op  = String(p.operator    ?? "");
       const cat = String(p.category   ?? "");
       const tp  = String(p.type       ?? "");
-      // #37：与 siteMap 分组同口径，小写化
-      const st  = String(p.site_status ?? "").toLowerCase();
+      // #37/#41：与 siteMap 分组同口径（归桶）
+      const st  = statusBucket(p.site_status);
       setHighlightedKey(`${op}/${cat}/${tp}/${st}`);
       setExpanded(prev => ({
         ...prev,
@@ -335,7 +335,7 @@ function LayerTree({
 
   const StyleRow = ({
     nodeKey, label, color, ids, depth = 0,
-    highlighted = false,
+    highlighted = false, viewStatus,
   }: {
     nodeKey: string;
     label: string;
@@ -343,9 +343,10 @@ function LayerTree({
     ids: string[];
     depth?: number;
     highlighted?: boolean;
+    // #40：site 样式节点带此项 → 渲染 [查看] 眼睛（按 status 筛选）；road/lessor 不传 → 无按钮
+    viewStatus?: { op: string; cat: string; tp: string; st: string };
   }) => {
     // #33：🎨 样式节点是图层固定子骨架，0 计数也显示（不再 null-return）。
-    // 「未分类」灰色节点的「有才显示」由调用处单独包条件控制。
     const ts = triOf(ids);
     return (
       <div
@@ -366,6 +367,29 @@ function LayerTree({
           <span className="style-dot" style={{ background: color }} />
         </span>
         <span className="style-label">{label}</span>
+        {/* #40：site 样式节点 [查看]（无导入），按 status 筛选；默认隐藏 hover 行显示 */}
+        {viewStatus && (
+          <div className="layer-actions">
+            <button
+              className="layer-btn layer-btn-view layer-btn-icon"
+              disabled={ids.length === 0}
+              onClick={e => {
+                const r = e.currentTarget.getBoundingClientRect();
+                onViewLayer({
+                  kind: "site",
+                  operator: viewStatus.op,
+                  category: viewStatus.cat,
+                  type: viewStatus.tp,
+                  status: viewStatus.st,
+                }, { x: r.right, y: r.bottom });
+              }}
+              title={tFn("lt.btn.view_features.tip")}
+              aria-label={tFn("lt.btn.view_features")}
+            >
+              <Eye size={14} strokeWidth={1.8} />
+            </button>
+          </div>
+        )}
         <span className="folder-count">{ids.length}</span>
       </div>
     );
@@ -449,22 +473,23 @@ function LayerTree({
                                     ids={stIds}
                                     depth={4}
                                     highlighted={hl === stKey}
+                                    viewStatus={{ op, cat, tp, st }}
                                   />
                                 );
                               })}
-                              {/* #33：灰色「未分类」例外——仅当有空值点时显示
-                                  （其余 pos/neg/und 已是固定骨架，0 计数也显示）*/}
+                              {/* #41：Other 节点收纳非三标准状态（空值/pending/未知）——有才显示、灰 */}
                               {(() => {
-                                const nullKey = `${layerKey}/`;
-                                const nullIds = siteMap.get(nullKey) ?? [];
-                                return nullIds.length > 0 ? (
+                                const otherKey = `${layerKey}/other`;
+                                const otherIds = siteMap.get(otherKey) ?? [];
+                                return otherIds.length > 0 ? (
                                   <StyleRow
-                                    nodeKey={nullKey}
-                                    label={tFn("lt.tree.status.null")}
+                                    nodeKey={otherKey}
+                                    label={tFn("lt.tree.status.other")}
                                     color={STATUS_COLOR[""]}
-                                    ids={nullIds}
+                                    ids={otherIds}
                                     depth={4}
-                                    highlighted={hl === nullKey}
+                                    highlighted={hl === otherKey}
+                                    viewStatus={{ op, cat, tp, st: "other" }}
                                   />
                                 ) : null;
                               })()}

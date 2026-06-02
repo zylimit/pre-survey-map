@@ -36,6 +36,13 @@ export const STATUS_COLOR: Record<string, string> = {
   road:       "#795548",
 };
 
+// #41：site_status 归桶——三标准状态取小写原值，其余（空值/pending/未知）统一归 "other"。
+// ⚠️ 单一真源：siteMap 分组、F12 反向定位、LayerFeatureList 过滤三处必须用它，口径一致。
+export function statusBucket(raw: unknown): string {
+  const s = String(raw ?? "").toLowerCase();
+  return (s === "positive" || s === "negative" || s === "undermine") ? s : "other";
+}
+
 // site_status → 填充色（大小写不敏感；正/负/受损，其余=空值灰）
 export function siteStatusColor(status: string | null | undefined): string {
   const s = (status ?? "").toLowerCase();

@@ -466,7 +466,8 @@ button, input, select, textarea {
   flex-shrink: 0;
   margin-left: 6px;
 }
-.tree .layer-row:hover .layer-actions {
+.tree .layer-row:hover .layer-actions,
+.tree .style-row:hover .layer-actions {
   display: flex;
 }
 .tree .layer-btn {

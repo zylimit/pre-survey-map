@@ -21,7 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Feature, FeatureCollection } from "../api";
 import type { ViewLayerTarget } from "../state";
 import { useT } from "../i18n";
-import { nameOf, STATUS_COLOR, siteStatusColor } from "../utils";
+import { nameOf, STATUS_COLOR, siteStatusColor, statusBucket } from "../utils";
 
 // ─── 虚拟化常量（沿用 #16 范式）────────────────────────────────────────────────
 const ROW_H = 30;   // 数据行高（与 .lfl-row 一致）
@@ -146,9 +146,12 @@ export default function LayerFeatureList({
     const tp = target.type ?? "";
     return sites.features.filter(f => {
       const p = f.properties ?? {};
-      return String(p.operator ?? "") === op
-        && String(p.category ?? "") === cat
-        && String(p.type ?? "") === tp;
+      if (String(p.operator ?? "") !== op || String(p.category ?? "") !== cat || String(p.type ?? "") !== tp) {
+        return false;
+      }
+      // #40：样式节点 [查看] 带 status → 再按 status 归桶收窄（与 siteMap 同口径）
+      if (!target.status) return true;
+      return statusBucket(p.site_status as string | null | undefined) === target.status;
     });
   }, [target, sites, roads, lessors]);
 
@@ -277,7 +280,13 @@ export default function LayerFeatureList({
       : target.category === "规划" ? "lt.tree.cat.planned"
       : "lt.tree.cat.survey";
     const catLabel = tFn(catKey as Parameters<typeof tFn>[0]);
-    return `${opLabel} / ${catLabel} / ${target.type ?? ""}`;
+    const base = `${opLabel} / ${catLabel} / ${target.type ?? ""}`;
+    // #40：样式节点 [查看] 带 status → 标题追加状态名（other 用「其他」，三标准用各自 i18n）
+    if (!target.status) return base;
+    const stLabel = target.status === "other"
+      ? tFn("lt.tree.status.other")
+      : tFn(`lt.tree.status.${target.status}` as Parameters<typeof tFn>[0]);
+    return `${base} / ${stLabel}`;
   }, [target, tFn]);
 
   // ─── 单行渲染（多列 cell）────────────────────────────────────────────────────

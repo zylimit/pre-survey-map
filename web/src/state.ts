@@ -72,13 +72,15 @@ export interface ViewLayerTarget {
   operator: string | null;  // site only
   category: string | null;  // site only
   type: string | null;      // site only
+  status?: string;          // #40：site 样式节点 [查看] 时按 status 收窄（positive/.../other）
 }
 
 // #34：两个图层目标是否同一层（toggle 判定）。road/lessor 的 op/cat/type 均 null，
 // null===null 成立，安全。
 function sameTarget(a: ViewLayerTarget, b: ViewLayerTarget): boolean {
   return a.kind === b.kind && a.operator === b.operator
-    && a.category === b.category && a.type === b.type;
+    && a.category === b.category && a.type === b.type
+    && a.status === b.status;  // #40：同图层不同 status 的 [查看] 视为不同窗（toggle 不误判）
 }
 
 // F20 #30：列表框=可拖可缩浮动窗口。单 state 复用——首次开窗用 anchor（触发按钮坐标）
