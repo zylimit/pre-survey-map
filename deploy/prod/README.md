@@ -3,6 +3,12 @@
 > 把 pre-survey-map 部署到**内网 ARM64 服务器**。服务器无外网、跳板机不让装 Docker → 用「第三台联网机(腾讯云 x86)跨架构构建 → 跳板机搬运 → 服务器 load」的离线链路。
 > 跳板机/服务器上 git pull 本仓库后，可让 **Claude Code** 照本手册逐步执行。
 
+## ⚡ 实战固化（2026-06-02 首次内网部署，与本手册原 compose 设想的偏差）
+- **分发走 Cloudflare 加速下载站**（替代临时 `IP:8088`，解决 VPN 禁 IP:端口 + 新加坡源慢）：
+  - CF：`img.mangosv5.app A→43.163.3.9`，**橙云 Proxied + SSL/TLS=Full(strict)**；证书在**灰云期**用 `certbot --nginx` 签 Let's Encrypt（橙云会拦 HTTP-01，故先灰云签、再切橙云），自动续期。
+  - 腾讯云：打包后 `bash deploy/prod/tencent-dl-nginx.sh` → 包落 `/var/www/dl` + **chmod 644**（不 chmod 会 403，已实测踩过）→ 跳板机走 **`https://img.mangosv5.app/presurvey-f20-arm64.tar`**（+`/init.sql`）。
+- **目标服务器 Docker 18.09 不支持 compose** → 走 **docker run**（非本手册原 compose 链路）。Beta 数据授权清零 → **清库重建**：停老 `:f19` → `init.sql` 幂等补三列 + `TRUNCATE` → `docker run :f20`。坑：DB_HOST 用容器 IP `172.18.0.2`（坑2）、web 在 api 后起（坑5）、镜像 tag `:f20`。完整命令见 mango-memory（project=pre-survey-map）。
+
 ## 拓扑（四角色）
 
 ```
