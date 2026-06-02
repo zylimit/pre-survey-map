@@ -12,7 +12,9 @@ async def list_sites():
     async with pool().acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT site_id, "option", project, site_status, lati, longi,
+            SELECT site_id, "option", project, site_status,
+                   operator, category, type,
+                   lati, longi,
                    extras, source_file,
                    CASE WHEN geom IS NULL THEN NULL ELSE ST_AsGeoJSON(geom) END AS geojson
             FROM site
@@ -27,6 +29,9 @@ async def list_sites():
             "option": r["option"],
             "project": r["project"],
             "site_status": r["site_status"],
+            "operator": r["operator"],
+            "category": r["category"],
+            "type": r["type"],
             "lati": r["lati"],
             "longi": r["longi"],
             "source_file": r["source_file"],

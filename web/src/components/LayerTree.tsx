@@ -1,9 +1,59 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Feature, FeatureCollection } from "../api";
-import { formatCount, nameOf } from "../utils";
+/**
+ * F20 Phase 3 · 固定深层图层骨架（V1.x #24）
+ *
+ * 树结构（写死，不随数据生长）：
+ *   📁 Site
+ *     📁 Globe / Smart / Dito
+ *       📁 存量 / 规划 / 勘测
+ *         🔺 站型图层（Macro / Micro NP / …）
+ *           🎨 positive 🟢 / negative 🟡 / undermine 🔴 / null ⚪
+ *   🔺 Road
+ *     🎨 🟫
+ *   🔺 Lessor
+ *     🎨 Unfriendly 🔴 / Normal 🟡
+ *
+ * 去虚拟化：节点 ~100，直接 DOM 渲染，不需固定行高虚拟列表。
+ * 去顶部搜索框：固定骨架无需搜索（检索由 Phase 4 列表框 + F16 全局搜索承担）。
+ */
+
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
+import { FeatureCollection, LayerStamp } from "../api";
 import { PANEL_LIMITS } from "../state";
+import type { Phase } from "../state";
 import { useT } from "../i18n";
 import ResizeHandle from "./ResizeHandle";
+
+// ─── 骨架定义 ────────────────────────────────────────────────────────────────
+
+const OPERATORS = ["Globe", "Smart", "Dito"] as const;
+type Op = (typeof OPERATORS)[number];
+
+const CATEGORY_TYPES: Readonly<Record<string, readonly string[]>> = {
+  "存量": ["Macro", "Micro", "IBS"],
+  "规划": ["Macro NP", "Micro NP"],
+  "勘测": ["Macro-ongoing", "Micro-ongoing"],
+};
+const CATEGORIES = ["存量", "规划", "勘测"] as const;
+
+const SITE_STATUSES = ["positive", "negative", "undermine"] as const;
+
+// 颜色映射（仅用于 🎨 样式圆点）
+const STATUS_COLOR: Record<string, string> = {
+  positive:   "#4caf50",  // 绿
+  negative:   "#ffb300",  // 黄
+  undermine:  "#f44336",  // 红
+  "":         "#9e9e9e",  // 灰（null/unknown）
+  Unfriendly: "#f44336",
+  Normal:     "#ffb300",
+  road:       "#795548",  // 棕
+};
+
+// ─── 辅助 ────────────────────────────────────────────────────────────────────
+
+type TriState = "all" | "none" | "partial";
+
+// ─── Props ───────────────────────────────────────────────────────────────────
 
 interface Props {
   sites: FeatureCollection;
@@ -11,206 +61,443 @@ interface Props {
   lessors: FeatureCollection;
   selectedId: string | number | null;
   hiddenIds: Set<string>;
-  onPick: (f: Feature) => void;
-  onToggleFeature: (id: string) => void;
   onSetKindVisible: (ids: string[], visible: boolean) => void;
+  onImportLayer: (file: File, stamp: LayerStamp) => void;
+  phase: Phase;
   onResize: (px: number) => void;
   onResizeEnd: () => void;
 }
 
-type Kind = "site" | "road" | "lessor";
-
-function searchMatch(f: Feature, q: string): boolean {
-  if (!q) return true;
-  const lower = q.toLowerCase();
-  return nameOf(f).toLowerCase().includes(lower);
-}
-
-type TriState = "all" | "none" | "partial";
-
-function triState(items: Feature[], hidden: Set<string>): TriState {
-  if (items.length === 0) return "all";
-  let visible = 0;
-  for (const f of items) if (!hidden.has(String(f.id))) visible++;
-  if (visible === 0) return "none";
-  if (visible === items.length) return "all";
-  return "partial";
-}
-
-// 扁平行：把「文件夹头 + 展开的节点」拍平成一维数组喂给虚拟列表
-type Row =
-  | { t: "folder"; kind: Kind; title: string; items: Feature[]; state: TriState; expanded: boolean }
-  | { t: "empty" }
-  | { t: "node"; feature: Feature };
-
-// 固定行高虚拟化：DOM 里只保留视口可见的 ~30 行，13000 节点也丝滑
-const ROW_H = 24;
-const OVERSCAN = 8;
+// ─── 组件 ────────────────────────────────────────────────────────────────────
 
 function LayerTree({
-  sites, roads, lessors, selectedId, hiddenIds,
-  onPick, onToggleFeature, onSetKindVisible,
+  sites, roads, lessors,
+  selectedId, hiddenIds,
+  onSetKindVisible, onImportLayer, phase,
   onResize, onResizeEnd,
 }: Props) {
   const tFn = useT();
-  const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<Record<Kind, boolean>>({
-    site: true, road: true, lessor: true,
+  const busy = phase !== "idle";
+
+  // 展开状态：flat key→bool（默认：Site 根 + Road + Lessor 展开；Operator 折叠）
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    site: true,
+    road: true,
+    lessor: true,
   });
-  const toggle = (k: Kind) => setExpanded(prev => ({ ...prev, [k]: !prev[k] }));
+  const isOpen = (k: string) => !!expanded[k];
+  const toggleOpen = (k: string) =>
+    setExpanded(prev => ({ ...prev, [k]: !prev[k] }));
 
-  const filteredSites = useMemo(
-    () => sites.features.filter(f => searchMatch(f, query)),
-    [sites, query]
-  );
-  const filteredRoads = useMemo(
-    () => roads.features.filter(f => searchMatch(f, query)),
-    [roads, query]
-  );
-  const filteredLessors = useMemo(
-    () => lessors.features.filter(f => searchMatch(f, query)),
-    [lessors, query]
-  );
+  // 高亮键：F12 反向定位时设置，指向 🎨 或 🔺 节点
+  const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
 
-  // 拍平成行数组。依赖 hiddenIds 仅为算文件夹三态；selectedId 不在依赖里
-  // （选中只重渲可见行，不重建数组）。
-  const rows = useMemo<Row[]>(() => {
-    const out: Row[] = [];
-    const add = (kind: Kind, title: string, items: Feature[]) => {
-      out.push({ t: "folder", kind, title, items, state: triState(items, hiddenIds), expanded: expanded[kind] });
-      if (expanded[kind]) {
-        if (items.length === 0) out.push({ t: "empty" });
-        else for (const f of items) out.push({ t: "node", feature: f });
-      }
+  // ─── O(n) 建立 key→featureId[] 映射 ────────────────────────────────────────
+
+  const { siteMap, allRoadIds, lessorMap } = useMemo(() => {
+    const siteMap = new Map<string, string[]>();
+
+    const push = (key: string, id: string) => {
+      if (!siteMap.has(key)) siteMap.set(key, []);
+      siteMap.get(key)!.push(id);
     };
-    add("site", "Site", filteredSites);
-    add("road", "Road", filteredRoads);
-    add("lessor", "Lessor", filteredLessors);
-    return out;
-  }, [filteredSites, filteredRoads, filteredLessors, hiddenIds, expanded]);
 
-  // ---- 虚拟窗口 ----
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportH, setViewportH] = useState(400);
+    for (const f of sites.features) {
+      const id = String(f.id);
+      const p = f.properties ?? {};
+      const op  = String(p.operator  ?? "");
+      const cat = String(p.category  ?? "");
+      const tp  = String(p.type      ?? "");
+      const st  = String(p.site_status ?? "");
+      push("site",                      id);
+      push(op,                          id);
+      push(`${op}/${cat}`,              id);
+      push(`${op}/${cat}/${tp}`,        id);
+      push(`${op}/${cat}/${tp}/${st}`,  id);
+    }
+
+    const allRoadIds = roads.features.map(f => String(f.id));
+
+    const lessorMap = new Map<string, string[]>();
+    const pushL = (key: string, id: string) => {
+      if (!lessorMap.has(key)) lessorMap.set(key, []);
+      lessorMap.get(key)!.push(id);
+    };
+    for (const f of lessors.features) {
+      const id  = String(f.id);
+      const rel = String((f.properties ?? {}).relationship ?? "");
+      pushL("lessor",        id);
+      pushL(`lessor/${rel}`, id);
+    }
+
+    return { siteMap, allRoadIds, lessorMap };
+  }, [sites, roads, lessors]);
+
+  // ─── tristate ───────────────────────────────────────────────────────────────
+
+  const triOf = useCallback((ids: string[]): TriState => {
+    if (!ids.length) return "all";
+    let vis = 0;
+    for (const id of ids) if (!hiddenIds.has(id)) vis++;
+    if (vis === 0) return "none";
+    if (vis === ids.length) return "all";
+    return "partial";
+  }, [hiddenIds]);
+
+  const toggleIds = useCallback((ids: string[]) => {
+    const ts = triOf(ids);
+    onSetKindVisible(ids, ts === "none");  // none→全显；all/partial→全隐
+  }, [triOf, onSetKindVisible]);
+
+  // ─── 文件选择（隐藏 input，共享 ref）────────────────────────────────────────
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingStamp = useRef<LayerStamp | null>(null);
+
+  const openPicker = (stamp: LayerStamp) => {
+    if (busy) return;
+    pendingStamp.current = stamp;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && pendingStamp.current) onImportLayer(file, pendingStamp.current);
+    pendingStamp.current = null;
+    e.target.value = "";
+  };
+
+  // ─── F12 地图→树反向定位 ────────────────────────────────────────────────────
 
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setViewportH(el.clientHeight);
-    const ro = new ResizeObserver(() => setViewportH(el.clientHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // 地图选中 → 树定位：虚拟列表里目标节点可能没渲染，需先展开所在文件夹，
-  // 再把它滚进视口。依赖 rows：展开后 rows 重建会再次触发本 effect 完成滚动。
-  useEffect(() => {
-    if (selectedId == null) return;
+    if (selectedId == null) { setHighlightedKey(null); return; }
     const sel = String(selectedId);
 
-    const idx = rows.findIndex(r => r.t === "node" && String(r.feature.id) === sel);
-    if (idx < 0) {
-      // 节点不在 rows 里 = 所在文件夹折叠了，先展开（本 effect 会因 rows 变化重跑）
-      let kind: Kind | null = null;
-      if (filteredSites.some(f => String(f.id) === sel)) kind = "site";
-      else if (filteredRoads.some(f => String(f.id) === sel)) kind = "road";
-      else if (filteredLessors.some(f => String(f.id) === sel)) kind = "lessor";
-      if (kind && !expanded[kind]) setExpanded(prev => ({ ...prev, [kind!]: true }));
+    const site = sites.features.find(f => String(f.id) === sel);
+    if (site) {
+      const p  = site.properties ?? {};
+      const op  = String(p.operator    ?? "");
+      const cat = String(p.category   ?? "");
+      const tp  = String(p.type       ?? "");
+      const st  = String(p.site_status ?? "");
+      setHighlightedKey(`${op}/${cat}/${tp}/${st}`);
+      setExpanded(prev => ({
+        ...prev,
+        site: true,
+        [op]: true,
+        [`${op}/${cat}`]: true,
+        [`${op}/${cat}/${tp}`]: true,
+      }));
       return;
     }
 
-    const el = scrollRef.current;
-    if (!el) return;
-    const top = idx * ROW_H;
-    const viewTop = el.scrollTop;
-    const viewBottom = viewTop + el.clientHeight;
-    if (top < viewTop || top + ROW_H > viewBottom) {
-      el.scrollTop = Math.max(0, top - el.clientHeight / 2 + ROW_H / 2);
+    if (roads.features.some(f => String(f.id) === sel)) {
+      setHighlightedKey("road/__style__");
+      setExpanded(prev => ({ ...prev, road: true }));
+      return;
     }
-  }, [selectedId, rows, filteredSites, filteredRoads, filteredLessors, expanded]);
 
-  const total = rows.length;
-  const start = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
-  const end = Math.min(total, Math.ceil((scrollTop + viewportH) / ROW_H) + OVERSCAN);
-  const visible = rows.slice(start, end);
-  const selStr = String(selectedId);
+    const lessor = lessors.features.find(f => String(f.id) === sel);
+    if (lessor) {
+      const rel = String((lessor.properties ?? {}).relationship ?? "");
+      setHighlightedKey(`lessor/${rel}`);
+      setExpanded(prev => ({ ...prev, lessor: true }));
+      return;
+    }
 
-  const renderRow = (row: Row, index: number) => {
-    const top = index * ROW_H;
-    if (row.t === "folder") {
-      const allIds = row.items.map(f => String(f.id));
-      const onFolderClick = () => onSetKindVisible(allIds, row.state !== "all");
-      return (
-        <div className="tree-row" style={{ transform: `translateY(${top}px)` }} key={`f-${row.kind}`}>
-          <h3 className="folder-row" onClick={onFolderClick} title={tFn("lt.folder.toggle.tip")}>
-            <span
-              className={`folder-disclose ${row.expanded ? "open" : "closed"}`}
-              onClick={e => { e.stopPropagation(); toggle(row.kind); }}
-              title={row.expanded ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
-            >{row.expanded ? "−" : "+"}</span>
-            <input
-              type="checkbox"
-              className="folder-cb-native"
-              ref={el => { if (el) el.indeterminate = row.state === "partial"; }}
-              checked={row.state === "all"}
-              onChange={onFolderClick}
-              onClick={e => e.stopPropagation()}
-              title={tFn("lt.folder.toggle.tip")}
-            />
-            <span className="folder-title">📂 {row.title}</span>
-            <span className="folder-count">{formatCount(row.items.length)}</span>
-          </h3>
-        </div>
-      );
-    }
-    if (row.t === "empty") {
-      return (
-        <div className="tree-row" style={{ transform: `translateY(${top}px)` }} key={`e-${top}`}>
-          <div className="node muted">{tFn("lt.empty")}</div>
-        </div>
-      );
-    }
-    const f = row.feature;
-    const id = String(f.id);
-    const hidden = hiddenIds.has(id);
-    const sel = id === selStr;
+    setHighlightedKey(null);
+  }, [selectedId, sites, roads, lessors]);
+
+  // ─── 渲染辅助：checkbox（支持三态 indeterminate）─────────────────────────────
+
+  const CB = ({
+    ids, label,
+  }: { ids: string[]; label?: string }) => {
+    const ts = triOf(ids);
     return (
-      <div className="tree-row" style={{ transform: `translateY(${top}px)` }} key={`n-${id}`}>
-        <div className={`node ${sel ? "selected" : ""} ${hidden ? "hidden-node" : ""}`}>
-          <input
-            type="checkbox"
-            checked={!hidden}
-            onChange={() => onToggleFeature(id)}
-            onClick={e => e.stopPropagation()}
-            title={hidden ? tFn("lt.node.show") : tFn("lt.node.hide")}
-          />
-          <span className="node-label" onClick={() => onPick(f)}>
-            {nameOf(f)}
-          </span>
+      <input
+        type="checkbox"
+        className="folder-cb-native"
+        ref={el => { if (el) el.indeterminate = ts === "partial"; }}
+        checked={ts === "all"}
+        onChange={() => toggleIds(ids)}
+        onClick={e => e.stopPropagation()}
+        title={label}
+      />
+    );
+  };
+
+  // ─── 渲染：📁 文件夹行 ───────────────────────────────────────────────────────
+
+  const FolderRow = ({
+    nodeKey, label, depth = 0,
+  }: { nodeKey: string; label: string; depth?: number }) => {
+    const ids = nodeKey === "site"
+      ? (siteMap.get("site") ?? [])
+      : nodeKey.startsWith("lessor")
+        ? (lessorMap.get(nodeKey) ?? [])
+        : (siteMap.get(nodeKey) ?? []);
+    const open = isOpen(nodeKey);
+    return (
+      <h3
+        className="folder-row"
+        style={{ paddingLeft: 4 + depth * 14 }}
+        onClick={() => { toggleIds(ids); }}
+        title={tFn("lt.folder.toggle.tip")}
+      >
+        <span
+          className={`folder-disclose ${open ? "open" : "closed"}`}
+          onClick={e => { e.stopPropagation(); toggleOpen(nodeKey); }}
+          title={open ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
+        >
+          {open ? "−" : "+"}
+        </span>
+        <CB ids={ids} />
+        <span className="folder-title">{label}</span>
+      </h3>
+    );
+  };
+
+  // ─── 渲染：🔺 图层行 ─────────────────────────────────────────────────────────
+
+  const LayerRow = ({
+    nodeKey, label, depth = 0, stamp, ids,
+    highlighted = false,
+  }: {
+    nodeKey: string;
+    label: string;
+    depth?: number;
+    stamp: LayerStamp;
+    ids: string[];
+    highlighted?: boolean;
+  }) => {
+    const open = isOpen(nodeKey);
+    const cnt = ids.length;
+    return (
+      <div
+        className={`layer-row${highlighted ? " node-highlighted" : ""}`}
+        style={{ paddingLeft: 4 + depth * 14 }}
+      >
+        <span
+          className={`folder-disclose ${open ? "open" : "closed"}`}
+          onClick={() => toggleOpen(nodeKey)}
+          title={open ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
+        >
+          {open ? "−" : "+"}
+        </span>
+        <CB ids={ids} />
+        <span className="folder-title layer-label">🔺 {label}</span>
+        <span className="folder-count">{cnt}</span>
+        <div className="layer-actions">
+          <button
+            className="layer-btn"
+            disabled={busy}
+            onClick={() => openPicker(stamp)}
+            title={tFn("lt.btn.import_layer.tip")}
+          >
+            {tFn("lt.btn.import_layer")}
+          </button>
+          <button
+            className="layer-btn layer-btn-view"
+            disabled
+            title={tFn("lt.btn.view_features.tip")}
+          >
+            {tFn("lt.btn.view_features")}
+          </button>
         </div>
       </div>
     );
   };
 
+  // ─── 渲染：🎨 样式行 ─────────────────────────────────────────────────────────
+
+  const StyleRow = ({
+    nodeKey, label, color, ids, depth = 0,
+    highlighted = false,
+  }: {
+    nodeKey: string;
+    label: string;
+    color: string;
+    ids: string[];
+    depth?: number;
+    highlighted?: boolean;
+  }) => {
+    if (ids.length === 0) return null;
+    const ts = triOf(ids);
+    return (
+      <div
+        className={`style-row${highlighted ? " node-highlighted" : ""}`}
+        style={{ paddingLeft: 4 + depth * 14 }}
+      >
+        <input
+          type="checkbox"
+          className="folder-cb-native"
+          ref={el => { if (el) el.indeterminate = ts === "partial"; }}
+          checked={ts === "all"}
+          onChange={() => toggleIds(ids)}
+          onClick={e => e.stopPropagation()}
+        />
+        <span className="style-dot" style={{ background: color }} />
+        <span className="style-label">{label}</span>
+        <span className="folder-count">{ids.length}</span>
+      </div>
+    );
+  };
+
+  // ─── 主体渲染 ────────────────────────────────────────────────────────────────
+
+  const hl = highlightedKey;
+
   return (
     <div className="tree">
-      <div className="tree-head">
-        <input
-          placeholder={tFn("lt.filter.placeholder")}
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          style={{ width: "100%", padding: 6 }}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".kml,.kmz,.xlsx"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+      <div className="tree-scroll">
+
+        {/* ══ 📁 Site ══ */}
+        <FolderRow nodeKey="site" label={tFn("lt.tree.site")} depth={0} />
+
+        {isOpen("site") && OPERATORS.map(op => {
+          const opKey = op;
+          const opIds = siteMap.get(opKey) ?? [];
+          // i18n key: "lt.tree.op.Globe" etc.
+          const opLabel = `📁 ${tFn(`lt.tree.op.${op}` as Parameters<typeof tFn>[0])}`;
+
+          return (
+            <div key={op}>
+              {/* 📁 Operator */}
+              <FolderRow nodeKey={opKey} label={opLabel} depth={1} />
+
+              {isOpen(opKey) && CATEGORIES.map(cat => {
+                const catKey = `${op}/${cat}`;
+                const catIds = siteMap.get(catKey) ?? [];
+                const catLabelKey = cat === "存量" ? "lt.tree.cat.legacy"
+                  : cat === "规划" ? "lt.tree.cat.planned"
+                  : "lt.tree.cat.survey";
+                const catLabel = `📁 ${tFn(catLabelKey)}`;
+
+                return (
+                  <div key={cat}>
+                    {/* 📁 Category */}
+                    <FolderRow nodeKey={catKey} label={catLabel} depth={2} />
+
+                    {isOpen(catKey) && CATEGORY_TYPES[cat].map(tp => {
+                      const layerKey = `${op}/${cat}/${tp}`;
+                      const layerIds = siteMap.get(layerKey) ?? [];
+                      const stamp: LayerStamp = {
+                        operator: op, category: cat, type: tp, target_kind: "site",
+                      };
+
+                      return (
+                        <div key={tp}>
+                          {/* 🔺 Layer */}
+                          <LayerRow
+                            nodeKey={layerKey}
+                            label={tp}
+                            depth={3}
+                            stamp={stamp}
+                            ids={layerIds}
+                            highlighted={hl !== null && (
+                              hl === layerKey || hl.startsWith(layerKey + "/")
+                            )}
+                          />
+
+                          {isOpen(layerKey) && (
+                            <>
+                              {SITE_STATUSES.map(st => {
+                                const stKey = `${layerKey}/${st}`;
+                                const stIds = siteMap.get(stKey) ?? [];
+                                const stLabel = tFn(`lt.tree.status.${st}` as Parameters<typeof tFn>[0]);
+                                return (
+                                  <StyleRow
+                                    key={st}
+                                    nodeKey={stKey}
+                                    label={stLabel}
+                                    color={STATUS_COLOR[st]}
+                                    ids={stIds}
+                                    depth={4}
+                                    highlighted={hl === stKey}
+                                  />
+                                );
+                              })}
+                              {/* null/unknown status（仅当存在时显示）*/}
+                              {(() => {
+                                const nullKey = `${layerKey}/`;
+                                const nullIds = siteMap.get(nullKey) ?? [];
+                                return (
+                                  <StyleRow
+                                    nodeKey={nullKey}
+                                    label={tFn("lt.tree.status.null")}
+                                    color={STATUS_COLOR[""]}
+                                    ids={nullIds}
+                                    depth={4}
+                                    highlighted={hl === nullKey}
+                                  />
+                                );
+                              })()}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+
+        {/* ══ 🔺 Road ══ */}
+        <LayerRow
+          nodeKey="road"
+          label={tFn("lt.tree.road")}
+          depth={0}
+          stamp={{ target_kind: "road" }}
+          ids={allRoadIds}
+          highlighted={hl === "road" || hl === "road/__style__"}
         />
-      </div>
-      <div
-        className="tree-scroll"
-        ref={scrollRef}
-        onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
-      >
-        <div className="tree-virt" style={{ height: total * ROW_H }}>
-          {visible.map((row, i) => renderRow(row, start + i))}
-        </div>
+        {isOpen("road") && (
+          <StyleRow
+            nodeKey="road/__style__"
+            label={tFn("lt.tree.status.road")}
+            color={STATUS_COLOR["road"]}
+            ids={allRoadIds}
+            depth={1}
+            highlighted={hl === "road/__style__"}
+          />
+        )}
+
+        {/* ══ 🔺 Lessor ══ */}
+        <LayerRow
+          nodeKey="lessor"
+          label={tFn("lt.tree.lessor")}
+          depth={0}
+          stamp={{ target_kind: "lessor" }}
+          ids={lessorMap.get("lessor") ?? []}
+          highlighted={hl !== null && hl.startsWith("lessor/")}
+        />
+        {isOpen("lessor") && (["Unfriendly", "Normal"] as const).map(rel => {
+          const relKey = `lessor/${rel}`;
+          const relIds = lessorMap.get(relKey) ?? [];
+          const relLabel = tFn(`lt.tree.status.${rel.toLowerCase()}` as Parameters<typeof tFn>[0]);
+          return (
+            <StyleRow
+              key={rel}
+              nodeKey={relKey}
+              label={relLabel}
+              color={STATUS_COLOR[rel]}
+              ids={relIds}
+              depth={1}
+              highlighted={hl === relKey}
+            />
+          );
+        })}
+
       </div>
       <ResizeHandle
         axis="x" edge="end"

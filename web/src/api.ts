@@ -109,10 +109,24 @@ export interface CommitResponse {
   } | null;
 }
 
-// 单文件上传（Spec F1 #12）
-export async function uploadFile(file: File): Promise<Phase1Response> {
+// F20 Phase 3：图层盖戳入参（V1.x #24）
+export interface LayerStamp {
+  operator?: string | null;
+  category?: string | null;
+  type?: string | null;
+  target_kind: "site" | "road" | "lessor";
+}
+
+// 单文件上传（Spec F1 #12）；stamp 为 F20 图层导入时传入的盖戳+护栏参数
+export async function uploadFile(file: File, stamp?: LayerStamp): Promise<Phase1Response> {
   const fd = new FormData();
   fd.append("file", file);
+  if (stamp) {
+    if (stamp.operator) fd.append("operator", stamp.operator);
+    if (stamp.category) fd.append("category", stamp.category);
+    if (stamp.type) fd.append("type", stamp.type);
+    fd.append("target_kind", stamp.target_kind);
+  }
   const res = await fetch("/api/import", { method: "POST", body: fd });
   if (!res.ok) {
     if (res.status === 413) {

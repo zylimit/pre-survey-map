@@ -114,9 +114,9 @@ export default function App() {
         lessors={s.lessors}
         selectedId={selectedId}
         hiddenIds={s.hiddenIds}
-        onPick={s.flyTo}
-        onToggleFeature={s.toggleFeatureVisible}
         onSetKindVisible={s.setKindVisible}
+        onImportLayer={s.importLayerFile}
+        phase={s.phase}
         onResize={onResizeLeft}
         onResizeEnd={onResizeEndLeft}
       />

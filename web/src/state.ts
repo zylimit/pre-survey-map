@@ -19,6 +19,7 @@ import {
   fetchAll,
   fetchBaselineState,
   GeoJSONPolygon,
+  LayerStamp,
   Phase1Summary,
   proceedToConflicts,
   uploadFile,
@@ -225,6 +226,51 @@ export function useAppState() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    [log]
+  );
+
+  // F20 Phase 3：图层 [导入图层] 按钮触发（传盖戳入参+几何护栏）
+  const importLayerFile = useCallback(
+    async (file: File, stamp: LayerStamp) => {
+      if (file.size > MAX_FILE_BYTES) {
+        log("error", t("log.file_too_large", { name: file.name, size: fmtMB(file.size), limit: MAX_FILE_MB }));
+        return;
+      }
+      setPhase("uploading");
+      log("info", t("log.upload_start", { name: file.name }));
+      try {
+        const resp = await uploadFile(file, stamp);
+        const sm = resp.summary;
+        // 几何护栏跳过报告
+        const gg = ((resp as unknown) as Record<string, unknown>)["geometry_guard"] as { message?: string | null } | undefined;
+        if (gg?.message) log("info", gg.message);
+        log("info", t("log.parse_ok", {
+          count: sm.total_parsed,
+          groups: sm.intra_file_duplicates.site_groups + sm.intra_file_duplicates.lessor_groups,
+          discarded: sm.intra_file_duplicates.site_discarded + sm.intra_file_duplicates.lessor_discarded,
+          cleanings: sm.cleanings_count,
+        }));
+        const decisions: Record<string, CleaningAction> = {};
+        for (const c of resp.cleanings) decisions[c.row_id] = c.default_action;
+        setImportSession({
+          sessionId: resp.session_id,
+          fileName: file.name,
+          cleanings: resp.cleanings,
+          cleaningDecisions: decisions,
+          baselineRegion: resp.baseline_region,
+          warnAllOutsideBaseline: Boolean(resp.warn_all_outside_baseline),
+          phase1Summary: sm,
+          conflicts: [],
+          conflictDecisions: {},
+          step: "cleaning",
+        });
+        setPhase("cleaning");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log("error", t("log.upload_err", { msg }));
+        setPhase("idle");
+      }
+    },
     [log]
   );
 
@@ -507,6 +553,7 @@ export function useAppState() {
     clearLogs,
     refresh,
     importFiles,
+    importLayerFile,
     goToConflicts,
     goBackToCleaning,
     confirmConflicts,
