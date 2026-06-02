@@ -21,7 +21,7 @@ import type { ChangeEvent } from "react";
 import { FeatureCollection, LayerStamp } from "../api";
 import { PANEL_LIMITS } from "../state";
 import type { Phase, ViewLayerTarget } from "../state";
-import { Download, Eye } from "lucide-react";
+import { ChevronRight, ChevronDown, Folder, FolderOpen, Download, Eye } from "lucide-react";
 import { useT } from "../i18n";
 import { STATUS_COLOR } from "../utils";
 import ResizeHandle from "./ResizeHandle";
@@ -248,18 +248,22 @@ function LayerTree({
     return (
       <h3
         className="folder-row"
-        style={{ paddingLeft: 4 + depth * 14 }}
+        style={{ paddingLeft: 4 + depth * 16 }}
         onClick={() => { toggleIds(ids); }}
         title={tFn("lt.folder.toggle.tip")}
       >
+        {/* #36：展开符=lucide Chevron（去小方块边框）；类型图标=lucide Folder 独立列 */}
         <span
           className={`folder-disclose ${open ? "open" : "closed"}`}
           onClick={e => { e.stopPropagation(); toggleOpen(nodeKey); }}
           title={open ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
         >
-          {open ? "−" : "+"}
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
         <CB ids={ids} />
+        <span className="node-type-icon">
+          {open ? <FolderOpen size={14} /> : <Folder size={14} />}
+        </span>
         <span className="folder-title">{label}</span>
         {/* #35：运营商/类别节点显子树要素总数（Site 根不显）；folder-title flex:1 推 count 靠右 */}
         {nodeKey !== "site" && <span className="folder-count">{ids.length}</span>}
@@ -285,22 +289,21 @@ function LayerTree({
     return (
       <div
         className={`layer-row${highlighted ? " node-highlighted" : ""}`}
-        style={{ paddingLeft: 4 + depth * 14 }}
+        style={{ paddingLeft: 4 + depth * 16 }}
       >
-        {/* #33：撤回 #32 空层 leaf——🎨 样式节点是固定骨架，图层永远可展开 */}
+        {/* #33：图层永远可展开（有样式骨架）；#36：展开符=lucide Chevron */}
         <span
           className={`folder-disclose ${open ? "open" : "closed"}`}
           onClick={() => toggleOpen(nodeKey)}
           title={open ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
         >
-          {open ? "−" : "+"}
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
         <CB ids={ids} />
-        {/* #27-2：两按钮紧跟文字后，默认隐藏，hover 行才显示（CSS）；计数靠右
-            #29：图标按站型形状（灰色），替代统一 🔺 */}
-        <span className="folder-title layer-label">
-          <span className="layer-icon">{iconFor(stamp)}</span> {label}
-        </span>
+        {/* #29 站型字符 #36 移入统一 node-type-icon 列（16px 居中灰） */}
+        <span className="node-type-icon">{iconFor(stamp)}</span>
+        {/* #27-2：两按钮紧跟文字后，默认隐藏，hover 行才显示（CSS）；计数靠右 */}
+        <span className="folder-title layer-label">{label}</span>
         <div className="layer-actions">
           {/* #32：两按钮改纯 lucide 图标，文字进 title/aria-label */}
           <button
@@ -354,8 +357,10 @@ function LayerTree({
     return (
       <div
         className={`style-row${highlighted ? " node-highlighted" : ""}`}
-        style={{ paddingLeft: 4 + depth * 14 }}
+        style={{ paddingLeft: 4 + depth * 16 }}
       >
+        {/* #36：叶子行补展开符空占位，叶子 checkbox 才对齐到比父右移一级（修"跑前面"）*/}
+        <span className="folder-disclose leaf-spacer" aria-hidden="true" />
         <input
           type="checkbox"
           className="folder-cb-native"
@@ -364,7 +369,9 @@ function LayerTree({
           onChange={() => toggleIds(ids)}
           onClick={e => e.stopPropagation()}
         />
-        <span className="style-dot" style={{ background: color }} />
+        <span className="node-type-icon">
+          <span className="style-dot" style={{ background: color }} />
+        </span>
         <span className="style-label">{label}</span>
         <span className="folder-count">{ids.length}</span>
       </div>
@@ -392,8 +399,8 @@ function LayerTree({
         {isOpen("site") && OPERATORS.map(op => {
           const opKey = op;
           const opIds = siteMap.get(opKey) ?? [];
-          // i18n key: "lt.tree.op.Globe" etc.
-          const opLabel = `📁 ${tFn(`lt.tree.op.${op}` as Parameters<typeof tFn>[0])}`;
+          // i18n key: "lt.tree.op.Globe" etc.（#36：📁 抽成独立 Folder 图标列，文字去前缀）
+          const opLabel = tFn(`lt.tree.op.${op}` as Parameters<typeof tFn>[0]);
 
           return (
             <div key={op}>
@@ -406,7 +413,7 @@ function LayerTree({
                 const catLabelKey = cat === "存量" ? "lt.tree.cat.legacy"
                   : cat === "规划" ? "lt.tree.cat.planned"
                   : "lt.tree.cat.survey";
-                const catLabel = `📁 ${tFn(catLabelKey)}`;
+                const catLabel = tFn(catLabelKey);
 
                 return (
                   <div key={cat}>

@@ -225,7 +225,7 @@ const en = {
   "co.no_coord":           "(no coord)",
 
   // F20 Phase 3 LayerTree (V1.x #24)
-  "lt.tree.site":                "📁 Site",
+  "lt.tree.site":                "Site",
   "lt.tree.road":                "Road",
   "lt.tree.lessor":              "Lessor",
   "lt.tree.op.Globe":            "Globe",
@@ -511,7 +511,7 @@ const zh: Record<keyof typeof en, string> = {
   "co.no_coord":           "(无坐标)",
 
   // F20 Phase 3 LayerTree
-  "lt.tree.site":                "📁 站点",
+  "lt.tree.site":                "站点",
   "lt.tree.road":                "道路",
   "lt.tree.lessor":              "产权方",
   "lt.tree.op.Globe":            "Globe",
