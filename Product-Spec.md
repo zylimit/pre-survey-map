@@ -129,6 +129,10 @@
   - **checkbox 统一尺寸**（固定 width/height + flex-shrink:0），三行一致。
   - **缩进基准统一**：三行统一 margin-left / box-sizing / paddingLeft 公式，层级阶梯清晰（子比父右移一级，不再跑前面）。
   - 全树图标统一灰色描线，与 #29 站型字符 / #32 lucide 按钮图标族风格一致；FolderRow 的分组标题文字样式（uppercase/muted）可保留作层级区分，但图标列与缩进必须对齐。
+- **站型图标改自绘 SVG（V1.x #37）**：🔺 图层节点的站型图标由 #29 的 Unicode 字符（▲●■△○◆◇，字符当图标又小又糙、受字体摆布）改为**自绘内联 SVG 几何符号**（业界 GIS 实践——QGIS 等用 SVG 矢量符号）：
+  - 形状语义**对照地图 `utils.TYPE_SHAPE` 单一真源**，与地图 RegularShape 一一对应：Macro=实心三角 / Micro=实心圆 / IBS=实心方 / Macro NP=空心三角 / Micro NP=空心圆 / Macro-ongoing=实心菱形 / Micro-ongoing=空心菱形；Road=线、Lessor=面。
+  - **实心 = `fill=currentColor`，空心 = `fill=none + stroke=currentColor`**（对应存量实心/规划空心，与地图渲染口径同源）；统一 16px、灰色（`currentColor` 继承，hover/选中跟 color 变）。
+  - 矢量清晰饱满、尺寸可控，替代 #29 Unicode 字符（#29 字符方案作废，仅地图侧 RegularShape 不变）。
 - **层级**：Site → 运营商（Globe/Smart/Dito）→ 类别（存量/规划/勘测）→ 站型图层 → 状态样式；Road / Lessor 为与 Site 平级的图层根
 - 各节点带复选框：📁 文件夹三态控后代、🔺 图层控全层、🎨 样式控该状态子集显隐
 - **单要素不进树**：点 🔺 图层的 [查看图层要素] → 浮动列表框（虚拟化）展示该层要素；点列表行 → 地图飞到该要素 + 属性面板（复用 F12）
@@ -408,7 +412,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 | `category` | 存量 / 规划 / 勘测 | 导入时由图层盖戳 | 写死三类 |
 | `type` | Macro / Micro / IBS / Macro NP / Micro NP / Macro-ongoing / Micro-ongoing（= SITE TYPE） | 导入时由图层盖戳 | = 图层名 |
 
-- **`site_status` 复用**（不新增列）：positive / negative / undermine，承担 🎨 样式分色；空值 → 灰 fallback。
+- **`site_status` 复用**（不新增列）：positive / negative / undermine，承担 🎨 样式分色；空值 → 灰 fallback。**入库统一小写化（V1.x #37）**：源值常为首字母大写（`Negative`/`Positive`），`_norm_site_status` 统一转小写（并保留 Unknown→undermine），否则前端按小写枚举匹配时大写值对不上 → 🎨 样式节点计数全 0、地图/列表框颜色查 `STATUS_COLOR` 落空退灰。前端 `siteMap` 分组 + `siteStatusColor` 加 `toLowerCase()` 兜底（仅 site_status；**Lessor relationship 的 Unfriendly/Normal 不动**）。
 - **去重键不变**：Site 仍按 `SITE ID + OPTION` **全局**去重（跨图层、跨运营商，不是按层去重）。导入到某层时若该键已存在于库内任意位置 → 进 F4 冲突。
 - **Road 改为按 `Property` 去重**（**V1 原"不做去重"作废**）。
 - **Lessor 样式收窄**：relationship 仅 **Unfriendly / Normal** 两态，**去掉 Friendly**（fid 去重不变）。

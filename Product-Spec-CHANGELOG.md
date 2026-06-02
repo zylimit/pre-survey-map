@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-06-02 (#37)
+
+### F20 收尾 · 站型图标改自绘 SVG + 修 site_status 大小写致样式计数全 0
+
+**类型**：中度变更（1 视觉升级 + 1 数据匹配 bug，来自腾讯云手验）
+
+**触发**：用户报 ① 图层站型图标（▲●■ Unicode 字符）"又丑又小"；② 图层下样式节点计数都是 0。
+
+**两件事**：
+
+1. **站型图标改自绘 SVG**（业界 GIS 实践，WebSearch 印证 QGIS 用 SVG 矢量符号）：
+   - #29 的 Unicode 字符（▲●■△○◆◇）当图标受字体摆布、糊且小 → 改**自绘内联 SVG 几何符号**。
+   - 形状语义**对照 `utils.TYPE_SHAPE` 单一真源**、与地图 RegularShape 一一对应；**实心=fill / 空心=stroke**（存量实心、规划空心）；统一 16px 灰（currentColor，hover/选中跟 color）。
+   - 新建 `SiteShapeIcon` 组件，替换 LayerRow 的 `iconFor()` 文本。#29 字符方案作废（地图 RegularShape 不变）。
+2. **site_status 大小写 bug（样式计数全 0 + 颜色退灰）**：
+   - **根因**：源 site_status 首字母大写（`Negative`），后端 `_norm_site_status` 只处理 Unknown→undermine、**没统一小写** → 入库仍 `Negative`；前端按小写枚举 `[positive,negative,undermine]` 精确匹配 → 大写对不上 → 样式节点全 0、这些点在树里消失（status 非空也不进未分类）；地图/列表框查 `STATUS_COLOR[Negative]` 落空 → 退灰。
+   - **修法**：后端 `_norm_site_status` 统一小写化（治本）；前端 `siteMap` 分组 + `utils.siteStatusColor` + LayerFeatureList site 状态列 加 `toLowerCase()` 兜底（兼容已入库大写历史数据，不必清库）。**仅 site_status；Lessor 的 Unfriendly/Normal（STATUS_COLOR 大写 key）绝不 toLowerCase。**
+
+**决策（AskUserQuestion 拍板）**：站型图标 = 自绘 SVG 几何符号。
+
+**⚠️ 部署**：含后端改动（imports.py），rebuild **api + web**。
+
+**Spec 改动**：「完整树结构」加站型图标 SVG 条；`site_status 复用` 条加入库小写化说明。
+
+---
+
 ## 2026-06-02 (#36)
 
 ### F20 收尾 · 树节点对齐重构（修叶子跑前面 + 图标统一 lucide 对齐）
