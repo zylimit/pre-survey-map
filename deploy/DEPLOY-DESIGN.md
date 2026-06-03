@@ -182,7 +182,7 @@ deploy.sh ship --target onprem --version v1.0.3 --scope web
 | P2 | migrations/ 机制 + V0(=init.sql) + 执行器 + schema_migrations | 在公有云测试库先验证 |
 | P3 | onprem 子命令（收编 server-deploy-web 的探测逻辑）+ ship 一键 | 用一个真实版本端到端验证 |
 | P4 | cloud 子命令（若纳入范围） | — |
-| P5 | **清理**：删死代码 + 收编旧脚本 + 重写 README | 仅当 P1–P3 跑通后执行（C6） |
+| P5 ✅ | **清理**：删死代码（update-deploy/pack-arm64/load-and-up/compose.prod/server-deploy-web/.env.prod.example）+ 重写 README（移到 deploy/README.md） | 删前全 repo 查引用；init.sql 被 root compose 挂载故保留 |
 
 ---
 
