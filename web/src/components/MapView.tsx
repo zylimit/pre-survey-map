@@ -22,7 +22,7 @@ import { DrawMode } from "../state";
 import { useT } from "../i18n";
 import {
   siteStatusColor, siteShape, lessorLineColor,
-  metersToProjRadius, withAlpha, STATUS_COLOR, RADIATION_RADIUS_M,
+  metersToProjRadius, withAlpha, STATUS_COLOR, RADIATION_RADIUS_M, LAYER_COLOR,
   type ShapeKind,
 } from "../utils";
 
@@ -81,13 +81,25 @@ const SHAPE_CFG: Record<Exclude<ShapeKind, "circle">, { points: number; angle: n
 function siteStyle(feature: FeatureLike, selected: boolean): Style[] {
   const status = feature.get("site_status") as string | undefined;
   const type = feature.get("type") as string | undefined;
-  const color = siteStatusColor(status);
+  const category = feature.get("category") as string | undefined;
   const spec = siteShape(type);
 
+  // #44：颜色按 category 分叉——状态分色只在勘测；存量橙 / 规划紫（形状仍 siteShape(type)）
+  const color = category === "存量" ? LAYER_COLOR["存量"]
+    : category === "规划" ? LAYER_COLOR["规划"]
+    : siteStatusColor(status);   // 勘测 + 兜底 → 状态色
+
   const radius = selected ? 9 : 6;
-  // 实心：fill 有色 + 描边白/选中色；空心：无 fill，描边 = 状态色（选中时盖为高亮色）
-  const fill = spec.filled ? new Fill({ color }) : undefined;
-  const strokeColor = selected ? COLOR.selected : (spec.filled ? COLOR.siteStroke : color);
+  // #44 fill：规划用半透明 55% 填充（原空心→半透色块，卫星上显眼仍透底）；
+  //          存量/勘测保持原 filled 规则（实心 fill / 空心无 fill）。
+  const fill = category === "规划"
+    ? new Fill({ color: withAlpha(LAYER_COLOR["规划"], 0.55) })
+    : spec.filled ? new Fill({ color }) : undefined;
+  // stroke：选中盖蓝；规划紫描边不透明；其余 实心白边 / 空心状态色
+  const strokeColor = selected ? COLOR.selected
+    : category === "规划" ? LAYER_COLOR["规划"]
+    : spec.filled ? COLOR.siteStroke
+    : color;
   const strokeWidth = selected ? 3 : (spec.filled ? 1.5 : 2);
   const stroke = new Stroke({ color: strokeColor, width: strokeWidth });
 

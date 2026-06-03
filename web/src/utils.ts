@@ -43,6 +43,13 @@ export function statusBucket(raw: unknown): string {
   return (s === "positive" || s === "negative" || s === "undermine") ? s : "other";
 }
 
+// #44：图层默认色（按 category）。状态分色只在勘测用；存量/规划用这套图层色。
+// 避开状态绿(#4caf50)/红(#f44336)/黄(#ffb300)/棕(#795548) + 选中蓝(#3b82f6)。
+export const LAYER_COLOR: Record<string, string> = {
+  "存量": "#f97316",  // 橙
+  "规划": "#a855f7",  // 紫
+};
+
 // site_status → 填充色（大小写不敏感；正/负/受损，其余=空值灰）
 export function siteStatusColor(status: string | null | undefined): string {
   const s = (status ?? "").toLowerCase();

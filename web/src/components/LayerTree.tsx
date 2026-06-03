@@ -458,7 +458,9 @@ function LayerTree({
                             )}
                           />
 
-                          {isOpen(layerKey) && (
+                          {/* #44：样式节点仅勘测类显示（存量/规划展开后无 🎨）。
+                              恢复 = 去掉 `&& cat === "勘测"` 即可，零成本。siteMap 归类不动。 */}
+                          {isOpen(layerKey) && cat === "勘测" && (
                             <>
                               {SITE_STATUSES.map(st => {
                                 const stKey = `${layerKey}/${st}`;
