@@ -41,7 +41,7 @@
 | F16 | 全局搜索结果列表（V1.x #16）| Toolbar 右上搜索框回车 → **三类要素全搜（显示名匹配，与左树过滤同口径）**；结果写入底部 Output 的**独立"搜索结果区"**（不挤占 50 条日志），封顶 200 条；区头可点汇总条"🔍 搜索匹配 N 条，飞到第一条" + **[✖ 清空结果] 按钮**；每条结果一行 = **显示名 · 核心属性 · 类型角标**，可点 → **地图飞到该要素 + 左树该节点同步高亮滚动定位**（复用 F12 双向焦点同步）|
 | F18 | 双语界面（中/英）（V1.x #21）| 默认英文；Toolbar 右上 **[EN/中]** 切换按钮；**仅切换软件自身 UI 文案**（按钮/标签/对话框/状态栏/输出日志/错误提示/树节点文件夹名/底图切换标签/基线国家名/LayerTree tooltip 与 placeholder），导入文件内容、数据字段名及字段值**不翻译**；偏好存 `localStorage`（key: `presurvey.lang`）；菲律宾工程师用英文，中国工程师可切回中文；后端 `GET /api/baseline-state` 同时返回 `name_zh` + `name_en`，前端按当前语言选择显示 |
 | F17 | 基线恢复点与回滚（V1.x #20）| **不可逆操作的安全网**。导入 commit 前 / 清除基线（F14）前 / 回滚前 **自动建恢复点**（快照 `site`/`road`/`lessor` 三表 + `baseline_state`），并提供 Toolbar [🕘 恢复点] 手动建点；保留最近 N=10 个（环形淘汰最旧）；恢复点对话框列表可**覆盖式回滚**到任一点（事务内 truncate + 从快照重灌，回滚本身也先自动建点 → 可逆）+ 快捷 [↩ 撤销上一次导入]；详见「基线恢复点与回滚机制（F17）」节 |
-| F20 | 图层体系（V1.x #24）| **替换 F7 浅树**为固定深层图层树（菲律宾 = Globe / Smart / Dito 三运营商写死，不会增加）。三种节点：📁 **文件夹**（逻辑分组，无按钮）/ 🔺 **图层**（2 按钮）/ 🎨 **样式**（按 site_status 分色图例，无按钮）。Site 按 运营商 → 类别（存量/规划/勘测）→ 类型 分层；Road / Lessor 为与 Site 平级的独立图层根（无运营商划分）。图层节点两按钮：**[导入图层]**（按导入方式**强制盖戳** operator/category/type，忽略源属性，将错就错，保留 F13 清洗 → F4 冲突两步向导）/ **[查看图层要素]**（浮动列表框，本版**只读** + 本层**筛选** + 点击定位，虚拟化）。规划类 Macro NP / Micro NP 画半径可配透明**辐射圈**（默认 50m，下拉 50/100/150/200/250m，全局统一存 localStorage；仅渲染不入库，详见 #45）。渲染 = **图层图标形状 × site_status 颜色**。顶部全局 [📁 导入] 按钮移除，导入入口下沉到图层。详见「图层体系（F20 · V1.x #24）」节 |
+| F20 | 图层体系（V1.x #24）| **替换 F7 浅树**为固定深层图层树（菲律宾 = Globe / Smart / Dito 三运营商写死，不会增加）。三种节点：📁 **文件夹**（逻辑分组，无按钮）/ 🔺 **图层**（2 按钮）/ 🎨 **样式**（按 site_status 分色图例，无按钮）。Site 按 运营商 → 类别（存量/规划/勘测）→ 类型 分层；Road / Lessor 为与 Site 平级的独立图层根（无运营商划分）。图层节点两按钮：**[导入图层]**（按导入方式**强制盖戳** operator/category/type，忽略源属性，将错就错，保留 F13 清洗 → F4 冲突两步向导）/ **[查看图层要素]**（浮动列表框，本版**只读** + 本层**筛选** + 点击定位，虚拟化）。规划类 Macro NP / Micro NP 画半径可配透明**辐射圈**（默认 200m，下拉 50/100/150/200/250m，全局统一存 localStorage；屏幕仅渲染不入库，但**导出 KMZ 随点导出范围圈**、导入忽略，详见 #45 + #46）。渲染 = **图层图标形状 × site_status 颜色**。顶部全局 [📁 导入] 按钮移除，导入入口下沉到图层。详见「图层体系（F20 · V1.x #24）」节 |
 | F19 | 审计日志（V1.x #23）| 记录关键操作 **12 类**（open / import / export_full / export_region / export_conflicts / restore_point_create_auto / restore_point_create_manual / restore_point_delete / restore_point_rollback / restore_point_undo_last_import / clear_baseline / **audit_log_export**）；**身份识别 = IP + User-Agent + Session ID**（V1 不做登录、不做域账号 — 浏览器限制）；**隐藏入口：连续按 3 次 `Esc`** → 弹密码框 → 输入 `mangosv5` → Modal 表格（倒序时间 + 操作类型筛选 + 分页 50/页 + **导出 Excel**）；密码不限错误次数；**UI 只读**（无删除/编辑），**右上角 [💾 导出 Excel]** 按当前筛选结果导出；后端不开 `DELETE`/`PATCH` 端点；**永久保留**；详见「审计日志（F19）」节 |
 | F21 | 定时自动备份（V1.x #42）| 后台**每 12h 自动全库备份**（复用 F17 snapshot 机制，`reason=auto_backup`，独立于恢复点）；**保留 30 天**滚动清理；**隐藏恢复入口：连按 3 次 `B`** → 弹密码框 → `mangosv5` → 备份恢复 Modal（按时间倒序列备份 → 选一个还原全库，还原前自建 pre_rollback 恢复点）；详见「定时自动备份（F21）」节 |
 
@@ -154,7 +154,7 @@
   - Site：**形状 = type**（Macro ▲ / Micro ● / IBS ■ / Macro NP △ / Micro NP ○ / Macro-ongoing ◆ / Micro-ongoing ◇，形状为默认建议可微调）× **颜色 = site_status**（positive 绿 / negative 红 / undermine 黄 / 空值灰）**【V1.x #33：negative 与 undermine 红黄对调】**
   - Lessor：Unfriendly 红面 / Normal 黄面（**去掉 Friendly 绿面**）
   - Road：棕色线
-  - 规划类（Macro NP / Micro NP）额外画透明辐射圈（半径可配 50/100/150/200/250m，默认 50m；仅渲染不入库，详见 F20 + #45）
+  - 规划类（Macro NP / Micro NP）额外画透明辐射圈（半径可配 50/100/150/200/250m，默认 200m；仅渲染不入库，但**导出 KMZ 时随点导出为范围圈图层**，详见 F20 + #45 + #46）
 - 交互层级：**L2（只查不改） + 框选绘制**
   - 点击要素 → 属性面板显示
   - 框选模式下绘制临时多边形/矩形 → 完成后可导出
@@ -479,11 +479,21 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 #### NP 辐射圈（规划类专属，半径可配 · V1.x #45）
 
 - **Macro NP / Micro NP** 两个规划图层的点，在地图上额外绘制一个透明圆（辐射范围示意，**不是选区**），取真实地面米、随地图缩放自适应。
-- **半径可配置**：下拉选项 **50 / 100 / 150 / 200 / 250 米**，默认 **50m**。
+- **半径可配置**：下拉选项 **50 / 100 / 150 / 200 / 250 米**，默认 **200m**（#46 起，原 50m）。
 - **配置入口**：**顶部工具栏**放一个 NP 半径下拉（全局唯一入口）。理由：半径是纯显示偏好、不入库、全局统一一个值——挂到图层树某个站点/节点反而别扭且要重复显示，放工具栏最干净。改下拉 → 三运营商的 Macro NP + Micro NP 所有圈同步刷新。
-- **持久化**：仅前端 `localStorage`（key: `presurvey.np_radius_m`），刷新记得住；**不入库、不动 api/db**。无值或非法值时回落默认 50m。
+- **持久化**：仅前端 `localStorage`（key: `presurvey.np_radius_m`），刷新记得住；**不入库、不动 api/db**。无值或非法值时回落默认 200m。
 - **仅渲染、不入库**（不写任何几何到 DB）。
 - 其余图层（存量/勘测/Road/Lessor）不画圈。
+
+#### NP 范围圈导出 KMZ（V1.x #46）
+
+- **动机**：辐射圈在屏幕上是纯视觉（仅渲染不入库），但派工 KMZ 发给一线勘测员后，对方在 Google Earth 里只能看到 NP 点、看不到覆盖范围。#46 起，**导出 KMZ 时把范围圈一并导出**，让外业一眼看到每个 NP 点的辐射范围。
+- **半径取值**：用**导出时 `localStorage` 当前选中半径**（`presurvey.np_radius_m`，所见即所得；屏幕画多大，导出就多大）。**不**在导出时再弹选项。
+- **以点为基准**：框选导出 = 框住哪些 Macro NP / Micro NP 点，就为这些点各生成一个圈；整库导出 = 全部 NP 点各带一圈。非 NP 站型（存量/勘测/Road/Lessor）不画不导。
+- **几何**：按地面米将半径转为经纬度近似圆多边形（等角分段近似，段数足够圆滑即可）。
+- **样式**：紫色 `#a855f7` **半透明填充**（与屏幕 #44 规划类一致）+ 紫描边；KMZ 内新增 1 个 Style `poly-np-ring`。
+- **独立图层装载**：所有范围圈塞进**独立 KML Folder**（机器名 `np-radius-rings`，显示名「NP 范围圈」），**不挂** `#site/#road/#lessor` 三类 schema；每个圈要素带 `<ExtendedData>` 标记 `ring_of`（来源 NP 点的 SITE ID + OPTION）+ `ring_radius_m`。
+- **只出不进（导入忽略）**：导入器遇到 `np-radius-rings` Folder **或**带 `ring_of` 标记的 Polygon → **整体跳过**，不入库、不去重、不计冲突。此规则**优先于**「schema 缺失 Polygon 兜底为 lessor」——否则范围圈会被误当租户面灌库。详见 KML/KMZ 处理节「自反一致性契约」补丁。
 
 #### 筛选 vs 搜索（口径区分）
 
@@ -553,10 +563,11 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 
 - 导入：KMZ 是 KML 的 ZIP 压缩包，后端先解压（找 `doc.kml` 或首个 `.kml`）再解析
 - 导出：始终输出 KMZ；KML schema 与示例 `Integrated_Libraries_*.kml` 保持兼容（Site / Road / Lessor 三个 Schema）
-- 导出 KMZ 内置 7 个 Style 定义（point-green / yellow / red、poly-green / yellow / red、line-brown），与示例文件一致，保证 Google Earth 渲染效果
-- **解析时按 `<SchemaData schemaUrl="#site|#road|#lessor">` 区分类型；schema 缺失时按几何类型兜底**（Point→site / LineString→road / Polygon→lessor）
+- 导出 KMZ 内置 7 个 Style 定义（point-green / yellow / red、poly-green / yellow / red、line-brown），与示例文件一致，保证 Google Earth 渲染效果；**#46 起额外内置 `poly-np-ring`（紫 `#a855f7` 半透明填充 + 紫描边）供 NP 范围圈用**
+- **解析时按 `<SchemaData schemaUrl="#site|#road|#lessor">` 区分类型；schema 缺失时按几何类型兜底**（Point→site / LineString→road / Polygon→lessor）。**例外（#46）**：位于 `np-radius-rings` Folder 内、或带 `<ExtendedData>` `ring_of` 标记的 Polygon，**在兜底分类之前就整体跳过**（不入库、不去重、不计冲突），不走 Polygon→lessor 兜底
+- **NP 范围圈导出（#46）**：导出 KMZ 时为纳入范围的每个 Macro NP / Micro NP 点，按 `localStorage` 当前半径生成近似圆多边形，统一装入独立 KML Folder `np-radius-rings`（显示名「NP 范围圈」），样式 `poly-np-ring`，带 `ring_of` + `ring_radius_m` 标记。**只出不进**——仅供外业在 Google Earth 查看，导入回平台时按上一条整体忽略。详见 F20「NP 范围圈导出 KMZ」节
 - **`extras JSONB` 展开规则**：导出 KMZ 时 `extras` 字段全部展开到 `<ExtendedData><SchemaData>`，不丢字段；`<Schema>` 节的字段定义取**所有同类要素 `extras` 字段集的并集**（union），保证不同来源的扩展列都被纳入
-- **自反一致性契约**：本平台导出的 KMZ 重新导入回本平台时，必须 **100% 命中冲突**（同类型已去重要素全部识别为重复）。这是导入器和导出器之间的核心契约，保证数据"出去"和"回来"格式完全等价。任何破坏此契约的改动都视为回归 bug
+- **自反一致性契约**：本平台导出的 KMZ 重新导入回本平台时，**Site / Road / Lessor 三类实体要素**必须 **100% 命中冲突**（同类型已去重要素全部识别为重复）。这是导入器和导出器之间的核心契约，保证实体数据"出去"和"回来"格式完全等价。任何破坏此契约的改动都视为回归 bug。**契约边界（#46）**：NP 范围圈（`np-radius-rings`）是纯装饰几何、不属于三类实体，**导出携带、导入整体忽略**，既不参与契约判定、也不破坏契约——契约只约束三类实体要素的等价性
 - **导出文件命名规则**：`export_full_YYYYMMDD_HHMMSS.kmz`（整库） / `export_region_YYYYMMDD_HHMMSS.kmz`（选区）
 
 ### 字段名兼容（已知历史拼写错误）

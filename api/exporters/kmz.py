@@ -10,9 +10,14 @@
 
 import io
 import json
+import math
 import zipfile
 from typing import Any, Iterable
 from xml.sax.saxutils import escape
+
+# #46：会画 NP 范围圈的规划站型
+NP_RING_TYPES = {"Macro NP", "Micro NP"}
+NP_RING_SEGMENTS = 64  # 近似圆分段数（≥64，足够圆滑）
 
 # 强类型核心字段；这些会从行的列里写，不从 extras 里写（避免重复 + 类型损失）
 SITE_RESERVED = {"PROJECT", "SITE ID", "OPTION", "SITE STATUS", "LATI", "LONGI"}
@@ -124,7 +129,13 @@ STYLES_KML = """\
 <Style id="line-brown">
   <LineStyle><color>FF8B4513</color><width>4</width></LineStyle>
   <PolyStyle><fill>0</fill></PolyStyle>
+</Style>
+<Style id="poly-np-ring">
+  <LineStyle><color>FFF755A8</color><width>2</width></LineStyle>
+  <PolyStyle><color>8CF755A8</color><fill>1</fill><outline>1</outline></PolyStyle>
 </Style>"""
+# poly-np-ring（#46）：紫 #a855f7 半透明填充 + 紫描边。KML 颜色为 ABGR：
+# RR=a8 GG=55 BB=f7 → 填充 8C(alpha≈55%) F7 55 A8；描边 FF F7 55 A8。
 
 
 # ---------- Placemark 构造 ----------
@@ -218,6 +229,53 @@ def _collect_extras_keys(rows: Iterable[dict[str, Any]], reserved: set[str]) -> 
     return sorted(keys)
 
 
+# ---------- NP 范围圈（#46） ----------
+
+
+def _ring_coords(lat: float, lng: float, radius_m: float, segments: int = NP_RING_SEGMENTS) -> str:
+    """米半径 → 经纬度近似圆多边形 coordinates 串（lng,lat 空格分隔，闭合环）。
+
+    dlat = m/111320；dlng = m/(111320·cos(lat))。等角分段。
+    """
+    dlat = radius_m / 111320.0
+    cos_lat = math.cos(math.radians(lat))
+    dlng = radius_m / (111320.0 * cos_lat) if abs(cos_lat) > 1e-9 else dlat
+    pts: list[str] = []
+    for i in range(segments):
+        theta = 2.0 * math.pi * i / segments
+        plng = lng + dlng * math.cos(theta)
+        plat = lat + dlat * math.sin(theta)
+        pts.append(f"{fmt_float(plng)},{fmt_float(plat)}")
+    pts.append(pts[0])  # 闭合
+    return " ".join(pts)
+
+
+def _np_ring_placemark(row: dict[str, Any], idx: int, radius_m: int) -> str | None:
+    """为一个 NP 点生成范围圈 Placemark。不挂三类 schema，带 ring_of + ring_radius_m。"""
+    try:
+        lat = float(row.get("lati"))
+        lng = float(row.get("longi"))
+    except (TypeError, ValueError):
+        return None  # 无经纬度无法画圈
+    # ring_of = SITE ID + OPTION 组合，与导入去重主键口径一致
+    site_id = row.get("site_id") or ""
+    option = row.get("option") or ""
+    ring_of = f"{site_id}|{option}"
+    coords = _ring_coords(lat, lng, float(radius_m))
+    return "\n".join([
+        f'<Placemark id="np-ring.{idx}">',
+        "  <styleUrl>#poly-np-ring</styleUrl>",
+        "  <ExtendedData>",
+        f'    <Data name="ring_of"><value>{esc(ring_of)}</value></Data>',
+        f'    <Data name="ring_radius_m"><value>{radius_m}</value></Data>',
+        "  </ExtendedData>",
+        "  <Polygon><outerBoundaryIs><LinearRing>",
+        f"    <coordinates>{coords}</coordinates>",
+        "  </LinearRing></outerBoundaryIs></Polygon>",
+        "</Placemark>",
+    ])
+
+
 # ---------- 主入口 ----------
 
 
@@ -225,6 +283,7 @@ def build_kml(
     site_rows: list[dict[str, Any]],
     road_rows: list[dict[str, Any]],
     lessor_rows: list[dict[str, Any]],
+    np_radius_m: int = 200,
 ) -> str:
     """组装完整 KML 文档（字符串）。每行的 'geom_kml' 字段必须由调用方填好。"""
     site_extras = _collect_extras_keys(site_rows, SITE_RESERVED)
@@ -296,6 +355,23 @@ def build_kml(
         out.extend(lessor_buckets[bucket])
         out.append("  </Folder>")
     out.append("</Folder>")
+
+    # ---- NP 范围圈（#46，独立顶层 Folder）----
+    # 凡 type ∈ {Macro NP, Micro NP} 且已作为点导出（geom_kml 存在）的站点，按半径画圈。
+    # 不挂三类 schema，只供外业在 Google Earth 看覆盖范围；导入时整体忽略。
+    ring_placemarks: list[str] = []
+    for i, r in enumerate(site_rows, 1):
+        if not r.get("geom_kml"):
+            continue
+        if r.get("type") not in NP_RING_TYPES:
+            continue
+        pm = _np_ring_placemark(r, i, np_radius_m)
+        if pm:
+            ring_placemarks.append(pm)
+    if ring_placemarks:
+        out.append('<Folder id="np-radius-rings"><name>NP 范围圈</name>')
+        out.extend(ring_placemarks)
+        out.append("</Folder>")
 
     out.append("</Document>")
     out.append("</kml>")

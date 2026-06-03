@@ -88,10 +88,23 @@ export function siteShape(type: string | null | undefined): SiteShape {
   return TYPE_SHAPE[type] ?? DEFAULT_SITE_SHAPE;
 }
 
-// NP 辐射圈半径（#45）：默认 50m，可配。全局唯一值，挂工具栏下拉、存 localStorage。
-export const DEFAULT_NP_RADIUS_M = 50;
+// NP 辐射圈半径（#45）：默认 200m（#46 起，原 50m），可配。全局唯一值，挂工具栏下拉、存 localStorage。
+export const DEFAULT_NP_RADIUS_M = 200;
 // 半径白名单（米）。下拉选项 + localStorage 读入校验都用这一份真源。
 export const NP_RADIUS_OPTIONS = [50, 100, 150, 200, 250] as const;
+
+// localStorage key（全局唯一）。前端渲染、导出取值都复用这一份。
+export const NP_RADIUS_KEY = "presurvey.np_radius_m";
+
+// 读 localStorage 半径，校验必须 ∈ 白名单，否则回落默认（#45/#46）。
+// 导出时（state.ts）和工具栏初值（App.tsx）共用，保证「所见即所得」。
+export function readNpRadius(): number {
+  try {
+    const raw = Number(localStorage.getItem(NP_RADIUS_KEY));
+    if ((NP_RADIUS_OPTIONS as readonly number[]).includes(raw)) return raw;
+  } catch { /* localStorage 不可用时回落默认 */ }
+  return DEFAULT_NP_RADIUS_M;
+}
 
 // 真实地面米 → EPSG:3857 投影半径。
 // Web Mercator 在纬度 φ 处单位被拉伸 1/cos(φ)，故投影半径 = meters / cos(φ)。

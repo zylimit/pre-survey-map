@@ -134,12 +134,47 @@ _ROAD_CORE = {"Property"}
 _LESSOR_CORE = {"fid", "Lessor Name", "Lessor Category", "Lessor Cagegory", "Relationship"}
 
 
+_RING_FOLDER_IDS = {"np-radius-rings"}
+_RING_FOLDER_NAMES = {"np-radius-rings", "NP 范围圈"}
+
+
+def _is_np_ring(pm: etree._Element) -> bool:
+    """#46：判断 Placemark 是否为 NP 范围圈（只出不进，导入整体忽略）。
+
+    以 ExtendedData 的 ring_of 标记为主（最稳）；祖先 Folder id/name 为辅。
+    Data 和 SimpleData 两种写法都认。
+    """
+    # 主：ring_of 标记（<Data name="ring_of"> 或 <SimpleData name="ring_of">）
+    for el in pm.findall(".//k:ExtendedData/k:Data", NS):
+        if el.get("name") == "ring_of":
+            return True
+    for el in pm.findall(".//k:ExtendedData//k:SimpleData", NS):
+        if el.get("name") == "ring_of":
+            return True
+    # 辅：祖先 Folder id/name 命中
+    node = pm.getparent()
+    while node is not None:
+        if etree.QName(node).localname == "Folder":
+            if (node.get("id") or "") in _RING_FOLDER_IDS:
+                return True
+            name = node.find("k:name", NS)
+            if name is not None and (name.text or "").strip() in _RING_FOLDER_NAMES:
+                return True
+        node = node.getparent()
+    return False
+
+
 def parse_kml(data: bytes) -> ParseResult:
     """解析 KML 字节流。"""
     root = etree.fromstring(data)
     result = ParseResult()
 
     for pm in root.iter("{http://www.opengis.net/kml/2.2}Placemark"):
+        # #46：NP 范围圈整体跳过——必须早于「schema 缺失 Polygon→lessor」兜底，
+        # 否则圈会被当 lessor 灌库，破坏自反一致性契约。
+        if _is_np_ring(pm):
+            continue
+
         schema_url, simple = _schema_data(pm)
 
         kind = None

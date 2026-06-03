@@ -17,18 +17,7 @@ import BackupRestoreDialog from "./components/BackupRestoreDialog";
 import { useEscTrigger } from "./hooks/useEscTrigger";
 import { useKeyTrigger } from "./hooks/useKeyTrigger";
 import { useAppState } from "./state";
-import { DEFAULT_NP_RADIUS_M, NP_RADIUS_OPTIONS } from "./utils";
-
-const NP_RADIUS_KEY = "presurvey.np_radius_m";
-
-// 读 localStorage 半径，校验必须 ∈ 白名单，否则回落默认 50m（#45）。
-function readNpRadius(): number {
-  try {
-    const raw = Number(localStorage.getItem(NP_RADIUS_KEY));
-    if ((NP_RADIUS_OPTIONS as readonly number[]).includes(raw)) return raw;
-  } catch { /* localStorage 不可用时回落默认 */ }
-  return DEFAULT_NP_RADIUS_M;
-}
+import { NP_RADIUS_KEY, NP_RADIUS_OPTIONS, readNpRadius } from "./utils";
 
 export default function App() {
   const [outputOpen, setOutputOpen] = useState(false);

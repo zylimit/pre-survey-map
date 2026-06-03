@@ -24,7 +24,7 @@ router = APIRouter()
 # ---------- SQL 模板 ----------
 
 SITE_SQL = """
-SELECT site_id, "option", project, site_status, lati, longi, extras, source_file,
+SELECT site_id, "option", project, site_status, type, lati, longi, extras, source_file,
        CASE WHEN geom IS NULL THEN NULL ELSE ST_AsKML(geom, 15) END AS geom_kml
 FROM site
 {where}
@@ -47,6 +47,14 @@ FROM lessor
 # 选区过滤：ST_Contains(选区, geom) 严格包含（点在边界上不算）
 CONTAINS_CLAUSE = "WHERE geom IS NOT NULL AND ST_Contains(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), geom)"
 
+# #46：NP 范围圈半径白名单（米），与前端 NP_RADIUS_OPTIONS 一致。非白名单值回落默认 200。
+NP_RADIUS_OPTIONS = (50, 100, 150, 200, 250)
+DEFAULT_NP_RADIUS_M = 200
+
+
+def _sanitize_np_radius(v: int) -> int:
+    return v if v in NP_RADIUS_OPTIONS else DEFAULT_NP_RADIUS_M
+
 
 async def _fetch_rows(where: str, params: tuple) -> dict[str, list[dict[str, Any]]]:
     async with pool().acquire() as conn:
@@ -60,8 +68,10 @@ async def _fetch_rows(where: str, params: tuple) -> dict[str, list[dict[str, Any
     }
 
 
-def _build_kmz_meta(label: str, data: dict[str, list[dict[str, Any]]]) -> tuple[str, bytes, dict[str, int]]:
-    kml = build_kml(data["site"], data["road"], data["lessor"])
+def _build_kmz_meta(
+    label: str, data: dict[str, list[dict[str, Any]]], np_radius_m: int = DEFAULT_NP_RADIUS_M
+) -> tuple[str, bytes, dict[str, int]]:
+    kml = build_kml(data["site"], data["road"], data["lessor"], np_radius_m=np_radius_m)
     kmz_bytes = pack_kmz(kml)
     fname = f"export_{label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.kmz"
     counts = {
@@ -87,9 +97,10 @@ def _kmz_response(fname: str, kmz_bytes: bytes) -> Response:
 
 
 @router.get("/all")
-async def export_all(request: Request):
+async def export_all(request: Request, np_radius_m: int = DEFAULT_NP_RADIUS_M):
+    np_radius_m = _sanitize_np_radius(np_radius_m)
     data = await _fetch_rows("", ())
-    fname, kmz_bytes, counts = _build_kmz_meta("full", data)
+    fname, kmz_bytes, counts = _build_kmz_meta("full", data, np_radius_m)
     await write_audit(
         action="export_full",
         details={"file_name": fname, "counts": counts, "bytes": len(kmz_bytes)},
@@ -103,6 +114,7 @@ async def export_all(request: Request):
 
 class SelectionBody(BaseModel):
     polygon: dict[str, Any]  # GeoJSON Polygon
+    np_radius_m: int = DEFAULT_NP_RADIUS_M  # #46：当前 NP 半径，缺省 200
 
 
 @router.post("/selection")
@@ -110,8 +122,9 @@ async def export_selection(body: SelectionBody, request: Request):
     poly = body.polygon
     if not isinstance(poly, dict) or poly.get("type") != "Polygon":
         raise HTTPException(status_code=400, detail="polygon 必须是 GeoJSON Polygon 对象")
+    np_radius_m = _sanitize_np_radius(body.np_radius_m)
     data = await _fetch_rows(CONTAINS_CLAUSE, (json.dumps(poly),))
-    fname, kmz_bytes, counts = _build_kmz_meta("region", data)
+    fname, kmz_bytes, counts = _build_kmz_meta("region", data, np_radius_m)
     # Spec 雷 33：导出字段只记类型/文件名/数据计数，不记选区 WKT 几何
     await write_audit(
         action="export_region",

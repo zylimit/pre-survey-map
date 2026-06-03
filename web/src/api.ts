@@ -399,16 +399,20 @@ async function downloadResponse(res: Response, fallback: string): Promise<void> 
   URL.revokeObjectURL(url);
 }
 
-export async function exportAll(): Promise<void> {
-  const res = await fetch("/api/export/all");
+// npRadiusM（#46）：导出时把当前 NP 半径透传给后端，所见即所得。缺省由后端回落 200。
+export async function exportAll(npRadiusM?: number): Promise<void> {
+  const qs = npRadiusM != null ? `?np_radius_m=${npRadiusM}` : "";
+  const res = await fetch(`/api/export/all${qs}`);
   await downloadResponse(res, "export_full.kmz");
 }
 
-export async function exportSelection(polygon: GeoJSONPolygon): Promise<void> {
+export async function exportSelection(polygon: GeoJSONPolygon, npRadiusM?: number): Promise<void> {
+  const body: { polygon: GeoJSONPolygon; np_radius_m?: number } = { polygon };
+  if (npRadiusM != null) body.np_radius_m = npRadiusM;
   const res = await fetch("/api/export/selection", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ polygon }),
+    body: JSON.stringify(body),
   });
   await downloadResponse(res, "export_region.kmz");
 }

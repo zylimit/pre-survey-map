@@ -26,7 +26,7 @@ import {
   proceedToConflicts,
   uploadFile,
 } from "./api";
-import { nameOf } from "./utils";
+import { nameOf, readNpRadius } from "./utils";
 
 const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] };
 
@@ -468,7 +468,8 @@ export function useAppState() {
     setPhase("exporting");
     log("info", t("log.export_all_start"));
     try {
-      await exportAll();
+      // #46：把当前 localStorage 半径透传给后端，导出范围圈所见即所得
+      await exportAll(readNpRadius());
       log("info", t("log.export_all_ok"));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -565,7 +566,8 @@ export function useAppState() {
     setPhase("exporting");
     log("info", t("log.export_sel_start"));
     try {
-      await exportSelection(selectionPolygon);
+      // #46：框选导出同样透传当前半径
+      await exportSelection(selectionPolygon, readNpRadius());
       log("info", t("log.export_sel_ok"));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
