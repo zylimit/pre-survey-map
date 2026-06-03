@@ -192,3 +192,12 @@ deploy.sh ship --target onprem --version v1.0.3 --scope web
 2. **内网拓扑 = 同一台、参数会变**：单 `onprem.conf` + 运行时自动探测现网 network/端口/容器名；暂不做多目标，但 config 结构预留平滑扩展（未来加机 = 加一份 `.conf`，主逻辑零改）。
 3. **迁移文件归属 = 随功能产出**：哪个 #编号迭代改了 schema，实施 Agent 在该迭代内产出对应 `V<n>__xxx.sql`，纳入 review，与代码同生命周期、不脱节。
 4. **开工时机 = 先收尾 #45 再开工**：本设计定稿待命；待 #45 内网部署验证完成、现有链路确认 OK 后，再派部署 Agent 起 §8 的 P1（搭骨架，新旧并存不破坏现链路）。
+
+---
+
+## 10. 已知 backlog（评审/审查发现，待后续处理）
+
+- **[MED · P2 审查] `--to` 缺数值校验**：误传非数字（如 `--to abc`）触发底层 bash 算术错 + `set -e` 中止（安全失败、不会错误迁移，但报错不友好）。`migrate.sh:_scan_pending` 入口加一行 `case "$target_to" in latest|[0-9]*) ;; *) die ...`。
+- **[MED · P2 审查] `pre_migrate` 恢复点会被 F17 环形淘汰**：F17 环淘汰条件 `reason <> 'auto_backup'` 把 `pre_migrate` 算进"保留最近 10 个"名额，多次交互建点后该迁移恢复点可能被删（CASCADE 连快照）。"迁移后立即回滚"主场景无影响，但**长期回滚不保证**。待办：改 `api/restore_point_helper`，让 `pre_migrate` 与 `auto_backup` 同等排除出环淘汰；或文档明示长期回滚靠 pg_dump。（碰 api 代码，需测试，故未在 P2 内顺手改）
+- **[LOW · P2 审查] `migrate.sh` `_baseline_tables_present` 的 `count=9` 硬编码**：与 init.sql 表清单耦合，表增减需同步。加锚定注释。
+- **[MED/LOW · P1 审查] `cmd_publish` 的 trap EXIT 叠加风险 + `probe` 的 `head -1` SIGPIPE 注释 + `assert_arch` 多 arch 校验**：当前批次无害，后续批次顺手处理。
