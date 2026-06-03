@@ -22,7 +22,7 @@ import { DrawMode } from "../state";
 import { useT } from "../i18n";
 import {
   siteStatusColor, siteShape, lessorLineColor,
-  metersToProjRadius, withAlpha, STATUS_COLOR, RADIATION_RADIUS_M, LAYER_COLOR,
+  metersToProjRadius, withAlpha, STATUS_COLOR, LAYER_COLOR,
   type ShapeKind,
 } from "../utils";
 
@@ -44,6 +44,7 @@ interface Props {
   hiddenIds: Set<string>;
   fitAllEpoch: number;
   layoutEpoch: number;
+  npRadiusM: number;            // #45：NP 辐射圈半径（米，全局统一），变化时强制 NP 圈重绘
   onDropDisabled: () => void;   // #28：地图拖拽导入已禁用，拖入只提示不导入
   onSelectFeature: (f: Feature | null) => void;
   onSelectionDrawn: (polygon: GeoJSONPolygon) => void;
@@ -77,8 +78,8 @@ const SHAPE_CFG: Record<Exclude<ShapeKind, "circle">, { points: number; angle: n
 
 // F20 Phase 5：site 要素 = 形状(type) × 颜色(site_status)
 // 实心=存量 / 空心=规划 / 菱形=勘测；颜色按状态；type 缺失退化为默认圆点。
-// 规划类（Macro NP / Micro NP）额外叠一个 50m 透明辐射圈（仅渲染不入库）。
-function siteStyle(feature: FeatureLike, selected: boolean): Style[] {
+// 规划类（Macro NP / Micro NP）额外叠一个透明辐射圈（半径可配 #45，仅渲染不入库）。
+function siteStyle(feature: FeatureLike, selected: boolean, npRadiusM: number): Style[] {
   const status = feature.get("site_status") as string | undefined;
   const type = feature.get("type") as string | undefined;
   const category = feature.get("category") as string | undefined;
@@ -115,7 +116,7 @@ function siteStyle(feature: FeatureLike, selected: boolean): Style[] {
 
   const styles: Style[] = [new Style({ image })];
 
-  // 50m 辐射圈：用 geometry 函数把点替换成真实 50m 半径的 Circle（地图单位，缩放自适应）
+  // 辐射圈：用 geometry 函数把点替换成真实 npRadiusM 半径的 Circle（地图单位，缩放自适应）
   if (spec.ring) {
     styles.push(new Style({
       geometry: (feat) => {
@@ -123,7 +124,7 @@ function siteStyle(feature: FeatureLike, selected: boolean): Style[] {
         if (!g || g.getType() !== "Point") return undefined;
         const coord = (g as Point).getCoordinates();
         const lat = toLonLat(coord)[1];
-        return new CircleGeom(coord, metersToProjRadius(RADIATION_RADIUS_M, lat));
+        return new CircleGeom(coord, metersToProjRadius(npRadiusM, lat));
       },
       stroke: new Stroke({ color, width: 1, lineDash: [4, 3] }),
       fill: new Fill({ color: withAlpha(color, 0.08) }),
@@ -153,7 +154,7 @@ function lessorStyle(feature: FeatureLike, selected: boolean): Style {
 
 function MapView({
   sites, roads, lessors, selectedId, flyTarget,
-  drawMode, selectionPolygon, hiddenIds, fitAllEpoch, layoutEpoch,
+  drawMode, selectionPolygon, hiddenIds, fitAllEpoch, layoutEpoch, npRadiusM,
   onDropDisabled, onSelectFeature, onSelectionDrawn, onFitAll,
 }: Props) {
   const tFn = useT();
@@ -172,6 +173,8 @@ function MapView({
   const selectionSrc = useRef(new VectorSource());
   const selectedIdRef = useRef<string | number | null>(null);
   const hiddenIdsRef = useRef<Set<string>>(new Set());
+  // #45：站点样式闭包在 init effect 里只建一次，靠 ref 读运行时半径（避免闭包锁旧值）
+  const npRadiusRef = useRef<number>(npRadiusM);
   const sitesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const roadsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const lessorsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -205,7 +208,7 @@ function MapView({
       source: sitesSrc.current,
       style: (f) => {
         if (hiddenIdsRef.current.has(String(f.getId()))) return undefined;
-        return siteStyle(f, f.getId() === selectedIdRef.current);
+        return siteStyle(f, f.getId() === selectedIdRef.current, npRadiusRef.current);
       },
     });
     sitesLayerRef.current = sitesLayer;
@@ -336,6 +339,13 @@ function MapView({
     roadsLayerRef.current?.changed();
     lessorsLayerRef.current?.changed();
   }, [hiddenIds]);
+
+  // #45 NP 半径变化 → 更新 ref + 强制 site 图层 restyle（geometry 函数重算圈半径）
+  // 闭包读旧常量、OL 不会自动重绘，必须显式 .changed()。只动 site 层，其余不受影响。
+  useEffect(() => {
+    npRadiusRef.current = npRadiusM;
+    sitesLayerRef.current?.changed();
+  }, [npRadiusM]);
 
   // 底图切换
   useEffect(() => {

@@ -107,6 +107,30 @@ button, input, select, textarea {
   position: relative;
 }
 
+/* #45 NP 辐射圈半径下拉 */
+.toolbar .np-radius {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted, var(--text));
+  white-space: nowrap;
+}
+
+.toolbar .np-radius select {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.toolbar .np-radius select:hover {
+  border-color: var(--accent);
+}
+
 .toolbar .dropdown-menu {
   position: absolute;
   top: 100%;

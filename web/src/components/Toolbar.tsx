@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { DrawMode } from "../state";
 import { useLang, useT } from "../i18n";
+import { NP_RADIUS_OPTIONS } from "../utils";
 
 interface Props {
   busy: boolean;
   drawMode: DrawMode;
   hasSelection: boolean;
+  npRadiusM: number;
   onStartDraw: (mode: DrawMode) => void;
   onClearSelection: () => void;
   onExportAll: () => void;
@@ -14,12 +16,13 @@ interface Props {
   onSearch: (query: string) => void;
   onClearBaseline: () => void;
   onOpenRestorePoints: () => void;
+  onChangeNpRadius: (m: number) => void;
 }
 
 export default function Toolbar({
-  busy, drawMode, hasSelection,
+  busy, drawMode, hasSelection, npRadiusM,
   onStartDraw, onClearSelection, onExportAll, onExportSelection,
-  onRefresh, onSearch, onClearBaseline, onOpenRestorePoints,
+  onRefresh, onSearch, onClearBaseline, onOpenRestorePoints, onChangeNpRadius,
 }: Props) {
   const [openMenu, setOpenMenu] = useState<"export" | "draw" | null>(null);
   const [query, setQuery] = useState("");
@@ -115,6 +118,19 @@ export default function Toolbar({
       <button onClick={onRefresh} disabled={busy} title={tFn("tb.refresh.tip")}>
         {tFn("tb.refresh.label")}
       </button>
+
+      {/* #45 NP 辐射圈半径下拉（全局唯一入口，仅前端 localStorage，不入库） */}
+      <label className="np-radius" title={tFn("tb.np_radius.tip")}>
+        <span>{tFn("tb.np_radius.label")}</span>
+        <select
+          value={npRadiusM}
+          onChange={e => onChangeNpRadius(Number(e.target.value))}
+        >
+          {NP_RADIUS_OPTIONS.map(m => (
+            <option key={m} value={m}>{m}m</option>
+          ))}
+        </select>
+      </label>
 
       <div className="search">
         <input

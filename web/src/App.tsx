@@ -17,6 +17,18 @@ import BackupRestoreDialog from "./components/BackupRestoreDialog";
 import { useEscTrigger } from "./hooks/useEscTrigger";
 import { useKeyTrigger } from "./hooks/useKeyTrigger";
 import { useAppState } from "./state";
+import { DEFAULT_NP_RADIUS_M, NP_RADIUS_OPTIONS } from "./utils";
+
+const NP_RADIUS_KEY = "presurvey.np_radius_m";
+
+// 读 localStorage 半径，校验必须 ∈ 白名单，否则回落默认 50m（#45）。
+function readNpRadius(): number {
+  try {
+    const raw = Number(localStorage.getItem(NP_RADIUS_KEY));
+    if ((NP_RADIUS_OPTIONS as readonly number[]).includes(raw)) return raw;
+  } catch { /* localStorage 不可用时回落默认 */ }
+  return DEFAULT_NP_RADIUS_M;
+}
 
 export default function App() {
   const [outputOpen, setOutputOpen] = useState(false);
@@ -28,8 +40,16 @@ export default function App() {
   const [backupPwdOpen, setBackupPwdOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [backupPwd, setBackupPwd] = useState("");
+  const [npRadiusM, setNpRadiusM] = useState<number>(readNpRadius);
   const s = useAppState();
   const tFn = useT();
+
+  // #45：改半径 → 写 localStorage + 更新 state（state 变化驱动 MapView 重绘）
+  const onChangeNpRadius = useCallback((m: number) => {
+    if (!(NP_RADIUS_OPTIONS as readonly number[]).includes(m)) return;
+    setNpRadiusM(m);
+    try { localStorage.setItem(NP_RADIUS_KEY, String(m)); } catch { /* 忽略写入失败 */ }
+  }, []);
 
   // F19 隐藏入口：3 次 Esc（间隔 < 1s）→ 密码框 → Audit Modal
   // #39：导入提交中（uploading/committing）屏蔽 ESC，防误弹审计 / 防中断对话框
@@ -111,6 +131,7 @@ export default function App() {
         busy={s.phase === "loading" || s.phase === "uploading" || s.phase === "committing" || s.phase === "exporting"}
         drawMode={s.drawMode}
         hasSelection={s.selectionPolygon !== null}
+        npRadiusM={npRadiusM}
         onStartDraw={s.startDraw}
         onClearSelection={s.clearSelection}
         onExportAll={s.doExportAll}
@@ -119,6 +140,7 @@ export default function App() {
         onSearch={onSearch}
         onClearBaseline={() => setConfirmingClear(true)}
         onOpenRestorePoints={() => setRestorePointsOpen(true)}
+        onChangeNpRadius={onChangeNpRadius}
       />
       {/* F15 全局基线状态栏（Spec V1.x #15）*/}
       <BaselineStatusBar state={s.baselineState} />
@@ -151,6 +173,7 @@ export default function App() {
         hiddenIds={s.hiddenIds}
         fitAllEpoch={s.fitAllEpoch}
         layoutEpoch={s.layoutEpoch}
+        npRadiusM={npRadiusM}
         onDropDisabled={s.notifyDropDisabled}
         onSelectFeature={s.selectFeature}
         onSelectionDrawn={s.onSelectionDrawn}

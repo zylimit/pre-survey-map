@@ -88,8 +88,10 @@ export function siteShape(type: string | null | undefined): SiteShape {
   return TYPE_SHAPE[type] ?? DEFAULT_SITE_SHAPE;
 }
 
-// 50m 辐射圈：真实地面半径固定 50m，不可配。
-export const RADIATION_RADIUS_M = 50;
+// NP 辐射圈半径（#45）：默认 50m，可配。全局唯一值，挂工具栏下拉、存 localStorage。
+export const DEFAULT_NP_RADIUS_M = 50;
+// 半径白名单（米）。下拉选项 + localStorage 读入校验都用这一份真源。
+export const NP_RADIUS_OPTIONS = [50, 100, 150, 200, 250] as const;
 
 // 真实地面米 → EPSG:3857 投影半径。
 // Web Mercator 在纬度 φ 处单位被拉伸 1/cos(φ)，故投影半径 = meters / cos(φ)。
