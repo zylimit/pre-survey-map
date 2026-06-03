@@ -64,8 +64,11 @@ export type Phase =
   | "committing"
   | "exporting";
 
-// F9 框选模式
-export type DrawMode = "polygon" | "rectangle" | null;
+// F9 框选模式（#47 增 circle 圆形选区）
+export type DrawMode = "polygon" | "rectangle" | "circle" | null;
+
+// export_region 审计 mode 取值（Spec line 708）。与 DrawMode 映射：rectangle→rect，其余同名。
+export type SelectionMode = "polygon" | "rect" | "circle";
 
 // F20 Phase 4：「查看图层要素」浮动列表框的目标图层标识
 // 与 Phase 3 树计数同源——site 按 operator/category/type 三列过滤，road/lessor 整层。
@@ -153,6 +156,8 @@ export function useAppState() {
   const [flyTarget, setFlyTarget] = useState<{ feature: Feature; epoch: number } | null>(null);
   const [drawMode, setDrawMode] = useState<DrawMode>(null);
   const [selectionPolygon, setSelectionPolygon] = useState<GeoJSONPolygon | null>(null);
+  // #47：记住产出当前选区的绘制模式，导出时映射为 audit mode（polygon/rect/circle）
+  const [selectionMode, setSelectionMode] = useState<SelectionMode | null>(null);
   // 被显式隐藏的要素 id（左树/全局都看这同一份）
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   // F15 全局基线状态栏
@@ -453,14 +458,17 @@ export function useAppState() {
     setDrawMode(mode);
   }, []);
 
-  const onSelectionDrawn = useCallback((polygon: GeoJSONPolygon) => {
+  const onSelectionDrawn = useCallback((polygon: GeoJSONPolygon, mode: DrawMode) => {
     setSelectionPolygon(polygon);
+    // #47：DrawMode → audit mode（rectangle→rect，circle/polygon 同名；null 兜底 polygon）
+    setSelectionMode(mode === "rectangle" ? "rect" : mode === "circle" ? "circle" : "polygon");
     setDrawMode(null);
     log("info", t("log.selection_drawn"));
   }, [log]);
 
   const clearSelection = useCallback(() => {
     setSelectionPolygon(null);
+    setSelectionMode(null);
     setDrawMode(null);
   }, []);
 
@@ -568,7 +576,8 @@ export function useAppState() {
     log("info", t("log.export_sel_start"));
     try {
       // #46：框选导出半径同样来自内存 state（单一真源），所见即所得
-      await exportSelection(selectionPolygon, npRadiusM);
+      // #47：mode（polygon/rect/circle）透传给后端记审计；兜底 polygon
+      await exportSelection(selectionPolygon, npRadiusM, selectionMode ?? "polygon");
       log("info", t("log.export_sel_ok"));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -576,7 +585,7 @@ export function useAppState() {
     } finally {
       setPhase("idle");
     }
-  }, [selectionPolygon, log]);
+  }, [selectionPolygon, selectionMode, log]);
 
   return {
     sites,

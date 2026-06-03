@@ -112,9 +112,14 @@ async def export_all(request: Request, np_radius_m: int = DEFAULT_NP_RADIUS_M):
 # ---------- /api/export/selection ----------
 
 
+# #47：选区绘制模式白名单（审计用）。非法值回落 polygon。
+SELECTION_MODES = ("polygon", "rect", "circle")
+
+
 class SelectionBody(BaseModel):
     polygon: dict[str, Any]  # GeoJSON Polygon
     np_radius_m: int = DEFAULT_NP_RADIUS_M  # #46：当前 NP 半径，缺省 200
+    mode: str = "polygon"  # #47：选区模式 polygon|rect|circle，仅记审计，不参与过滤
 
 
 @router.post("/selection")
@@ -123,12 +128,13 @@ async def export_selection(body: SelectionBody, request: Request):
     if not isinstance(poly, dict) or poly.get("type") != "Polygon":
         raise HTTPException(status_code=400, detail="polygon 必须是 GeoJSON Polygon 对象")
     np_radius_m = _sanitize_np_radius(body.np_radius_m)
+    mode = body.mode if body.mode in SELECTION_MODES else "polygon"  # #47：审计 mode，非法回落
     data = await _fetch_rows(CONTAINS_CLAUSE, (json.dumps(poly),))
     fname, kmz_bytes, counts = _build_kmz_meta("region", data, np_radius_m)
-    # Spec 雷 33：导出字段只记类型/文件名/数据计数，不记选区 WKT 几何
+    # Spec 雷 33：导出字段只记类型/文件名/数据计数 + 选区模式（#47），不记选区 WKT 几何
     await write_audit(
         action="export_region",
-        details={"file_name": fname, "counts": counts, "bytes": len(kmz_bytes)},
+        details={"file_name": fname, "counts": counts, "bytes": len(kmz_bytes), "mode": mode},
         request=request,
     )
     return _kmz_response(fname, kmz_bytes)

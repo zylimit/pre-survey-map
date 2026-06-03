@@ -57,7 +57,13 @@ export default function Toolbar({
   };
 
   const drawLabel = drawMode
-    ? tFn(drawMode === "polygon" ? "tb.draw.active.poly" : "tb.draw.active.rect")
+    ? tFn(
+        drawMode === "polygon"
+          ? "tb.draw.active.poly"
+          : drawMode === "circle"
+            ? "tb.draw.active.circle"
+            : "tb.draw.active.rect",
+      )
     : tFn("tb.draw.label");
 
   return (
@@ -102,6 +108,9 @@ export default function Toolbar({
             </div>
             <div className="dropdown-item" onClick={() => { setOpenMenu(null); onStartDraw("rectangle"); }}>
               {tFn("tb.draw.rect")}
+            </div>
+            <div className="dropdown-item" onClick={() => { setOpenMenu(null); onStartDraw("circle"); }}>
+              {tFn("tb.draw.circle")}
             </div>
             {(drawMode || hasSelection) && (
               <div

@@ -16,6 +16,7 @@ import type { DrawEvent } from "ol/interaction/Draw";
 import type { FeatureLike } from "ol/Feature";
 import OlFeature from "ol/Feature";
 import { Polygon, Point, Circle as CircleGeom } from "ol/geom";
+import { fromCircle } from "ol/geom/Polygon";
 
 import { Feature, FeatureCollection, GeoJSONPolygon } from "../api";
 import { DrawMode } from "../state";
@@ -47,7 +48,7 @@ interface Props {
   npRadiusM: number;            // #45：NP 辐射圈半径（米，全局统一），变化时强制 NP 圈重绘
   onDropDisabled: () => void;   // #28：地图拖拽导入已禁用，拖入只提示不导入
   onSelectFeature: (f: Feature | null) => void;
-  onSelectionDrawn: (polygon: GeoJSONPolygon) => void;
+  onSelectionDrawn: (polygon: GeoJSONPolygon, mode: DrawMode) => void;
   onFitAll: () => void;
 }
 
@@ -388,20 +389,23 @@ function MapView({
 
     selectionSrc.current.clear();
 
+    // #47：圆形与矩形都用 OL Draw 的 "Circle" type；矩形靠 createBox geometryFunction 出矩形，
+    // 圆形不设 geometryFunction（默认交互 = 点圆心拖半径），画出真 Circle 几何。
     const draw = new Draw({
       source: selectionSrc.current,
-      type: drawMode === "rectangle" ? "Circle" : "Polygon",
+      type: drawMode === "rectangle" || drawMode === "circle" ? "Circle" : "Polygon",
       geometryFunction: drawMode === "rectangle" ? createBox() : undefined,
       freehand: false,
     });
     draw.on("drawend", (e: DrawEvent) => {
-      const feat = e.feature as OlFeature<Polygon>;
-      const geom = feat.getGeometry();
+      const geom = e.feature.getGeometry();
       if (!geom) return;
-      // 转回 4326 经纬度坐标
-      const geo = geom.clone().transform("EPSG:3857", "EPSG:4326") as Polygon;
+      // #47：圆形几何是 ol/geom Circle，需先在投影坐标(3857)上 fromCircle 转 64 段近似圆多边形；
+      // 矩形/多边形本身已是 Polygon。转 4326 前完成多边形化，统一走 GeoJSONPolygon 输出。
+      const polyGeom = geom instanceof CircleGeom ? fromCircle(geom, 64) : (geom as Polygon);
+      const geo = polyGeom.clone().transform("EPSG:3857", "EPSG:4326") as Polygon;
       const coordinates = geo.getCoordinates();
-      onSelectionDrawn({ type: "Polygon", coordinates });
+      onSelectionDrawn({ type: "Polygon", coordinates }, drawMode);
     });
     map.addInteraction(draw);
     drawRef.current = draw;

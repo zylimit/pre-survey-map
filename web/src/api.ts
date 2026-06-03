@@ -406,9 +406,15 @@ export async function exportAll(npRadiusM?: number): Promise<void> {
   await downloadResponse(res, "export_full.kmz");
 }
 
-export async function exportSelection(polygon: GeoJSONPolygon, npRadiusM?: number): Promise<void> {
-  const body: { polygon: GeoJSONPolygon; np_radius_m?: number } = { polygon };
+// mode（#47）：选区绘制模式，透传给后端记 export_region 审计（polygon/rect/circle）。
+export async function exportSelection(
+  polygon: GeoJSONPolygon,
+  npRadiusM?: number,
+  mode?: "polygon" | "rect" | "circle",
+): Promise<void> {
+  const body: { polygon: GeoJSONPolygon; np_radius_m?: number; mode?: string } = { polygon };
   if (npRadiusM != null) body.np_radius_m = npRadiusM;
+  if (mode != null) body.mode = mode;
   const res = await fetch("/api/export/selection", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

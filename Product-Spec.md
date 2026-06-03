@@ -31,7 +31,7 @@
 | F6 | 地图可视化 | OpenLayers 渲染；CartoDB Positron 默认底图，可切 OSM / Esri 卫星 / Google 卫星（开发调试 + 内部服务器 beta 部署均走未授权 tile 接口临时方案；仅公有云商用部署时替换为 Google Maps API Key）|
 | F7 | 图层树管理 | ~~左侧单层树，三个固定文件夹：Site / Road / Lessor；节点带数量 + 复选框显隐 + 顶部搜索框；列表虚拟化~~ **【V1.x #24 · F20 取代】树结构重构为固定深层图层体系（运营商→类别→类型），单要素不再进树而是落入「查看图层要素」列表框；本行原浅树描述作废，详见 F20**|
 | F8 | 属性查看 | 点击地图要素或树节点 → 右侧面板平铺显示该要素**所有字段**（V1 不分 tabs）；可 ✖ 关闭，**关闭后无常驻入口**，再次点击要素或树节点自动重新打开 |
-| F9 | 框选导出 KMZ | 工具栏 [框选模式 ▾] 选自由多边形 / 矩形 → 在地图绘制 → 导出严格包含在选区内的所有要素 |
+| F9 | 框选导出 KMZ | 工具栏 [框选模式 ▾] 选自由多边形 / 矩形 / **圆形（V1.x #47）** → 在地图绘制 → 导出严格包含在选区内的所有要素。圆形选区前端用 OpenLayers Circle 绘制（点圆心拖半径），完成后转为**近似圆多边形**（`fromCircle`，≥64 段），仍发 GeoJSONPolygon 走现有 `ST_Contains` 通道，与多边形/矩形「严格包含」语义一致，**后端零改动** |
 | F10 | 整库导出 KMZ | 工具栏 [导出 KMZ ▾] 下拉：[导出整库] / [导出选区] |
 | F11 | 操作反馈 | 底部可折叠输出面板：进度条 + 操作日志 + 错误警告 + 数据库连接状态；**导入流程 UX（V1.x #39）**：提交后确认按钮 disabled+loading、对话框不可关、导入中屏蔽 ESC、写库**精确百分比进度**（后端分批+轮询 `写入 X/N · %`，替代不确定态转圈） |
 | F12 | 自动定位（双向焦点同步）| 导入完成自动 fit bounds 到新导入的数据范围；**点击树节点 → 地图飞到该要素并放大**；**地图选中要素 → 左树自动展开所在文件夹 + 滚动到该节点并高亮**（虚拟化列表下需按行号计算 scrollTop）|
@@ -107,7 +107,7 @@
 |------|------|
 | ~~📁 导入文件~~ | **【V1.x #24 · F20 移除】** 顶部全局导入按钮取消；导入入口下沉到每个 🔺 图层节点的 [导入图层] 按钮（"导入一定发生在图层上，不在文件夹上"）。单文件/单选/100MB/几何护栏/F13→F4 两步向导等规则不变，详见 F20 |
 | 💾 导出 KMZ ▾ | 下拉：[导出整库] / [导出选区]（"导出选区"在未画选区时灰禁） |
-| ⬛ 框选 ▾ | 下拉：[自由多边形] / [矩形]；进入绘制状态，鼠标变成十字 |
+| ⬛ 框选 ▾ | 下拉：[自由多边形] / [矩形] / [圆形]（#47）；进入绘制状态，鼠标变成十字 |
 | 🔍 搜索 | 全局搜索框（右上角）；**回车触发**，三类要素全搜（Site/Road/Lessor，匹配各自显示名，与左树过滤同口径）→ 结果列入底部 Output「搜索结果区」+ **自动飞到第一条**（详见 F16 / 「底部输出面板·搜索结果区」）|
 | 🔄 刷新 | 重载库数据 + 重连 DB 状态指示 |
 | 🗑️ 清除基线 | **危险操作 + 换基线唯一通道**：弹确认 modal → 后端 truncate `site` / `road` / `lessor` + **`baseline_state`** 四表；主基准随之重置；V1 不做权限控制（仅靠红色按钮 + 确认 modal 防误点）；**执行前自动建恢复点（F17 · reason=pre_clear）**|
@@ -157,7 +157,7 @@
   - 规划类（Macro NP / Micro NP）额外画透明辐射圈（半径可配 50/100/150/200/250m，默认 200m；仅渲染不入库，但**导出 KMZ 时随点导出为范围圈图层**，详见 F20 + #45 + #46）
 - 交互层级：**L2（只查不改） + 框选绘制**
   - 点击要素 → 属性面板显示
-  - 框选模式下绘制临时多边形/矩形 → 完成后可导出
+  - 框选模式下绘制临时多边形/矩形/圆形（#47） → 完成后可导出
 
 ### 右侧属性面板
 
@@ -249,8 +249,8 @@
 
 1. 工程师打开网页
 2. 搜索或拖拽地图，定位目标区域（如 "Pasay City"）
-3. 点 [⬛ 框选 ▾] → 选自由多边形或矩形
-4. 在地图绘制选区（多边形：点击设顶点 → 双击结束；矩形：按住拖拽）
+3. 点 [⬛ 框选 ▾] → 选自由多边形 / 矩形 / 圆形
+4. 在地图绘制选区（多边形：点击设顶点 → 双击结束；矩形：按住拖拽；圆形：点圆心拖半径，松手完成）
 5. 选区完成 → [💾 导出 KMZ ▾] → [导出选区]
 6. 系统筛选**严格包含**在选区内的所有 Site / Road / Lessor → 打包 KMZ → 浏览器下载
 7. 工程师手动把 KMZ 邮件发给勘测员，邮件正文说明任务
@@ -705,7 +705,7 @@ EXISTS (SELECT 1 FROM countries WHERE ST_DWithin(point.geom, countries.geom, 0.0
 | `open` | session 首次打开页面（`presurvey_sid` cookie 缺失）| — |
 | `import` | commit 入库完成 | `file_name` / `parsed_count` / `cleaning_decisions`（自动修复/保留/丢弃各 N）/ `conflict_decisions`（覆盖/忽略各 N）/ `inserted_count` / `restore_point_id`（关联自动建的点）|
 | `export_full` | 整库导出 KMZ 完成 | `file_name` / `counts: {site, road, lessor}` |
-| `export_region` | 选区导出 KMZ 完成 | `file_name` / `counts: {site, road, lessor}` / `mode: "polygon" \| "rect"` |
+| `export_region` | 选区导出 KMZ 完成 | `file_name` / `counts: {site, road, lessor}` / `mode: "polygon" \| "rect" \| "circle"`（#47 增 circle） |
 | `export_conflicts` | 冲突 Excel 导出完成 | `file_name` / `conflict_count` |
 | `restore_point_create_auto` | 自动建点（commit 前 / 清基线前 / 回滚前）| `restore_point_id` / `reason: "pre_import" \| "pre_clear" \| "pre_rollback"` / `counts` |
 | `restore_point_create_manual` | 手动建点 | `restore_point_id` / `note`（用户填的备注）/ `counts` |
