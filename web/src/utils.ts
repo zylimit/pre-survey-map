@@ -93,11 +93,12 @@ export const DEFAULT_NP_RADIUS_M = 200;
 // 半径白名单（米）。下拉选项 + localStorage 读入校验都用这一份真源。
 export const NP_RADIUS_OPTIONS = [50, 100, 150, 200, 250] as const;
 
-// localStorage key（全局唯一）。前端渲染、导出取值都复用这一份。
+// localStorage key（全局唯一）。前端渲染半径的持久化键。
 export const NP_RADIUS_KEY = "presurvey.np_radius_m";
 
 // 读 localStorage 半径，校验必须 ∈ 白名单，否则回落默认（#45/#46）。
-// 导出时（state.ts）和工具栏初值（App.tsx）共用，保证「所见即所得」。
+// 用途：工具栏初值读取（App.tsx 的 useState 初值）；导出半径改用 App 内存 state
+//（见 #46 修复 10d7856，导出时不再读 localStorage），此处不再是导出唯一真源。
 export function readNpRadius(): number {
   try {
     const raw = Number(localStorage.getItem(NP_RADIUS_KEY));

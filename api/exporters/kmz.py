@@ -262,6 +262,9 @@ def _np_ring_placemark(row: dict[str, Any], idx: int, radius_m: int) -> str | No
         return None
     if abs(lat) > 90 or abs(lng) > 180:
         return None
+    # WONTFIX（codex 复审 LOW，已评估接受）：lat=±90 / lng=±180 边界附近的点，圈坐标理论上
+    # 会溢出 ±90/±180，本实现不做测地线/经度 wrap 修正。理由：本产品部署区固定菲律宾
+    # （~5–21°N），真实勘测站点不可达极点/日期变更线，按已知限制接受。
     # ring_of = SITE ID + OPTION 组合，与导入去重主键口径一致
     site_id = row.get("site_id") or ""
     option = row.get("option") or ""
