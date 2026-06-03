@@ -2,17 +2,17 @@
 # ═════════════════════════════════════════════════════════════════════════════
 # deploy.sh —— pre-survey-map 统一部署系统 · 唯一入口（DEPLOY-DESIGN §3/§4）
 #
-# 本批(P1)实现：build / publish / onprem / ship
-# 本批 stub：cloud / migrate（打印"后续批次实现"并退出）
-# 未实现：migration 机制(P2) / cloud 完整(P4) / 旧脚本清理(P5)
+# 已实现：build / publish / onprem / ship（P1） · migrate + onprem --migrate-db（P2）
+# 本批 stub：cloud（后续批次 P4）
+# 未实现：cloud 完整(P4) / 旧脚本清理(P5)
 #
 # 子命令（DEPLOY-DESIGN §4）：
 #   deploy.sh build   --version vX --scope web|full [--arch arm64|amd64]
 #   deploy.sh publish --version vX [--scope web|full]
 #   deploy.sh onprem  --version vX --scope web|full [--migrate-db] [--reset-db]
 #   deploy.sh ship    --target onprem --version vX --scope web
+#   deploy.sh migrate --target <t> [--to <序号|latest>]
 #   deploy.sh cloud   ...   (stub)
-#   deploy.sh migrate ...   (stub)
 # ═════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -28,6 +28,8 @@ export DEPLOY_ROOT PROJ_ROOT
 . "$DEPLOY_ROOT/lib/docker.sh"
 # shellcheck disable=SC1091
 . "$DEPLOY_ROOT/lib/cf.sh"
+# shellcheck disable=SC1091
+. "$DEPLOY_ROOT/lib/migrate.sh"
 
 usage() {
     cat <<'EOF'
@@ -38,15 +40,16 @@ pre-survey-map 统一部署系统 deploy.sh
   deploy.sh publish --version vX [--scope web|full]
   deploy.sh onprem  --version vX --scope web|full [--migrate-db] [--reset-db]
   deploy.sh ship    --target onprem --version vX --scope web
+  deploy.sh migrate --target <t> [--to <序号|latest>]
   deploy.sh cloud   ...    (本批 stub)
-  deploy.sh migrate ...    (本批 stub)
 
 通用参数：
   --version vX        版本号（带不带 v 前缀都行；不传则用 release.conf 的 VERSION）
   --scope web|full    web=只换前端镜像；full=web+api（不传用 release.conf DEFAULT_SCOPE）
   --arch arm64|amd64  目标架构（build 用；不传由 target/scope 推断）
-  --target onprem     目标环境（读 config/targets/<target>.conf）
-  --migrate-db        触发 db 迁移（本批仅打印"P2 待实现"，不执行）
+  --target <t>        目标环境（读 config/targets/<t>.conf，如 onprem / cloud）
+  --to <序号|latest>  迁移上限版本（migrate 用；默认 latest = 应用全部待应用迁移）
+  --migrate-db        触发 db 迁移（onprem：迁移前必建恢复点；PROD 需二次确认）
   --reset-db          清库（对 PROD 目标直接拒绝退出）
   -h | --help         本帮助
 EOF
@@ -54,7 +57,7 @@ EOF
 
 # ---------- 参数解析（通用，给各子命令复用）----------
 ARG_VERSION=""; ARG_SCOPE=""; ARG_ARCH=""; ARG_TARGET=""
-ARG_MIGRATE_DB=false; ARG_RESET_DB=false; ARG_TAR=""
+ARG_MIGRATE_DB=false; ARG_RESET_DB=false; ARG_TAR=""; ARG_TO=""
 
 parse_args() {
     while [ $# -gt 0 ]; do
@@ -63,6 +66,7 @@ parse_args() {
             --scope)   ARG_SCOPE="${2:-}";   shift 2 ;;
             --arch)    ARG_ARCH="${2:-}";    shift 2 ;;
             --target)  ARG_TARGET="${2:-}";  shift 2 ;;
+            --to)      ARG_TO="${2:-}";      shift 2 ;;
             --tar)     ARG_TAR="${2:-}";     shift 2 ;;
             --migrate-db) ARG_MIGRATE_DB=true; shift ;;
             --reset-db)   ARG_RESET_DB=true;   shift ;;
@@ -250,11 +254,13 @@ cmd_onprem() {
         guard_prod_no_reset   # PROD=true 会在此 die
         warn "（理论分支：非 PROD 才会到此，本批 onprem 仍不实现 reset 执行。）"
     fi
-    # —— migrate-db 本批 stub ——
+    # —— migrate-db（P2 已实现）：仅当显式传入才碰库 ——
     if [ "$ARG_MIGRATE_DB" = "true" ]; then
-        warn "--migrate-db：DB 迁移机制为 P2 待实现，本批不执行任何迁移。已忽略该标志。"
+        step "--migrate-db：执行版本化迁移（迁移前必建恢复点；PROD 需二次确认）"
+        run_migrations onprem "${ARG_TO:-latest}"
+    else
+        info "默认不碰 db —— 本子命令只换镜像（C5）。如需迁移加 --migrate-db。"
     fi
-    info "默认不碰 db —— 本子命令只换镜像（C5）。"
 
     # —— tar 来源 ——
     local tar="$ARG_TAR"
@@ -282,7 +288,11 @@ cmd_onprem() {
         info "scope=web：未触碰 api/db。"
     fi
 
-    ok "onprem 部署完成（scope=${SCOPE} version=${VER}）。db 未触碰。"
+    if [ "$ARG_MIGRATE_DB" = "true" ]; then
+        ok "onprem 部署完成（scope=${SCOPE} version=${VER}）。db 已按 --migrate-db 迁移（见上）。"
+    else
+        ok "onprem 部署完成（scope=${SCOPE} version=${VER}）。db 未触碰。"
+    fi
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -301,14 +311,24 @@ cmd_ship() {
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 子命令：cloud / migrate —— 本批 stub
+# 子命令：migrate —— 单独跑版本化迁移（DEPLOY-DESIGN §5）
+#   deploy.sh migrate --target <t> [--to <序号|latest>]
+#   默认不碰 db 的例外：本子命令的职责【就是】迁移，故显式调用即连库。
+#   迁移前必建恢复点；PROD 目标二次确认；失败中止 + 恢复点回滚指引。
+# ═════════════════════════════════════════════════════════════════════════════
+cmd_migrate() {
+    local target="$ARG_TARGET"
+    [ -n "$target" ] || die "migrate 需指定 --target（如 onprem / cloud）"
+    load_target_conf "$target"
+    info "migrate：target=${target}  --to=${ARG_TO:-latest}（PROD=${PROD:-?}）"
+    run_migrations "$target" "${ARG_TO:-latest}"
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 子命令：cloud —— 本批 stub
 # ═════════════════════════════════════════════════════════════════════════════
 cmd_cloud() {
     warn "cloud 子命令：后续批次实现（DEPLOY-DESIGN §8 P4）。本批未实现，退出。"
-    exit 0
-}
-cmd_migrate() {
-    warn "migrate 子命令：DB 迁移机制为后续批次实现（DEPLOY-DESIGN §8 P2）。本批未实现，退出。"
     exit 0
 }
 
