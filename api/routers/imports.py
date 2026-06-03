@@ -631,7 +631,11 @@ class CommitBody(BaseModel):
 async def commit_import(sid: str, body: CommitBody, request: Request):
     s = session_store.get(sid)
     if s is None:
-        raise HTTPException(status_code=404, detail="session 不存在或已过期")
+        # 二次提交（session 已消费/过期）→ 友好提示而非裸 404（前端已有防重入，这是兜底）
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "already_committed", "msg": "该导入已提交或已过期，请勿重复提交"},
+        )
     if "non_conflicts" not in s:
         raise HTTPException(
             status_code=400,

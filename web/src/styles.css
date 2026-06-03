@@ -532,10 +532,15 @@ button, input, select, textarea {
   flex-shrink: 0;
 }
 .tree .style-label {
-  flex: 1;
+  /* #40 修：原 flex:1 把 [查看] 眼睛推到行右框；改 0 1 auto 让眼睛紧跟 label（参照 LayerRow）*/
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 计数靠 auto margin 推到右端，眼睛便紧跟节点文字（不动 LayerRow 的 .layer-count）*/
+.tree .style-row .folder-count {
+  margin-left: auto;
 }
 
 /* ============ F20 Phase 4 · 查看图层要素浮动列表框 ============ */

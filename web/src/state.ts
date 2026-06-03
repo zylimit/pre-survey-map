@@ -174,6 +174,8 @@ export function useAppState() {
   // #39：commit 写库进度（null = 未在提交）；轮询 /progress 填充
   const [importProgress, setImportProgress] = useState<{ done: number; total: number; pct: number } | null>(null);
   const progressTimerRef = useRef<number | null>(null);
+  // 同步防重入守卫（补 React setState/busy 异步空窗：大数据慢、用户狂点 commit）
+  const committingRef = useRef(false);
 
   const log = useCallback((level: LogEntry["level"], msg: string) => {
     const locale = getLang() === "zh" ? "zh-CN" : "en-US";
@@ -309,10 +311,13 @@ export function useAppState() {
   const confirmConflicts = useCallback(
     async (decisions: Record<string, Decision>) => {
       if (!importSession) return;
+      if (committingRef.current) return;   // 同步防重入：commit 进行中再点直接忽略（防二次提交 404）
+      committingRef.current = true;
       const sid = importSession.sessionId;
+      const fileName = importSession.fileName;
       setPhase("committing");
       setImportProgress({ done: 0, total: 0, pct: 0 });
-      log("info", t("log.committing", { file: importSession.fileName }));
+      log("info", t("log.committing", { file: fileName }));
 
       // #39：轮询写库进度（每 500ms）。停止条件：done===total / phase=done / finally 兜底。
       const stopPoll = () => {
@@ -320,6 +325,13 @@ export function useAppState() {
           clearInterval(progressTimerRef.current);
           progressTimerRef.current = null;
         }
+      };
+      // 关框 + 退提交态（成功/失败都用，幂等）
+      const closeFrame = () => {
+        stopPoll();
+        setImportProgress(null);
+        setImportSession(null);
+        setPhase("idle");
       };
       stopPoll();
       progressTimerRef.current = window.setInterval(async () => {
@@ -330,6 +342,7 @@ export function useAppState() {
         } catch { /* 轮询失败忽略，commit await 兜底 */ }
       }, 500);
 
+      let ok = false;
       try {
         const list = Object.entries(decisions).map(([key, action]) => ({ key, action }));
         const resp = await commitImport(sid, list);
@@ -345,19 +358,32 @@ export function useAppState() {
           const bs = resp.baseline_established;
           log("info", t("log.baseline_fixed", { name: (getLang() === "zh" ? bs.name_zh : bs.name_en) ?? bs.name_zh ?? bs.iso_a2, iso: bs.iso_a2, pct: bs.coverage_pct ?? "?" }));
         }
-        await refresh();
-        await refreshBaselineState();
+        ok = true;
+        // ★ commit 成功立即关框 + 退提交态（不等 refresh，否则 13300 条重载期间框还挂着，
+        //   用户以为失败再点 → 二次提交 sid 已消费 → 404）
+        closeFrame();
+        log("info", t("log.import_done"));
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         log("error", t("log.commit_err", { msg }));
+        closeFrame();   // 失败也关框，别卡死在 committing
       } finally {
         stopPoll();
-        setImportProgress(null);
-        setImportSession(null);
-        setPhase("idle");
+        committingRef.current = false;
+      }
+
+      // 成功后才后台刷新（框已退，慢也不影响体验；失败已 return-like 跳过）
+      if (ok) {
+        try {
+          await refresh();
+          await refreshBaselineState();
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          log("error", t("log.refresh_err", { msg }));
+        }
       }
     },
-    [importSession, log, refresh]
+    [importSession, log, refresh, refreshBaselineState]
   );
 
   // 取消导入：步骤 2 取消 → 下载 Excel 然后 DELETE；步骤 1 取消 → 直接 DELETE
