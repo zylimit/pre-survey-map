@@ -354,6 +354,12 @@ button, input, select, textarea {
   accent-color: var(--accent);
   margin: 0;
 }
+/* 0 要素节点：checkbox 灰禁用（无可显隐，不可点）*/
+.tree .folder-cb-native:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  accent-color: var(--text-disabled);
+}
 
 .tree .node {
   padding: 3px 8px;

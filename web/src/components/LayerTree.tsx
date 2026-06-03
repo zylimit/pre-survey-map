@@ -214,12 +214,14 @@ function LayerTree({
     ids, label,
   }: { ids: string[]; label?: string }) => {
     const ts = triOf(ids);
+    const empty = ids.length === 0;   // #44 后：0 要素节点无可显隐 → checkbox 灰禁用
     return (
       <input
         type="checkbox"
         className="folder-cb-native"
-        ref={el => { if (el) el.indeterminate = ts === "partial"; }}
-        checked={ts === "all"}
+        ref={el => { if (el) el.indeterminate = !empty && ts === "partial"; }}
+        checked={!empty && ts === "all"}
+        disabled={empty}
         onChange={() => toggleIds(ids)}
         onClick={e => e.stopPropagation()}
         title={label}
@@ -268,7 +270,7 @@ function LayerTree({
 
   const LayerRow = ({
     nodeKey, label, depth = 0, stamp, ids,
-    highlighted = false,
+    highlighted = false, hasChildren = true,
   }: {
     nodeKey: string;
     label: string;
@@ -276,6 +278,8 @@ function LayerTree({
     stamp: LayerStamp;
     ids: string[];
     highlighted?: boolean;
+    // 有无样式子节点（#44）：勘测 site 图层 + Road/Lessor=有；存量/规划 site 图层=无（叶子）
+    hasChildren?: boolean;
   }) => {
     const open = isOpen(nodeKey);
     const cnt = ids.length;
@@ -284,14 +288,18 @@ function LayerTree({
         className={`layer-row${highlighted ? " node-highlighted" : ""}`}
         style={{ paddingLeft: 4 + depth * 16 }}
       >
-        {/* #33：图层永远可展开（有样式骨架）；#36：展开符=lucide Chevron */}
-        <span
-          className={`folder-disclose ${open ? "open" : "closed"}`}
-          onClick={() => toggleOpen(nodeKey)}
-          title={open ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
-        >
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </span>
+        {/* #36 Chevron 可展开；存量/规划图层无样式子节点 → leaf-spacer 占位无箭头（对齐不变）*/}
+        {hasChildren ? (
+          <span
+            className={`folder-disclose ${open ? "open" : "closed"}`}
+            onClick={() => toggleOpen(nodeKey)}
+            title={open ? tFn("lt.folder.collapse") : tFn("lt.folder.expand")}
+          >
+            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
+        ) : (
+          <span className="folder-disclose leaf-spacer" aria-hidden="true" />
+        )}
         <CB ids={ids} />
         {/* #37：站型自绘 SVG（替代 #29 Unicode 字符），居中在 #36 的 16px 列 */}
         <span className="node-type-icon"><SiteShapeIcon stamp={stamp} size={14} /></span>
@@ -358,8 +366,9 @@ function LayerTree({
         <input
           type="checkbox"
           className="folder-cb-native"
-          ref={el => { if (el) el.indeterminate = ts === "partial"; }}
-          checked={ts === "all"}
+          ref={el => { if (el) el.indeterminate = ids.length > 0 && ts === "partial"; }}
+          checked={ids.length > 0 && ts === "all"}
+          disabled={ids.length === 0}
           onChange={() => toggleIds(ids)}
           onClick={e => e.stopPropagation()}
         />
@@ -456,6 +465,7 @@ function LayerTree({
                             highlighted={hl !== null && (
                               hl === layerKey || hl.startsWith(layerKey + "/")
                             )}
+                            hasChildren={cat === "勘测"}
                           />
 
                           {/* #44：样式节点仅勘测类显示（存量/规划展开后无 🎨）。
