@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-06-03 (#43 + 导入框 fix)
+
+### 列表框八方向拉伸 #43 + 导入框 commit 关框时机/防重入/眼睛位置修复
+
+**类型**：1 需求增强（#43）+ 1 bug 修复（内网首版后手验）
+
+**#43 列表框浮窗八方向拉伸**：#30 的浮窗 resize 从「仅右下角」扩成**四边 + 四角八方向**。`onResizePointerDown(dir)` 按 e/w/n/s 组合算 size+pos，**含 w/n 的方向同步改 left/top**（锚点在对侧，防窗口反向跳）；8 个 handle 贴边/角 + 对应光标；clamp（MIN 480×320 / 视口−32）、rAF 节流、localStorage 持久化复用 #30。
+
+**导入框 fix（#39/#40 缺陷修正）**：
+- **commit 成功立即关框**：原 `await commit → await refresh()(重载 13300 条慢) → finally 关框`，框在 refresh 期间还挂着 → 用户以为失败再点 commit → 二次提交 sid 已消费 → **404**。改为 commit 成功 `closeFrame()` 立即关框 +「导入成功」，`refresh()` 移到关框后 `if(ok)` 后台跑（带 try/catch）。
+- **同步防重入**：`committingRef`（入口 return + finally 清），补 React `busy` 异步 setState 空窗，狂点不二次提交。
+- **后端友好返回**：二次 commit（session 已消费）返回明确提示，非裸 404。
+- **样式节点眼睛紧跟节点**：#40 的 [查看] 原被 `.style-label{flex:1}` 推到右框 → 改 `flex:0 1 auto` + `.style-row .folder-count{margin-left:auto}`，眼睛紧跟 label（与图层节点一致）。
+
+**Spec 改动**：#30「可缩放」条改八方向。
+
+---
+
 ## 2026-06-02 (#42)
 
 ### 定时自动备份（独立于 F17 恢复点）
