@@ -3,8 +3,8 @@
 # deploy.sh —— pre-survey-map 统一部署系统 · 唯一入口（DEPLOY-DESIGN §3/§4）
 #
 # 已实现：build / publish / onprem / ship（P1） · migrate + onprem --migrate-db（P2）
-# 本批 stub：cloud（后续批次 P4）
-# 未实现：cloud 完整(P4) / 旧脚本清理(P5)
+#         · cloud（P4：rsync→compose build/up→curl，复用 P2 迁移器）
+# 未实现：旧脚本清理(P5)
 #
 # 子命令（DEPLOY-DESIGN §4）：
 #   deploy.sh build   --version vX --scope web|full [--arch arm64|amd64]
@@ -12,7 +12,7 @@
 #   deploy.sh onprem  --version vX --scope web|full [--migrate-db] [--reset-db]
 #   deploy.sh ship    --target onprem --version vX --scope web
 #   deploy.sh migrate --target <t> [--to <序号|latest>]
-#   deploy.sh cloud   ...   (stub)
+#   deploy.sh cloud   --version vX --scope web|full [--migrate-db] [--reset-db]
 # ═════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -41,7 +41,7 @@ pre-survey-map 统一部署系统 deploy.sh
   deploy.sh onprem  --version vX --scope web|full [--migrate-db] [--reset-db]
   deploy.sh ship    --target onprem --version vX --scope web
   deploy.sh migrate --target <t> [--to <序号|latest>]
-  deploy.sh cloud   ...    (本批 stub)
+  deploy.sh cloud   --version vX --scope web|full [--migrate-db] [--reset-db]
 
 通用参数：
   --version vX        版本号（带不带 v 前缀都行；不传则用 release.conf 的 VERSION）
@@ -325,11 +325,134 @@ cmd_migrate() {
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 子命令：cloud —— 本批 stub
+# 子命令：cloud —— 公有云（腾讯云测试环境）直部署（DEPLOY-DESIGN §4 / §8 P4）
+#   cloud --version vX --scope web|full [--migrate-db] [--reset-db]
+#
+# 路线：compose（区别于 onprem 的 docker-run，由 cloud.conf ORCHESTRATOR 决定）：
+#   1) rsync Mac 工作区 → 腾讯云 REMOTE_DIR（排除 node_modules/dist/.vite/.git/*.tar）
+#   2) ssh 远端：docker compose build <按 scope> + docker compose up -d <按 scope>
+#   3) --migrate-db → 复用 P2 run_migrations（compose 路线下用 docker exec DB_CTN psql）
+#   4) --reset-db   → 测试库允许（PROD=false/ALLOW_RESET=true），但须 confirm（非交互拒）
+#   5) 验证：远端 curl web 端口(WEB_PORT)返回 200
+# 🔴 只碰腾讯云测试环境（SSH_ALIAS=coder）；不碰内网生产、不走 onprem 逻辑。
 # ═════════════════════════════════════════════════════════════════════════════
+
+# _cloud_ssh "<远端命令>" —— 在腾讯云执行一条命令（失败即非零，由调用方判定）
+_cloud_ssh() { ssh "$SSH_ALIAS" "$1"; }
+
+# _cloud_compose "<compose 子命令>" —— 远端 cd REMOTE_DIR 后跑 docker compose
+_cloud_compose() {
+    _cloud_ssh "cd '$REMOTE_DIR' && docker compose -f '$COMPOSE_FILE' $1"
+}
+
+# scope → 涉及的 compose 服务列表（web=只 web；full=web+api，不含 db）
+_cloud_services_for_scope() {
+    case "$SCOPE" in
+        web)  printf '%s' "$WEB_SVC" ;;
+        full) printf '%s %s' "$WEB_SVC" "$API_SVC" ;;
+    esac
+}
+
 cmd_cloud() {
-    warn "cloud 子命令：后续批次实现（DEPLOY-DESIGN §8 P4）。本批未实现，退出。"
-    exit 0
+    resolve_version_scope
+    load_target_conf cloud
+    require_cmd ssh
+    require_cmd rsync
+    : "${REMOTE_DIR:?cloud.conf 缺 REMOTE_DIR}"
+    : "${SSH_ALIAS:?cloud.conf 缺 SSH_ALIAS}"
+    : "${COMPOSE_FILE:?cloud.conf 缺 COMPOSE_FILE}"
+    : "${WEB_SVC:?cloud.conf 缺 WEB_SVC}"
+    : "${WEB_PORT:?cloud.conf 缺 WEB_PORT}"
+
+    info "cloud：version=$VER  scope=$SCOPE  target=cloud（PROD=${PROD} ALLOW_RESET=${ALLOW_RESET}）→ ${SSH_ALIAS}:${REMOTE_DIR}"
+
+    local svcs; svcs=$(_cloud_services_for_scope)
+
+    # —— 安全护栏：reset 测试库允许，但必须 confirm（非交互拒）；先于任何变更 ——
+    if [ "$ARG_RESET_DB" = "true" ]; then
+        guard_prod_no_reset   # cloud PROD=false → 不触发；万一被改成 PROD=true 会在此 die
+        warn "🔴 --reset-db：将清空测试库 [${DB_CTN}:${DB_NAME}] 的业务数据（site/road/lessor/baseline_state + 快照/恢复点）。"
+        if ! confirm_typed "$DB_NAME" "确认清空测试库（不可逆，仅限测试环境）"; then
+            die "未确认（或非交互环境）—— 已中止，库未触碰。"
+        fi
+        _cloud_reset_db
+    fi
+
+    # —— 1) rsync 工作区代码到腾讯云 ——
+    step "1/4 rsync 工作区 → ${SSH_ALIAS}:${REMOTE_DIR}（排除 node_modules/dist/.vite/.git/*.tar）"
+    rsync -az --delete \
+        --exclude 'node_modules/' --exclude 'dist/' --exclude '.vite/' \
+        --exclude '.git/' --exclude '*.tar' \
+        "$PROJ_ROOT/" "${SSH_ALIAS}:${REMOTE_DIR}/" \
+        || die "rsync 失败（检查 ssh ${SSH_ALIAS} 连通性）"
+    ok "代码已同步到远端。"
+
+    # —— 2) 远端 docker compose build + up（按 scope）——
+    step "2/4 远端 docker compose build：[$svcs]"
+    _cloud_compose "build $svcs" || die "远端 compose build 失败：[$svcs]"
+    # --no-deps：只起本 scope 的服务，不级联重建 depends_on 链（scope=web 不碰 api/db）。
+    step "2/4 远端 docker compose up -d --no-deps：[$svcs]"
+    _cloud_compose "up -d --no-deps $svcs" || die "远端 compose up 失败：[$svcs]"
+    ok "远端服务已重建并启动：[$svcs]"
+
+    # —— 3) --migrate-db（复用 P2 run_migrations；docker exec DB_CTN psql）——
+    if [ "$ARG_MIGRATE_DB" = "true" ]; then
+        step "3/4 --migrate-db：执行版本化迁移（迁移前必建恢复点；远端 db 容器）"
+        _cloud_run_migrations_remote
+    else
+        info "3/4 默认不碰 db（C5）。如需迁移加 --migrate-db。"
+    fi
+
+    # —— 4) 验证：远端 curl web 端口 = 200 ——
+    step "4/4 验证：远端 curl http://localhost:${WEB_PORT}"
+    local code
+    code=$(_cloud_ssh "curl -s -o /dev/null -w '%{http_code}' http://localhost:${WEB_PORT}" 2>/dev/null || echo "000")
+    info "远端 curl http://localhost:${WEB_PORT}  ->  HTTP $code"
+    case "$code" in
+        200) ok "HTTP 200 就绪。" ;;
+        301|302) ok "HTTP $code（重定向，视为就绪）。" ;;
+        *) die "HTTP $code 非预期。看远端日志：ssh ${SSH_ALIAS} \"cd '$REMOTE_DIR' && docker compose logs ${WEB_SVC}\"" ;;
+    esac
+
+    ok "cloud 部署完成（scope=${SCOPE} version=${VER}）。$( [ "$ARG_MIGRATE_DB" = "true" ] && echo 'db 已按 --migrate-db 迁移。' || echo 'db 未触碰。' )"
+}
+
+# _cloud_run_migrations_remote —— 在腾讯云上复用 P2 migrate.sh 的执行器。
+#   migrate.sh 的 _psql_* 用本地 docker exec，无法直连远端 db；故把 deploy/ 整体已 rsync
+#   到远端（步骤1），在远端跑 deploy.sh migrate --target cloud（同一套 migrate.sh + migrations/）。
+#   非交互 ssh 下 PROD=false 不触发二次确认；恢复点/单事务/篡改校验逻辑全部复用，不重复造轮子。
+_cloud_run_migrations_remote() {
+    local to="${ARG_TO:-latest}"
+    info "在远端执行：deploy.sh migrate --target cloud --to ${to}（复用 P2 migrate.sh + migrations/）"
+    _cloud_ssh "cd '$REMOTE_DIR' && bash deploy/deploy.sh migrate --target cloud --to ${to}" \
+        || die "远端迁移失败（见上方 migrate.sh 输出；可用 pre_migrate 恢复点回滚）"
+    ok "远端迁移完成。"
+}
+
+# _cloud_reset_db —— 清空测试库业务数据（仅限测试环境，已 confirm_typed 通过）。
+#   方式：docker exec DB_CTN psql TRUNCATE 全部业务表 + 追踪表（最稳：不删容器/卷、不丢 schema，
+#   保留 init.sql 建好的结构；下次 --migrate-db 会重新从 V0/当前基线对齐）。
+#   重置 schema_migrations 让迁移器视为"待重新应用"。
+_cloud_reset_db() {
+    step "🔴 reset：TRUNCATE 测试库业务数据（仅 ${DB_CTN}:${DB_NAME}，保留表结构）"
+    require_cmd ssh
+    # 远端 docker exec psql；CASCADE 处理外键（快照/恢复点）。schema_migrations 一并清，迁移器重新对齐。
+    _cloud_ssh "docker exec -i '$DB_CTN' psql -U '$DB_USER' -d '$DB_NAME' -v ON_ERROR_STOP=1 -c \"
+        DO \\\$\\\$
+        DECLARE t text;
+        BEGIN
+          FOR t IN
+            SELECT tablename FROM pg_tables
+            WHERE schemaname='public'
+              AND tablename IN ('site','road','lessor','baseline_state',
+                                'site_snapshot','road_snapshot','lessor_snapshot',
+                                'baseline_state_snapshot','restore_point','schema_migrations')
+          LOOP
+            EXECUTE format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', t);
+          END LOOP;
+        END \\\$\\\$;
+    \"" || die "reset 失败（远端 psql）。"
+    ok "测试库业务数据已清空（表结构保留）。如需重灌：cloud --migrate-db 或重新导入。"
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
