@@ -706,22 +706,29 @@ button, input, select, textarea {
   font-family: var(--font-mono);
 }
 /* #30 右下角缩放手柄：16×16，斜纹光标，悬停显 accent */
-.lfl-resize {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 16px;
-  height: 16px;
-  cursor: nwse-resize;
-  z-index: 3;
+/* #43 八方向拉伸手柄：四边细条 + 四角小方块（角 z-index 更高，角优先）*/
+.lfl-resize { position: absolute; z-index: 5; }
+/* 四边：细条贴边，留出 8px 给角不重叠 */
+.lfl-resize-e { top: 8px; bottom: 8px; right: 0;  width: 6px;  cursor: ew-resize; }
+.lfl-resize-w { top: 8px; bottom: 8px; left: 0;   width: 6px;  cursor: ew-resize; }
+.lfl-resize-n { left: 8px; right: 8px; top: 0;    height: 6px; cursor: ns-resize; }
+.lfl-resize-s { left: 8px; right: 8px; bottom: 0; height: 6px; cursor: ns-resize; }
+/* 四角：10×10 小方块，盖过边（角优先）*/
+.lfl-resize-ne, .lfl-resize-nw, .lfl-resize-se, .lfl-resize-sw { width: 10px; height: 10px; z-index: 6; }
+.lfl-resize-se { right: 0; bottom: 0; cursor: nwse-resize; }
+.lfl-resize-nw { left: 0;  top: 0;    cursor: nwse-resize; }
+.lfl-resize-ne { right: 0; top: 0;    cursor: nesw-resize; }
+.lfl-resize-sw { left: 0;  bottom: 0; cursor: nesw-resize; }
+/* 右下角保留视觉纹理提示 */
+.lfl-resize-se {
   background:
-    linear-gradient(135deg, transparent 0 6px, var(--border) 6px 8px,
-      transparent 8px 10px, var(--border) 10px 12px, transparent 12px);
+    linear-gradient(135deg, transparent 0 4px, var(--border) 4px 6px,
+      transparent 6px 8px, var(--border) 8px 10px, transparent 10px);
 }
-.lfl-resize:hover {
+.lfl-resize-se:hover {
   background:
-    linear-gradient(135deg, transparent 0 6px, var(--accent) 6px 8px,
-      transparent 8px 10px, var(--accent) 10px 12px, transparent 12px);
+    linear-gradient(135deg, transparent 0 4px, var(--accent) 4px 6px,
+      transparent 6px 8px, var(--accent) 8px 10px, transparent 10px);
 }
 
 /* ============ Resize Handles ============ */

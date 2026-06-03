@@ -38,6 +38,14 @@ const HEADER_KEEP = 48;             // 拖动时纵向至少保留的 header 可
 const EDGE_KEEP = 120;              // 拖动时横向至少保留的可抓宽
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+// #43：八方向拉伸。dir 含 e/w/n/s 的组合，角是两轴叠加。
+type ResizeDir = "e" | "w" | "n" | "s" | "ne" | "nw" | "se" | "sw";
+const RESIZE_DIRS: readonly ResizeDir[] = ["e", "w", "n", "s", "ne", "nw", "se", "sw"];
+const RESIZE_CURSOR: Record<ResizeDir, string> = {
+  e: "ew-resize", w: "ew-resize", n: "ns-resize", s: "ns-resize",
+  ne: "nesw-resize", sw: "nesw-resize", nw: "nwse-resize", se: "nwse-resize",
+};
 const maxW = () => Math.max(MIN_W, window.innerWidth - VP_MARGIN);
 const maxH = () => Math.max(MIN_H, window.innerHeight - VP_MARGIN);
 
@@ -233,20 +241,32 @@ export default function LayerFeatureList({
     document.addEventListener("pointerup", onUp);
   };
 
-  const onResizePointerDown = (e: React.PointerEvent) => {
+  // #43：八方向拉伸。含 w/n 时锚点在对侧 → 同步改 pos.left/top（坑1）；都走 clamp。
+  const onResizePointerDown = (e: React.PointerEvent, dir: ResizeDir) => {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX, startY = e.clientY;
     const startW = size.w, startH = size.h;
+    const startLeft = pos.left, startTop = pos.top;
     const mW = maxW(), mH = maxH();
     document.body.style.userSelect = "none";
-    document.body.style.cursor = "nwse-resize";
-    let pending: { w: number; h: number } | null = null;
-    const apply = () => { resizeRaf.current = null; if (pending) setSize(pending); };
+    document.body.style.cursor = RESIZE_CURSOR[dir];
+    let pending: { w: number; h: number; left: number; top: number } | null = null;
+    const apply = () => {
+      resizeRaf.current = null;
+      if (pending) {
+        setSize({ w: pending.w, h: pending.h });
+        setPos({ left: pending.left, top: pending.top });
+      }
+    };
     const onMove = (mv: PointerEvent) => {
-      const w = clamp(startW + (mv.clientX - startX), MIN_W, mW);
-      const h = clamp(startH + (mv.clientY - startY), MIN_H, mH);
-      pending = { w, h };
+      const dx = mv.clientX - startX, dy = mv.clientY - startY;
+      let w = startW, h = startH, left = startLeft, top = startTop;
+      if (dir.includes("e")) w = clamp(startW + dx, MIN_W, mW);
+      if (dir.includes("w")) { w = clamp(startW - dx, MIN_W, mW); left = startLeft + (startW - w); }
+      if (dir.includes("s")) h = clamp(startH + dy, MIN_H, mH);
+      if (dir.includes("n")) { h = clamp(startH - dy, MIN_H, mH); top = startTop + (startH - h); }
+      pending = { w, h, left, top };
       if (resizeRaf.current == null) resizeRaf.current = requestAnimationFrame(apply);
     };
     const onUp = () => {
@@ -256,7 +276,9 @@ export default function LayerFeatureList({
       document.body.style.cursor = "";
       if (resizeRaf.current != null) { cancelAnimationFrame(resizeRaf.current); resizeRaf.current = null; }
       if (pending) {
-        setSize(pending);
+        setSize({ w: pending.w, h: pending.h });
+        setPos({ left: pending.left, top: pending.top });
+        // 持久化仅尺寸（位置不持久化，#30）
         try { localStorage.setItem(LS_W, String(pending.w)); localStorage.setItem(LS_H, String(pending.h)); } catch { /* 忽略 */ }
       }
     };
@@ -372,8 +394,14 @@ export default function LayerFeatureList({
         </div>
       )}
 
-      {/* #30 右下角缩放手柄 */}
-      <div className="lfl-resize" onPointerDown={onResizePointerDown} />
+      {/* #43 八方向拉伸手柄（四边 + 四角）*/}
+      {RESIZE_DIRS.map(d => (
+        <div
+          key={d}
+          className={`lfl-resize lfl-resize-${d}`}
+          onPointerDown={e => onResizePointerDown(e, d)}
+        />
+      ))}
     </div>
   );
 }
