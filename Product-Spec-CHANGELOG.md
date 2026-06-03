@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-06-03 (#44 收尾 + nginx)
+
+### 存量/规划图层去展开箭头 + 0要素checkbox禁用 + nginx缓存根治
+
+**类型**：收尾 fix（#44 连带 + 部署体验）
+
+- **存量/规划图层去箭头**：#44 后存量/规划 site 图层无样式子节点（叶子）→ LayerRow 加 `hasChildren`（site 图层=`cat==="勘测"`、road/lessor=true）；无子用 `leaf-spacer` 占位（无 chevron 不可展开），勘测 + Road/Lessor 仍可展开。
+- **0 要素节点 checkbox 禁用**：`triOf([])` 返回 all → 0 要素节点显绿勾但 `toggleIds([])` 空操作（点不动、误导）→ `ids.length===0` 时 checkbox `disabled` 置灰（CB/StyleRow + CSS `:disabled` not-allowed）。
+- **nginx 缓存根治**：`web/nginx.conf` 加 `index.html` `no-cache` + 带 hash 的 assets `immutable` 长缓存 → 发版后普通浏览器刷新即见新版，**不再要无痕**。
+
+**Spec 改动**：CHANGELOG 记录；实现细节修（#44/#36 连带），Spec 主体不变。
+
+---
+
 ## 2026-06-03 (#44)
 
 ### 样式仅勘测显示 + 存量橙/规划紫图层色 + Macro NP/Micro NP 半透明 55%
