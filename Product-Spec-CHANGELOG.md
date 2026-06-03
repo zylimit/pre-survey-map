@@ -22,6 +22,11 @@
 
 **决策（用户拍板）**：半径=导出时当前选中值（所见即所得）；样式=实心半透明面、跟屏幕 NP 一致；契约=只导出不导入、硬导入忽略；范围=以点为基准框住即导。
 
+**审查 & 修复（CCB reviewer=codex 两轮）**：
+- a06d097 首审：Stage1/Stage2 通过；提 3 个 LOW。
+- 10d7856 修复并复审通过：(1) `_np_ring_placemark` 加 `math.isfinite` + 经纬度范围守卫，防 nan/inf/越界产出垃圾圈；(2) 导出半径改以 App 内存 `npRadiusM` state 为单一真源（`doExportAll/doExportSelection` 接参，不再导出时读 localStorage，localStorage 仅持久化+初值），杜绝写失败时"所见≠所得"；(3) 清理 utils.ts 注释 50m 漂移。
+- **已知残留（评估后接受，WONTFIX）**：① 圈点在 lat=±90/lng=±180 边界附近理论上溢出 ±90/±180；② 极区 `cos(lat)` 近 0 时 dlng 失真。二者均因部署区固定菲律宾（~5–21°N）、真实勘测站点不可达极点/日期变更线而无现实影响，不引入测地线/经度 wrap。③ 重导入后 site `type` 不随 KML 回灌→再导出不重绘圈，属契约边界外（契约只约束 Site/Road/Lessor 三类实体等价）。
+
 **Spec 改动**：「NP 辐射圈」节默认值 50→200（含 F20 表格条、要素样式条、localStorage 回落值 4 处）；新增「NP 范围圈导出 KMZ（#46）」子节；KML/KMZ 处理节新增范围圈导出条 + schema 兜底例外条；**自反一致性契约新增 #46 边界补丁**（契约只约束 Site/Road/Lessor 三类实体，NP 范围圈纯装饰、导出携带导入忽略、不破坏契约）。
 
 ---
