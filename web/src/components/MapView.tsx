@@ -500,7 +500,13 @@ function MapView({
       {dragOver && <div className="drop-overlay">📥 {tFn("map.drop.hint")}</div>}
       {drawMode && (
         <div className="draw-hint">
-          {drawMode === "polygon" ? "🖱 点击设顶点 · 双击结束" : "🖱 按住拖动绘制矩形"}
+          🖱 {tFn(
+            drawMode === "polygon"
+              ? "tb.draw.hint.poly"
+              : drawMode === "circle"
+                ? "tb.draw.hint.circle"
+                : "tb.draw.hint.rect",
+          )}
         </div>
       )}
     </div>
