@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-06-03 (#44)
+
+### 样式仅勘测显示 + 存量橙/规划紫图层色 + Macro NP/Micro NP 半透明 55%
+
+**类型**：重度变更（渲染策略 + 树结构，来自一线 PM；本质是"做减法"——不做自定义样式 UI，硬编码交差）
+
+**触发**：PM 要求 status 状态分色只在勘测图层用；存量/规划改图层默认色。
+
+**变更**：
+- **样式节点仅勘测显示**：仅 Survey（勘测）的 Macro-ongoing/Micro-ongoing 图层下渲染 🎨 样式节点（positive/negative/undermine + Other）；存量(Existing)、规划(Planned)全部图层 → 树上无样式子节点。
+- **数据不动、纯前端开关**：site_status 照存、siteMap 照归类（statusBucket→other 不变），只 LayerTree 渲染加 `&& cat==="勘测"`、MapView 颜色按 category 分叉。**恢复 = 去条件，零成本**（防 PM 反悔）。
+- **图层默认色（按类别 2 色）**：存量 = 橙 `#f97316`（实心 ▲●■）、规划 = 紫 `#a855f7`（△○）。避开状态绿/红/黄、road 棕、#34 选中蓝。形状仍 siteShape(type)，勘测仍 × status 色。
+- **规划 NP 半透明 55%**：Macro NP/Micro NP 原空心 → 紫色半透明填充 `withAlpha(紫, 0.55)` + 紫描边，卫星底图显眼；50m 辐射圈跟随变紫、逻辑不变。
+- **Road/Lessor 不动**；不做自定义样式 UI（硬编码 LAYER_COLOR）。
+
+**决策（AskUserQuestion）**：配色=按类别 2 色（存量橙/规划紫）；透明度=半透明填充 55%；Road/Lessor 不动。配色经 WebSearch（ColorBrewer 定性 + 卫星底图避绿避蓝）。
+
+**Spec 改动**：#33 样式骨架条加显示范围收窄；Phase5 渲染条加 category 分叉 + 半透明。
+
+---
+
 ## 2026-06-03 (#43 + 导入框 fix)
 
 ### 列表框八方向拉伸 #43 + 导入框 commit 关框时机/防重入/眼睛位置修复

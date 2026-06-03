@@ -385,7 +385,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 
 - **类别 → 站型映射（写死）**：存量 = {Macro, Micro, IBS}；规划 = {Macro NP, Micro NP}；勘测 = {Macro-ongoing, Micro-ongoing}。
 - 每个 Site 图层下固定挂 3 个状态样式节点（positive/negative/undermine）；**空值/未知状态的点渲染为灰**，归入隐式「未分类 🎨 ⚪」（仅当存在空值点时显示）。
-- **样式节点是固定骨架，不随计数消失（V1.x #33）**：🎨 样式节点代表「样式类目」，是图层的**固定子骨架**——**即使该样式下 0 要素也照常显示**（显示计数 0 + 复选框 + 色点），不因空而隐藏。所以**图层节点永远有子节点、永远可展开**。
+- **样式节点是固定骨架，不随计数消失（V1.x #33）**：🎨 样式节点代表「样式类目」，是图层的**固定子骨架**——**即使该样式下 0 要素也照常显示**（显示计数 0 + 复选框 + 色点），不因空而隐藏。所以**图层节点永远有子节点、永远可展开**。**【V1.x #44 修正 · 显示范围收窄】**：样式节点**仅在勘测（Survey）的 Macro-ongoing / Micro-ongoing 图层下渲染**（pos/neg/und + Other）；存量(Existing)、规划(Planned)全部图层**前端不渲染**样式节点（图层节点下直接无 🎨）。**数据 / siteMap 归类不动**（statusBucket→other 照旧），纯前端开关（LayerTree 渲染加 `&& cat==="勘测"`），去掉条件即恢复，零成本（防 PM 反悔）。
   - Site 图层：固定挂 **positive / negative / undermine** 三个样式节点（恒显示，即使全 0）。
   - **Other 节点（V1.x #41，原灰色「未分类 ⚪」扩展）**：catch-all，收纳所有 `site_status ∉ {positive,negative,undermine}` 的点（**空值 + 任何其他值如 pending/hold**；原仅收空值，导致其他非标准值在树里"消失"、计数漏、无法显隐——本次修复）。label「Other / 其他」、灰 `STATUS_COLOR[""]`、**有才显示**（该图层存在此类点才挂，动态）、**可勾选显隐**（不勾则地图隐藏这批灰点）。
   - Road 图层：固定挂 **🎨 棕线** 单样式（恒显示）。
@@ -459,7 +459,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 
 #### 样式与渲染（形状 × 颜色）
 
-- **形状来自图层（站型 type）**，**颜色来自状态（site_status）**，二者叠加 = 地图上的最终图标（如"绿色三角""黄色五角星"）。
+- **形状来自图层（站型 type）**，**颜色来自状态（site_status）**，二者叠加 = 地图上的最终图标（如"绿色三角""黄色五角星"）。**（V1.x #44：颜色按 category 分叉——仅勘测 × status 色；存量 × 橙 `#f97316` 实心；规划 × 紫 `#a855f7` 半透明填充 55% + 紫描边；形状仍按 type；50m 圈跟随变紫）**
 - **颜色（site_status）**：positive = 🟢 绿 / negative = 🔴 红 / undermine = 🟡 黄 / 空值未知 = ⚪ 灰。**（V1.x #33 起 negative 红、undermine 黄；单一真源 `utils.STATUS_COLOR`）**
 - **形状（type）映射（V1.x #25 · 已与用户敲定，接受默认）**：实施侧用 OpenLayers `RegularShape` 渲染（points/radius/angle 控形状，fill/stroke 控实心/空心）。逻辑：**实心 = 存量、空心 = 规划、菱形 = 勘测**。
 
