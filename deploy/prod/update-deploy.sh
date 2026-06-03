@@ -19,6 +19,9 @@ docker run --privileged --rm tonistiigi/binfmt --install arm64 >/dev/null 2>&1 |
 docker buildx use pmb 2>/dev/null || docker buildx create --use --name pmb
 docker buildx inspect --bootstrap >/dev/null
 
+echo "== 1.5 同步 web/package.json version = ${TAG#v}（#38 界面版本号单一真源，否则界面显旧版）=="
+( cd web && npm version "${TAG#v}" --no-git-tag-version --allow-same-version ) && echo "   web/package.json version = ${TAG#v}"
+
 echo "== 2. 跨架构构建 arm64（web+api，tag :$TAG 稳定）=="
 docker buildx build --platform linux/arm64 -t "presurvey-web:$TAG" --load ./web
 docker buildx build --platform linux/arm64 -t "presurvey-api:$TAG" --load ./api
