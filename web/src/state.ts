@@ -26,7 +26,7 @@ import {
   proceedToConflicts,
   uploadFile,
 } from "./api";
-import { nameOf, readNpRadius } from "./utils";
+import { nameOf } from "./utils";
 
 const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] };
 
@@ -464,12 +464,13 @@ export function useAppState() {
     setDrawMode(null);
   }, []);
 
-  const doExportAll = useCallback(async () => {
+  // #46：npRadiusM 由调用方（App 持有的内存 state）显式传入，作为导出半径的单一真源；
+  // 「所见即所得」——导出半径 === 地图当前显示半径，不在此处重读 localStorage。
+  const doExportAll = useCallback(async (npRadiusM: number) => {
     setPhase("exporting");
     log("info", t("log.export_all_start"));
     try {
-      // #46：把当前 localStorage 半径透传给后端，导出范围圈所见即所得
-      await exportAll(readNpRadius());
+      await exportAll(npRadiusM);
       log("info", t("log.export_all_ok"));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -558,7 +559,7 @@ export function useAppState() {
   // F16 #18：清空搜索结果（只动 searchResults，不碰日志数组）
   const clearSearch = useCallback(() => setSearchResults(null), []);
 
-  const doExportSelection = useCallback(async () => {
+  const doExportSelection = useCallback(async (npRadiusM: number) => {
     if (!selectionPolygon) {
       log("error", t("log.no_selection"));
       return;
@@ -566,8 +567,8 @@ export function useAppState() {
     setPhase("exporting");
     log("info", t("log.export_sel_start"));
     try {
-      // #46：框选导出同样透传当前半径
-      await exportSelection(selectionPolygon, readNpRadius());
+      // #46：框选导出半径同样来自内存 state（单一真源），所见即所得
+      await exportSelection(selectionPolygon, npRadiusM);
       log("info", t("log.export_sel_ok"));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

@@ -69,7 +69,7 @@ export type ShapeKind = "triangle" | "circle" | "square" | "diamond";
 export interface SiteShape {
   shape: ShapeKind;
   filled: boolean;
-  ring?: boolean;   // 规划类 Macro NP / Micro NP：额外画 50m 辐射圈
+  ring?: boolean;   // 规划类 Macro NP / Micro NP：额外画当前半径的辐射圈
 }
 export const TYPE_SHAPE: Record<string, SiteShape> = {
   "Macro":         { shape: "triangle", filled: true },
@@ -108,7 +108,7 @@ export function readNpRadius(): number {
 
 // 真实地面米 → EPSG:3857 投影半径。
 // Web Mercator 在纬度 φ 处单位被拉伸 1/cos(φ)，故投影半径 = meters / cos(φ)。
-// 用点自身纬度算 → 圈是真实 50m，且因 geometry 用地图单位、缩放时自动正确缩放。
+// 用点自身纬度算 → 圈是真实地面半径（当前半径），且因 geometry 用地图单位、缩放时自动正确缩放。
 export function metersToProjRadius(meters: number, latDeg: number): number {
   const c = Math.cos((latDeg * Math.PI) / 180);
   return c > 1e-6 ? meters / c : meters;

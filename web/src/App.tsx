@@ -123,8 +123,8 @@ export default function App() {
         npRadiusM={npRadiusM}
         onStartDraw={s.startDraw}
         onClearSelection={s.clearSelection}
-        onExportAll={s.doExportAll}
-        onExportSelection={s.doExportSelection}
+        onExportAll={() => s.doExportAll(npRadiusM)}
+        onExportSelection={() => s.doExportSelection(npRadiusM)}
         onRefresh={onRefresh}
         onSearch={onSearch}
         onClearBaseline={() => setConfirmingClear(true)}

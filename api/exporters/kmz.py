@@ -257,6 +257,11 @@ def _np_ring_placemark(row: dict[str, Any], idx: int, radius_m: int) -> str | No
         lng = float(row.get("longi"))
     except (TypeError, ValueError):
         return None  # 无经纬度无法画圈
+    # float("nan")/float("inf") 不抛错，需显式守卫，否则会产出 nan/inf coordinates 的垃圾圈
+    if not math.isfinite(lat) or not math.isfinite(lng):
+        return None
+    if abs(lat) > 90 or abs(lng) > 180:
+        return None
     # ring_of = SITE ID + OPTION 组合，与导入去重主键口径一致
     site_id = row.get("site_id") or ""
     option = row.get("option") or ""
