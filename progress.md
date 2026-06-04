@@ -15,6 +15,7 @@ _Last updated: 2026-06-04_
 - V1 边界（不做）：账号鉴权 / 双工作区 / 多人协同 / AI能力 / 单要素删除 / 邮件自动发送
 - 多 repo 提交隔离：本项目含两个独立 git repo——主仓 pre-survey-map（origin=https://github.com/zylimit/pre-survey-map）+ 配置库 .claude/=sitemaster-config（origin=ssh git@github.com:zylimit/sitemaster-config）。多个独立 repo 的 add/commit/push 必须各自独立执行、分别验收远程同步状态，禁止耦合进同一脚本（认证差异 ssh/https 会掩盖单点失败，造成"半成功"烂局）（2026-06-04）
 - #48 约束红线（本期禁止）：改 site_id/option 主键 / 改 operator/category/type 盖戳三列 / 凭空建点 三者本期不做（2026-06-04）
+- #49 约束：site_delete_undo 表环形队列保留最近 200 批；delete 接口去掉建恢复点（改为写 undo 表）；evict 容错 try/except（不连累主删除事务）（2026-06-04）
 
 ## Decisions（按时间追加，历史不可改）
 - 2026-06-04: `.claude` 抽出为独立私有配置库 sitemaster-config，纯备份/版本管理，与主仓各自演进
@@ -23,6 +24,7 @@ _Last updated: 2026-06-04_
 - 2026-05-31: F20 图层体系重构（深层图层树 + 盖戳导入），取代 F7 浅树
 - 2026-06-04: #48 LayerFeatureList 增删改需求拍板——编辑范围=业务属性+坐标（后端重算 PostGIS geom）；主键 site_id/option + 盖戳三列 operator/category/type 本期锁死不可改；删除=删前自动建 reason=pre_feature_delete 恢复点（复用 F17）可回滚；操作粒度=checkbox 多选/编辑单行/删除批量/勾选子集导出 KMZ；本期仅 site 图层可编辑，road/lessor 仍只读；列宽=拖表头分隔线，存 localStorage，与 #31 等比拉伸混排共存
 - 2026-06-04: #48 审计联动——F19 审计事件类型由 12 类扩至 14 类（新增 edit_site / delete_site）；后端新增接口 PATCH /api/sites（改业务属性+坐标重算geom，key走body）、POST /api/sites/delete（批量删除+恢复点）；勾选导出按主键子集导 KMZ
+- 2026-06-04: #49 轻量撤销方案拍板——#48 delete 复用 F17 全表快照（O(全表)），改为新表 site_delete_undo 只存被删行（O(删除数)）；撤销 UX 定为工具栏「删除历史」按钮 → 持久面板逐批撤（非 toast），保留最近 200 批，每批显示时间/删N条/图层/站点名摘要，撤销后移出面板；审计新增 undo_delete_site 类型
 - 2026-05-29: 主基准区域「先入为主」固化策略确立
 
 ## TODO（权威待办清单）
@@ -32,11 +34,16 @@ _Last updated: 2026-06-04_
 - [P1][OPEN][#4] `.claude` 架构改进 #4：纸面纪律可机械校验项下沉为 hook；建议给 mark-review-needed hook 加路径过滤（只对 api/ web/ 下改动标记 review，避免 /tmp 下临时脚本误触发）（Context：sitemaster-config）
 - [P2][OPEN][#5] `.claude` 架构改进 #5：CLAUDE.md 瘦身 + Sub-Agent 模型分级（Context：sitemaster-config）
 - [P2][OPEN][#6] V2 候选评估：双工作区 / 多人协同 / AI能力 / 单要素删除 / 邮件派工
+- [P2][OPEN][#26] #48/#49 遗留 backlog：列宽 unmount 未移除 document listeners / rebindSelected 全路径覆盖（#48 Phase 8 reviewer 遗留，未阻断入库）（Context：web/src/components/LayerFeatureList）
 
 ## In Progress
 - [P1][DOING][#7] `.claude` 框架架构改进（配置库演进中，#1/#3 已完成，#2/#4/#5 待续）（Context：sitemaster-config）
 
 ## Done（最近完成放前面）
+- 2026-06-04: [#30] #49 ARM64 v1.0.6 离线包发布——deployer 打包 api 镜像 35fdb6c/web 镜像 4d42e2b（均 arm64），发布 img.mangosv5.app：presurvey-api/web-v1.0.6-20260604-183508-arm64.tar + server-deploy-api/web-v1.0.6.sh + V2+V3 迁移 sql；主 Agent 独立核查全绿（arm64 api 镜像 diff==工作树含#49码排除0.42s缓存旧码嫌疑、6链接 HEAD200、脚本含 alias+V2+V3 迁移、bash -n 通过）（evidence：commit 729acc4 + img.mangosv5.app 2026-06-04）
+- 2026-06-04: [#29] v1.0.5→v1.0.6 版本 bump 推送远端——版本 bump 至 v1.0.6（evidence：commit 729acc4 推送 origin/main）
+- 2026-06-04: [#28] #49 本机 Docker 重部署 + 受控 live 冒烟净零——deployer 本机重部署（镜像 e3cfe75，V3 迁移）；主 Agent 独立核查 infra + 受控 live 冒烟全过（delete→{deleted,undo_id}→GET delete-history 列批次→undo-delete/5 {restored:1} 三列完整→404 路径→审计 delete_site/undo_delete_site）；顺带用 F17 恢复点 34 把#49开发期丢失的1条测试 site 捞回（本机 119 条）；net-zero 归位（evidence：Docker 本机部署 2026-06-04，commit 8518b9d）
+- 2026-06-04: [#27] #49 Phase 9 全流程完成入库——后端：新表 site_delete_undo（序列批次+undone字段）+DELETE 改单条 CTE（DELETE...RETURNING 喂 undo 插入，原子无竞态，去 create_restore_point，环形200，evict try/except容错）+GET /api/delete-history+POST /api/undo-delete/{id}（404/ON CONFLICT/undone/restored=1/requested=1）+V3 迁移；前端：Toolbar 「删除历史」按钮+DeleteHistoryPanel（仿恢复点对话框）+load 容错；测试：49 passed；流程：CCB coder 编码→主 Agent 独立验收→reviewer(codex) 两阶段（高=evict失败连累删除，中=capture/DELETE并发串批）→coder 修复（evict try/except+审计前置，DELETE RETURNING单CTE消竞态，面板catch，补测试）→主 Agent 独立复核 49 passed→reviewer 复审可入库→commit（evidence：commit 8518b9d）
 - 2026-06-04: [#25] v1.0.5 版本 bump + 推送远端 + ARM64 离线包发布——版本 v1.0.4→v1.0.5（deploy/config/release.conf + web/package.json）；7 个 commit 推送 origin/main 对齐（a502d93/cacd835/ec49328/42a1cea/7a51f59/e1705fa/7066539）；deployer 出 ARM64 方案B 离线包：presurvey-api-v1.0.5-20260604-152609-arm64.tar(68M)、presurvey-web-v1.0.5-20260604-152609-arm64.tar(22M)、server-deploy-api-v1.0.5.sh、server-deploy-web-v1.0.5.sh、V2__add_pre_feature_delete_reason.sql，发布至 /var/www/dl/ + img.mangosv5.app；主 Agent 独立核查通过（arm64 api 镜像含#48新码 docker cp diff==工作树排除缓存复用旧码嫌疑、镜像 arch=arm64、5条下载链接 HEAD200、api脚本含 --network-alias api+幂等 reason CHECK 迁移 pre_feature_delete、bash -n 通过）（evidence：commit 7066539）
 - 2026-06-04: [#21] #48 四步走收尾全部完成——③测试完整性：reviewer(codex) 作独立测试方写 api/tests/test_site_crud_48.py（15用例，handler直调+monkeypatch范式，delete调用序列[tx_enter→restore_point→delete→tx_exit]硬断言锁死，关键断言反向验证防伪覆盖）；主 Agent 独立复跑全量 tests/ 45 passed（含#46/#47）无回归（evidence：commit 7a51f59）；④功能测试：deployer 完整重部署本机 Docker（api镜像13af.../web镜像9bd2...，V2 reason CHECK迁移生效，network-alias api在，119条数据未丢）；主 Agent 独立核查 infra（别名/镜像时间戳/迁移/三端点真注册/web反代）+ 受控自愈 live 冒烟全过（PATCH改site_status+坐标→geom重算→还原；delete 1条 119→118→恢复点回滚→119，三列Globe/存量/Macro完整找回；selection_ids导出合法KMZ；审计edit_site/delete_site/export_region/restore_point_rollback全落库）；数据净零归位119条（evidence：commit 7a51f59 + Docker 本机部署 2026-06-04）
 - 2026-06-04: [#24] #48 Phase 8 列宽可拖拽调整完成入库——列宽拖拽手柄(min48px/rAF/stopPropagation)，手动列固定宽退出 #31 等比、未拖列仍等比，双击还原自动，localStorage 持久化(key presurvey.lfl.col.{kind}.{colKey})；顺带修 Phase 7 三低：rebindSelected(编辑/删除后按 id 重绑，找不到置 null)、表头 indeterminate 三态、坐标前端范围校验；reviewer 判可入库，遗留 2 低 backlog（列宽拖动 unmount 未移除 document listeners / rebindSelected 仅 edit/delete 路径）（evidence：commit 42a1cea）
@@ -62,6 +69,7 @@ _Last updated: 2026-06-04_
 - Risk：#48 删除走恢复点回滚链路，回滚后 site 数据完整性需验证（Mitigation：live冒烟验证回滚 119→118→119 + 三列Globe/存量/Macro完整找回；已关闭 2026-06-04）
 - Risk：#48 三 Phase 编码+审查入库但四步走测试/功能测试未执行（Mitigation：[#21] 已完成，45 passed + live冒烟全过；已关闭 2026-06-04）
 - Assumption：当前内网+腾讯云 beta 部署，底图走未授权 tile 临时方案；公有云商用需替换 Google Maps API Key（Confidence：High）
+- Assumption：v1.0.6 离线包 api 脚本已内置 V2+V3 幂等迁移，内网服务器从 v1.0.4 直升 v1.0.6 可安全执行（Confidence：High）
 
 ## Notes（简要要点）
 - 2026-06-04: progress.md 由初始化扫描（Product-Spec.md + CHANGELOG）建立，后续由 progress-recorder agent 维护
@@ -75,6 +83,9 @@ _Last updated: 2026-06-04_
 - 2026-06-04: #48 四步走全部完成，5个commit入库（a502d93/cacd835/ec49328/42a1cea/7a51f59），本机 Docker 已上新版，http://localhost:5173 可访问
 - 2026-06-04: #48 收尾测试范式——handler直调+monkeypatch（不启动真实 HTTP server），delete 调用序列硬断言（防测试伪过），关键断言含反向验证
 - 2026-06-04: v1.0.5 内网离线包发布至 img.mangosv5.app；#48 vs v1.0.4 关键差异：api 部署脚本内置幂等 reason CHECK 迁移（老库 CHECK 不含 pre_feature_delete 会拒绝 delete 建点），脚本 step4 自动执行；内网服务器实际部署（curl取包→换api含迁移→换web→冒烟）由用户在跳板机 Claude Code 执行，本次未完成，待用户操作
+- 2026-06-04: #49 根因——#48 delete 复用 F17 全表快照，3W节点删1个仍复制整表（O(全表)）；#49 改 site_delete_undo 只存被删行（O(删除数)），DELETE...RETURNING 单 CTE 原子喂 undo 表，消竞态
+- 2026-06-04: #49 v1.0.6 离线包关键：api 脚本按序幂等执行 V2（reason CHECK）+V3（site_delete_undo 建表），兼容目标机停在 v1.0.4（跨2个版本升级可安全执行）
+- 2026-06-04: #49 状态——公网本机 Docker 已 v1.0.6，commit 729acc4 推送 origin/main；ARM 离线包发布待内网取用（一条龙提示词已给用户）；backlog #26 残留（列宽 unmount listener / rebindSelected 全路径）
 
 ## Context Index（轻量索引）
 - Spec：./Product-Spec.md · Changelog：./Product-Spec-CHANGELOG.md · Plan：./DEV-PLAN.md
