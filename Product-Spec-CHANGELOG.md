@@ -17,9 +17,10 @@
 **变更**：
 - **删除不再建 F17 恢复点**：改为事务内**只把被删的那几行**捕获进新表 `site_delete_undo`（O(删除数)，与库规模无关）→ 再 DELETE。
 - **新表 `site_delete_undo`**：镜像 site 列 + `undo_id`（批次）+ `deleted_at`；环形保留**最近 200 个删除批次**（每批只几行，占用极小）。
-- **新端点 `POST /api/sites/undo-delete/{undo_id}`**：把该批次行再插回 site；主键已被重新占用则 `ON CONFLICT DO NOTHING` 跳过，返回实际恢复数。
+- **新端点 `GET /api/sites/delete-history`**：列最近删除批次给面板（undo_id/时间/条数/图层/站点名摘要/undone，倒序）。
+- **新端点 `POST /api/sites/undo-delete/{undo_id}`**：把该批次行再插回 site；主键已被重新占用则 `ON CONFLICT DO NOTHING` 跳过；该批次标记 `undone`；返回实际恢复数。
 - **delete 返回 `{deleted, undo_id}`**（原为 `{deleted, restore_point_id}`）。
-- **前端**：删除成功提示由「恢复点可回滚」改为 **`已删 N 条 [撤销]`** 可点链接，点击调 undo 端点。
+- **前端 = 持久「删除历史」面板**（非瞬时 toast）：**工具栏新增 [🗑️ 删除历史] 按钮**（与 [🕘 恢复点] 并列）打开面板，列最近 200 批（时间·删N条·图层·站点名摘要），每批 [撤销]；撤销后标记已撤销移出。删除成功提示仍提示"可在删除历史撤销"。`site_delete_undo` 加 `undone` 标记列。
 - **审计**：新增 `undo_delete_site`（F19 14→15 类）；`delete_site` details 记 `undo_id`（原记 restore_point_id）。
 - **`pre_feature_delete` 恢复点 reason 弃用**：留在 CHECK 无害（内网已部署，不回退），但删除不再产生该 reason 的点。
 

@@ -231,10 +231,11 @@
 ## Phase 9: 删除轻量撤销 — site_delete_undo + undo 端点 + 前端撤销 + 测试改写
 
 **交付内容**：
-- **新表 `site_delete_undo`**（`deploy/db/init.sql` + 迁移 `deploy/migrations/V3__add_site_delete_undo.sql`，幂等 `CREATE TABLE IF NOT EXISTS`）：镜像 site 全列 + `undo_id BIGINT`（批次）+ `deleted_at TIMESTAMPTZ`。
+- **新表 `site_delete_undo`**（`deploy/db/init.sql` + 迁移 `deploy/migrations/V3__add_site_delete_undo.sql`，幂等 `CREATE TABLE IF NOT EXISTS`）：镜像 site 全列 + `undo_id BIGINT`（批次）+ `deleted_at TIMESTAMPTZ` + `undone BOOLEAN DEFAULT false`（已撤销标记）。
 - **改 delete 实现**（`api/routers/sites.py`）：去掉 `create_restore_point` 调用；事务内**先** `INSERT INTO site_delete_undo SELECT <undo_id>,... FROM site WHERE keys`（捕获被删行）**再** `DELETE`；环形保留最近 **200** 个删除批次（按 undo_id 淘汰最旧）；返回 `{deleted, undo_id}`。审计 `delete_site` details 记 `undo_id`。
-- **新端点 `POST /api/sites/undo-delete/{undo_id}`**（`api/routers/sites.py`）：`INSERT INTO site SELECT ... FROM site_delete_undo WHERE undo_id=$1 ON CONFLICT (site_id,"option") DO NOTHING`；返回实际恢复数；审计 `undo_delete_site`。
-- **前端撤销**（`web/src/`）：`doDeleteSites` 持有返回的 `undo_id`；删除成功提示由「恢复点可回滚」改为 `已删 N 条 [撤销]` 可点（点击 → `undoDelete(undo_id)` → 成功 refresh + 提示恢复数）。`api.ts` 加 `undoDelete`；`state.ts` 加 `doUndoDelete`。
+- **新端点 `GET /api/sites/delete-history`**（`api/routers/sites.py`）：列最近批次（undo_id/deleted_at/条数/图层摘要/站点名摘要/undone，按时间倒序，仅列 undone=false 或全列由前端区分）。
+- **新端点 `POST /api/sites/undo-delete/{undo_id}`**（`api/routers/sites.py`）：`INSERT INTO site SELECT ... FROM site_delete_undo WHERE undo_id=$1 AND undone=false ON CONFLICT (site_id,"option") DO NOTHING`；该批次 `undone=true`；返回 `{restored, requested}`；审计 `undo_delete_site`。
+- **前端 = 持久「删除历史」面板**（`web/src/`）：**工具栏新增 [🗑️ 删除历史] 按钮**（`Toolbar.tsx`，与 [🕘 恢复点] 并列）打开面板组件（新建 `DeleteHistoryPanel.tsx` 或复用恢复点对话框样式）；面板 `GET /api/sites/delete-history` 拉列表，每批显示「时间·删N条·图层·站点名摘要」+ [撤销]；点 [撤销] → `undoDelete(undo_id)` → 成功 refresh + rebindSelected + 该批移出列表 + 提示恢复数。删除成功 toast 改为「已删 N 条（可在 🗑️ 删除历史 撤销）」。`api.ts` 加 `fetchDeleteHistory`/`undoDelete`；`state.ts` 加 `doUndoDelete` + 面板开关 state。
 - **测试改写**（`api/tests/test_site_crud_48.py` 或新 `test_site_undo_49.py`）：delete 测试的调用序列断言由 `[tx_enter→restore_point→delete→tx_exit]` 改为 `[tx_enter→capture_undo→delete→tx_exit]`（不再有 restore_point）；新增 undo 端点测试（再插回 + ON CONFLICT 跳过 + 审计 undo_delete_site）。
 - `pre_feature_delete` reason 弃用（不动 CHECK，删除不再产生该 reason）。
 
@@ -243,16 +244,19 @@
 - `deploy/migrations/V3__add_site_delete_undo.sql` — 已部署库建表迁移
 - `api/routers/sites.py` — delete 改捕获 undo（去 create_restore_point）+ 新增 undo-delete 端点 + 200 环形淘汰
 - `api/tests/test_site_crud_48.py`（改）/ 新增 undo 测试
-- `web/src/api.ts` — `undoDelete(undo_id)`
-- `web/src/state.ts` — `doUndoDelete` + `doDeleteSites` 持 undo_id
-- `web/src/components/LayerFeatureList.tsx`（或日志/toast 层）— 删除成功 `[撤销]` 可点
+- `web/src/api.ts` — `fetchDeleteHistory()` + `undoDelete(undo_id)`
+- `web/src/state.ts` — `doUndoDelete` + `doDeleteSites` 持 undo_id + 删除历史面板开关 state
+- `web/src/components/Toolbar.tsx` — 新增 [🗑️ 删除历史] 按钮（与 [🕘 恢复点] 并列）
+- `web/src/components/DeleteHistoryPanel.tsx`（新建，可参照恢复点对话框样式）— 列批次 + 每批 [撤销]
+- `web/src/i18n.ts` — 删除历史/撤销文案 en/zh
 
 **验收标准**：
 - 删 N 条 → `site` 少 N 行、`site_delete_undo` 多 N 行（同一 undo_id）、**未产生 restore_point**；返回含 undo_id。
 - POST undo-delete → N 行回到 site；主键被重新占用的跳过、返回实际恢复数。
 - 3W 规模删 1 个：undo 表只写 1 行（O(删除数)），无全表快照（对比 #48）。
 - 环形 200：超出淘汰最旧批次。
-- 前端删除后 `[撤销]` 可点 → 撤销 → 列表/地图/树恢复。
+- 工具栏 [🗑️ 删除历史] → 面板列出最近批次（时间·删N条·图层·站点名摘要）；点某批 [撤销] → 列表/地图/树恢复 + 该批移出列表（undone）。
+- `GET /api/sites/delete-history` 返回批次列表正确（倒序、含摘要、undone 标记）。
 - 审计 `delete_site`(含 undo_id) / `undo_delete_site` 落库。
 - pytest 改写后全绿；F17 恢复点（导入/清库/手动）链路不受影响回归通过。
 
