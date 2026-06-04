@@ -16,13 +16,14 @@ interface Props {
   onSearch: (query: string) => void;
   onClearBaseline: () => void;
   onOpenRestorePoints: () => void;
+  onOpenDeleteHistory: () => void;
   onChangeNpRadius: (m: number) => void;
 }
 
 export default function Toolbar({
   busy, drawMode, hasSelection, npRadiusM,
   onStartDraw, onClearSelection, onExportAll, onExportSelection,
-  onRefresh, onSearch, onClearBaseline, onOpenRestorePoints, onChangeNpRadius,
+  onRefresh, onSearch, onClearBaseline, onOpenRestorePoints, onOpenDeleteHistory, onChangeNpRadius,
 }: Props) {
   const [openMenu, setOpenMenu] = useState<"export" | "draw" | null>(null);
   const [query, setQuery] = useState("");
@@ -165,6 +166,12 @@ export default function Toolbar({
         disabled={busy}
         title={tFn("tb.restore.tip")}
       >{tFn("tb.restore.label")}</button>
+
+      <button
+        onClick={onOpenDeleteHistory}
+        disabled={busy}
+        title={tFn("tb.delhist.tip")}
+      >{tFn("tb.delhist.label")}</button>
 
       {/* #19 主题切换 */}
       <button

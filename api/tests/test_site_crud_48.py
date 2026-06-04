@@ -1,18 +1,30 @@
-"""#48 Phase 6 site 编辑/删除/勾选导出回归测试（不连真库）。
+"""#48/#49 site 编辑/删除/勾选导出/撤销删除 回归测试（不连真库）。
 
-范式同 test_selection_export_47：直调 handler + monkeypatch DB/audit/KMZ 外部依赖。
+范式：直调 handler + monkeypatch DB/audit/KMZ 外部依赖。
 重点绑定 handler 内的校验、SQL 组装、事务顺序、半径净化和审计 details，避免只断 200 的伪覆盖。
+
+#49 Phase 9：delete 从 F17 全表快照（create_restore_point）改为轻量撤销
+（capture 被删行→site_delete_undo，再 DELETE）。删除调用序列断言随之从
+[tx_enter→restore_point→delete→tx_exit] 改为 [tx_enter→capture_undo→delete→tx_exit]。
 """
 
 import asyncio
 import math
+from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException
 
 from routers import exports, sites
 from routers.exports import SelectionIdsBody, export_selection_ids
-from routers.sites import DeleteBody, SitePatchBody, delete_sites, update_site
+from routers.sites import (
+    DeleteBody,
+    SitePatchBody,
+    delete_history,
+    delete_sites,
+    undo_delete,
+    update_site,
+)
 
 
 class _FakeRequest:
@@ -77,21 +89,42 @@ class _Pool:
 
 
 class _Conn:
-    def __init__(self, *, row=None, rows=None, status="DELETE 2", calls=None):
+    """SQL 感知的假连接：按语句分类记录调用序列 + 逐类返回值，用于断言事务顺序。"""
+
+    def __init__(self, *, row=None, rows=None, status="DELETE 2", calls=None,
+                 capture=None, fetchval_ret=None, exec_returns=None, exec_raise=None):
         self.row = row
         self.rows = rows if rows is not None else []
         self.status = status
         self.calls = calls if calls is not None else []
+        self.capture = capture
+        self.fetchval_ret = fetchval_ret
+        self.exec_returns = exec_returns or {}  # 分类 -> 返回 status 串
+        self.exec_raise = set(exec_raise or ())  # 分类 -> 触发异常（测 evict 失败容错）
+        # 末次捕获 + 全量执行日志（kind, sql, args）
         self.fetchrow_sql = None
         self.fetchrow_args = None
         self.fetch_sql = None
         self.fetch_args = None
         self.execute_sql = None
         self.execute_args = None
+        self.fetchval_sql = None
+        self.fetchval_args = None
+        self.exec_log = []
+
+    async def fetchval(self, sql, *args):
+        self.fetchval_sql = sql
+        self.fetchval_args = args
+        self.calls.append("fetchval")
+        return self.fetchval_ret
 
     async def fetchrow(self, sql, *args):
         self.fetchrow_sql = sql
         self.fetchrow_args = args
+        # #49 修复2：删除+捕获已并入单条 CTE（DELETE FROM site RETURNING → INSERT site_delete_undo）
+        if "site_delete_undo" in sql and "DELETE FROM site" in sql:
+            self.calls.append("delete_capture")
+            return self.capture
         self.calls.append("fetchrow")
         return self.row
 
@@ -102,10 +135,24 @@ class _Conn:
         return self.rows
 
     async def execute(self, sql, *args):
+        s = sql.strip()
+        if s.startswith("DELETE FROM site_delete_undo"):
+            kind = "evict"
+        elif s.startswith("DELETE FROM site"):
+            kind = "delete"
+        elif s.startswith("INSERT INTO site ("):
+            kind = "undo_insert"
+        elif s.startswith("UPDATE site_delete_undo"):
+            kind = "undo_mark"
+        else:
+            kind = "execute"
         self.execute_sql = sql
         self.execute_args = args
-        self.calls.append("delete")
-        return self.status
+        self.exec_log.append((kind, sql, args))
+        self.calls.append(kind)
+        if kind in self.exec_raise:
+            raise RuntimeError(f"injected failure on {kind}")
+        return self.exec_returns.get(kind, self.status)
 
     def transaction(self):
         return _Tx(self.calls)
@@ -139,6 +186,9 @@ def captured(monkeypatch):
     monkeypatch.setattr(sites, "write_audit", fake_sites_audit)
     monkeypatch.setattr(exports, "write_audit", fake_exports_audit)
     return cap
+
+
+# ───────────────────────── PATCH 编辑 ─────────────────────────
 
 
 @pytest.mark.parametrize("field", ["operator", "category", "type"])
@@ -207,34 +257,157 @@ def test_patch_success_recomputes_geom_with_parameterized_coalesce(monkeypatch, 
     }
 
 
+# ───────────────────────── 删除（#49 轻量撤销） ─────────────────────────
+
+
 def test_delete_empty_keys_returns_400():
     with pytest.raises(HTTPException) as exc:
         _call_delete(keys=[])
     assert exc.value.status_code == 400
 
 
-def test_delete_creates_restore_point_before_delete_in_same_transaction(monkeypatch, captured):
+def test_delete_atomic_capture_from_delete_returning(monkeypatch, captured):
+    """#49 修复2：删除+捕获并入单条 CTE（DELETE FROM site RETURNING → INSERT site_delete_undo）。
+
+    捕获==实删行（原子，无独立 SELECT-then-delete、无竞态）。
+    序列 [tx_enter→delete_capture→tx_exit]，环形淘汰(evict)在事务后。无 F17 restore_point。
+    """
     calls = []
-    conn = _Conn(status="DELETE 2", calls=calls)
+    conn = _Conn(
+        calls=calls,
+        capture={"undo_id": 7, "deleted": 2},  # CTE 返回 undo_id + 实删条数
+        exec_returns={"evict": "DELETE 0"},
+    )
     monkeypatch.setattr(sites, "pool", lambda: _Pool(conn))
-
-    async def fake_create_restore_point(conn_arg, reason, note=None, protect_id=None, evict=True):
-        assert conn_arg is conn
-        assert reason == "pre_feature_delete"
-        calls.append("restore_point")
-        return 42
-
-    monkeypatch.setattr(sites, "create_restore_point", fake_create_restore_point)
 
     resp = _call_delete(keys=[{"site_id": "S1", "option": "A"}, {"site_id": "S2", "option": ""}])
 
-    assert calls == ["tx_enter", "restore_point", "delete", "tx_exit"]
-    assert conn.execute_sql.startswith('DELETE FROM site WHERE (site_id, "option") IN')
-    assert conn.execute_args == (["S1", "S2"], ["A", ""])
-    assert resp == {"deleted": 2, "restore_point_id": 42}
+    # 单条 CTE：delete+capture 一步，事务内；evict 在事务后
+    assert calls[:3] == ["tx_enter", "delete_capture", "tx_exit"]
+    assert "evict" in calls and calls.index("evict") > calls.index("tx_exit")
+    # 反向验证（防伪）：旧 F17 路径消失；不再有独立 SELECT-then-delete（仅一次 delete_capture）
+    assert "restore_point" not in calls
+    assert calls.count("delete_capture") == 1
+    assert "delete" not in calls  # 没有独立 DELETE 语句（已并入 CTE 的 fetchrow）
+
+    # 单 CTE 同时含 DELETE...RETURNING（捕获源=实删行）与 INSERT site_delete_undo + nextval
+    sql = conn.fetchrow_sql
+    assert "DELETE FROM site" in sql
+    assert "RETURNING" in sql
+    assert "INSERT INTO site_delete_undo" in sql
+    assert "nextval(" in sql
+    assert "FROM del" in sql  # INSERT 取自 DELETE RETURNING 的 del CTE，而非独立 SELECT FROM site
+    assert conn.fetchrow_args == (["S1", "S2"], ["A", ""])
+
+    # 返回 + 审计：deleted/undo_id 取自 CTE；无 restore_point_id
+    assert resp == {"deleted": 2, "undo_id": 7}
     assert captured["sites_audit"]["action"] == "delete_site"
-    assert captured["sites_audit"]["details"]["restore_point_id"] == 42
+    assert captured["sites_audit"]["details"]["undo_id"] == 7
     assert captured["sites_audit"]["details"]["deleted"] == 2
+    assert "restore_point_id" not in captured["sites_audit"]["details"]
+
+
+def test_delete_evict_failure_still_returns_and_audits(monkeypatch, captured):
+    """#49 修复1：环形淘汰(evict)在事务提交后失败，绝不连累已提交的删除/审计/返回。"""
+    calls = []
+    conn = _Conn(
+        calls=calls,
+        capture={"undo_id": 9, "deleted": 1},
+        exec_raise={"evict"},  # evict 抛异常
+    )
+    monkeypatch.setattr(sites, "pool", lambda: _Pool(conn))
+
+    # evict 抛错被吞（仅 warning），不向上抛
+    resp = _call_delete(keys=[{"site_id": "S1", "option": "A"}])
+
+    assert resp == {"deleted": 1, "undo_id": 9}  # 删除结果照常返回
+    assert "evict" in calls  # evict 确实被调用并抛错
+    # 审计必须在 evict 之前完成，evict 失败不影响
+    assert captured["sites_audit"]["action"] == "delete_site"
+    assert captured["sites_audit"]["details"]["undo_id"] == 9
+    assert captured["sites_audit"]["details"]["deleted"] == 1
+
+
+# ───────────────────────── 撤销删除（#49 新端点） ─────────────────────────
+
+
+def test_undo_delete_reinserts_marks_undone_and_audits(monkeypatch, captured):
+    """撤销：INSERT 回 site（ON CONFLICT DO NOTHING）→ 标记 undone；restored=实插数。"""
+    calls = []
+    conn = _Conn(
+        calls=calls,
+        fetchval_ret=3,  # 该批共 3 行
+        exec_returns={"undo_insert": "INSERT 0 2", "undo_mark": "UPDATE 3"},
+    )
+    monkeypatch.setattr(sites, "pool", lambda: _Pool(conn))
+
+    resp = asyncio.run(undo_delete(7, _FakeRequest()))
+
+    # restored 取自 INSERT 实插数(2)，requested 取自该批行数(3)——二者不同，防把 requested 当 restored
+    assert resp == {"restored": 2, "requested": 3}
+    assert resp["restored"] != resp["requested"]
+
+    # 事务内顺序：先查批次行数(fetchval) → 插回 → 标记 undone
+    assert calls[:4] == ["tx_enter", "fetchval", "undo_insert", "undo_mark"]
+    insert_call = next(c for c in conn.exec_log if c[0] == "undo_insert")
+    assert "ON CONFLICT" in insert_call[1]
+    assert "DO NOTHING" in insert_call[1]
+    mark_call = next(c for c in conn.exec_log if c[0] == "undo_mark")
+    assert "undone = true" in mark_call[1]
+
+    assert captured["sites_audit"]["action"] == "undo_delete_site"
+    assert captured["sites_audit"]["details"] == {"undo_id": 7, "restored": 2}
+
+
+def test_undo_delete_unknown_batch_returns_404(monkeypatch, captured):
+    conn = _Conn(fetchval_ret=0)  # 批次不存在
+    monkeypatch.setattr(sites, "pool", lambda: _Pool(conn))
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(undo_delete(999, _FakeRequest()))
+
+    assert exc.value.status_code == 404
+    assert "sites_audit" not in captured  # 404 不写审计
+
+
+# ───────────────────────── 删除历史 ─────────────────────────
+
+
+def test_delete_history_groups_batches_with_summary(monkeypatch):
+    dt = datetime(2026, 6, 4, 12, 0, 0, tzinfo=timezone.utc)
+    rows = [
+        {
+            "undo_id": 7,
+            "deleted_at": dt,
+            "count": 2,
+            "undone": False,
+            "operators": "Globe",
+            "categories": "规划",
+            "types": "Macro NP",
+            "sample": ["S1", "S2"],
+        }
+    ]
+    conn = _Conn(rows=rows)
+    monkeypatch.setattr(sites, "pool", lambda: _Pool(conn))
+
+    out = asyncio.run(delete_history())
+
+    assert out == [
+        {
+            "undo_id": 7,
+            "deleted_at": dt.isoformat(),
+            "count": 2,
+            "layer": "Globe / 规划 / Macro NP",
+            "sample": ["S1", "S2"],
+            "undone": False,
+        }
+    ]
+    # 按 undo_id 分组 + 时间倒序 + 环形上限
+    assert "GROUP BY undo_id" in conn.fetch_sql
+    assert "ORDER BY max(deleted_at) DESC" in conn.fetch_sql
+
+
+# ───────────────────────── 勾选导出（#48） ─────────────────────────
 
 
 def test_export_selection_ids_empty_keys_returns_400():

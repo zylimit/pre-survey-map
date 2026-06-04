@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 from typing import Any, Optional
 
@@ -7,9 +8,17 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from audit import write_audit
 from db import pool
-from restore_point_helper import create_restore_point
 
 router = APIRouter()
+logger = logging.getLogger("sites")
+
+# #49 Phase 9：site 删除镜像列（site_delete_undo 与 site 全列对齐，撤销时原样插回）
+_SITE_MIRROR_COLS = (
+    'site_id, "option", project, site_status, operator, category, type, '
+    "lati, longi, extras, source_file, created_at, updated_at, geom"
+)
+# 环形保留最近 N 批删除（按 undo_id 递增=时间序）
+_UNDO_KEEP_BATCHES = 200
 
 
 # site 主键 = (site_id, "option")；盖戳三列 operator/category/type 不可改（来源即真相）。
@@ -210,9 +219,42 @@ class DeleteBody(BaseModel):
     keys: list[SiteKey]
 
 
+# #49 Phase 9：删除并原子捕获被删行到 site_delete_undo（单条 CTE，O(删除条数)）。
+# 修复2（消并发串批）：undo 捕获直接来自 DELETE ... RETURNING——捕获的就是【本次实际删除的行】，
+# 不再用独立 INSERT...SELECT FROM site（避免并发删同 key 时 capture 到别人删的行）。
+# undo_id 用 nextval 序列（batch CTE，0 行命中也有批次号）。返回 undo_id + 实删条数。
+_DELETE_CAPTURE_SQL = f"""
+WITH batch AS (
+    SELECT nextval('site_delete_undo_batch_seq') AS undo_id
+), del AS (
+    DELETE FROM site
+    WHERE (site_id, "option") IN (SELECT * FROM unnest($1::text[], $2::text[]))
+    RETURNING {_SITE_MIRROR_COLS}
+), ins AS (
+    INSERT INTO site_delete_undo (undo_id, deleted_at, {_SITE_MIRROR_COLS})
+    SELECT b.undo_id, now(), {_SITE_MIRROR_COLS}
+    FROM del, batch b
+    RETURNING 1
+)
+SELECT (SELECT undo_id FROM batch) AS undo_id, (SELECT count(*) FROM ins) AS deleted
+"""
+
+# 环形淘汰：只保留最近 _UNDO_KEEP_BATCHES 个 undo_id（undo_id 单调=时间序）。事务外清理，
+# 失败不影响本次删除（仅留多余历史，无害）→ 调用处 try/except 仅 warning。
+_EVICT_UNDO_SQL = f"""
+DELETE FROM site_delete_undo
+WHERE undo_id < (
+    SELECT min(undo_id) FROM (
+        SELECT DISTINCT undo_id FROM site_delete_undo
+        ORDER BY undo_id DESC LIMIT {_UNDO_KEEP_BATCHES}
+    ) keep
+)
+"""
+
+
 @router.post("/delete")
 async def delete_sites(body: DeleteBody, request: Request):
-    """批量删除 site：事务内先建恢复点（pre_feature_delete）再删除。"""
+    """批量删除 site：单条 CTE 原子删除 + 捕获被删行（DELETE RETURNING），供后续撤销。"""
     if not body.keys:
         raise HTTPException(status_code=400, detail="keys 不能为空")
 
@@ -221,19 +263,94 @@ async def delete_sites(body: DeleteBody, request: Request):
 
     async with pool().acquire() as conn:
         async with conn.transaction():
-            # 顺序硬约束：建点必须在删除前、同一事务（删错可整体回滚 / F17 可恢复）
-            rp_id = await create_restore_point(conn, reason="pre_feature_delete")
-            status = await conn.execute(
-                'DELETE FROM site WHERE (site_id, "option") IN '
-                "(SELECT * FROM unnest($1::text[], $2::text[]))",
-                site_ids,
-                options,
+            # 原子：DELETE ... RETURNING 直接喂 INSERT，捕获==实删行，无独立 SELECT、无竞态
+            row = await conn.fetchrow(_DELETE_CAPTURE_SQL, site_ids, options)
+        undo_id = row["undo_id"]
+        deleted = row["deleted"]
+
+        # 修复1：审计 + 返回必须在 evict 之前完成；evict 失败仅 warning，绝不连累已提交的删除
+        await write_audit(
+            action="delete_site",
+            details={"deleted": deleted, "undo_id": undo_id, "requested": len(body.keys)},
+            request=request,
+        )
+
+        # 环形保留最近 N 批（事务外，cleanup 失败不影响删除结果/审计/返回）
+        try:
+            await conn.execute(_EVICT_UNDO_SQL)
+        except Exception as e:  # noqa: BLE001 — cleanup 失败无害，留多余历史，绝不抛
+            logger.warning(f"site_delete_undo evict failed (harmless): {e!r}")
+
+    return {"deleted": deleted, "undo_id": undo_id}
+
+
+# ---------- 交付3：删除历史 + 撤销删除 ----------
+
+
+@router.get("/delete-history")
+async def delete_history():
+    """列最近删除批次（每批一行摘要），按时间倒序，供「删除历史」面板用。"""
+    async with pool().acquire() as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT undo_id,
+                   max(deleted_at) AS deleted_at,
+                   count(*)::int AS count,
+                   bool_and(undone) AS undone,
+                   string_agg(DISTINCT coalesce(operator, '—'), '/') AS operators,
+                   string_agg(DISTINCT coalesce(category, '—'), '/') AS categories,
+                   string_agg(DISTINCT coalesce(type, '—'), '/') AS types,
+                   (array_agg(site_id ORDER BY site_id))[1:3] AS sample
+            FROM site_delete_undo
+            GROUP BY undo_id
+            ORDER BY max(deleted_at) DESC
+            LIMIT {_UNDO_KEEP_BATCHES}
+            """
+        )
+    out = []
+    for r in rows:
+        layer = f"{r['operators']} / {r['categories']} / {r['types']}"
+        out.append({
+            "undo_id": r["undo_id"],
+            "deleted_at": r["deleted_at"].isoformat() if r["deleted_at"] else None,
+            "count": r["count"],
+            "layer": layer,
+            "sample": list(r["sample"] or []),
+            "undone": r["undone"],
+        })
+    return out
+
+
+@router.post("/undo-delete/{undo_id}")
+async def undo_delete(undo_id: int, request: Request):
+    """撤销某批删除：把该批未撤销行插回 site（ON CONFLICT DO NOTHING），标记 undone。"""
+    async with pool().acquire() as conn:
+        async with conn.transaction():
+            requested = await conn.fetchval(
+                "SELECT count(*) FROM site_delete_undo WHERE undo_id = $1",
+                undo_id,
             )
-    deleted = int(status.split()[-1]) if status else 0
+            if not requested:
+                raise HTTPException(status_code=404, detail=f"删除批次 {undo_id} 不存在")
+            status = await conn.execute(
+                f"""
+                INSERT INTO site ({_SITE_MIRROR_COLS})
+                SELECT {_SITE_MIRROR_COLS}
+                FROM site_delete_undo
+                WHERE undo_id = $1 AND undone = false
+                ON CONFLICT (site_id, "option") DO NOTHING
+                """,
+                undo_id,
+            )
+            await conn.execute(
+                "UPDATE site_delete_undo SET undone = true WHERE undo_id = $1",
+                undo_id,
+            )
+    restored = int(status.split()[-1]) if status else 0
 
     await write_audit(
-        action="delete_site",
-        details={"deleted": deleted, "restore_point_id": rp_id, "requested": len(body.keys)},
+        action="undo_delete_site",
+        details={"undo_id": undo_id, "restored": restored},
         request=request,
     )
-    return {"deleted": deleted, "restore_point_id": rp_id}
+    return {"restored": restored, "requested": int(requested)}

@@ -10,6 +10,7 @@ import ConflictDialog from "./components/ConflictDialog";
 import CleaningDialog from "./components/CleaningDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
 import RestorePointDialog from "./components/RestorePointDialog";
+import DeleteHistoryPanel from "./components/DeleteHistoryPanel";
 import BaselineStatusBar from "./components/BaselineStatusBar";
 import AuditPasswordPrompt from "./components/AuditPasswordPrompt";
 import AuditModal from "./components/AuditModal";
@@ -23,6 +24,7 @@ export default function App() {
   const [outputOpen, setOutputOpen] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [restorePointsOpen, setRestorePointsOpen] = useState(false);
+  const [deleteHistoryOpen, setDeleteHistoryOpen] = useState(false);
   const [auditPwdOpen, setAuditPwdOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   // #42：3×B → 密码门 → 备份恢复 Modal
@@ -129,6 +131,7 @@ export default function App() {
         onSearch={onSearch}
         onClearBaseline={() => setConfirmingClear(true)}
         onOpenRestorePoints={() => setRestorePointsOpen(true)}
+        onOpenDeleteHistory={() => setDeleteHistoryOpen(true)}
         onChangeNpRadius={onChangeNpRadius}
       />
       {/* F15 全局基线状态栏（Spec V1.x #15）*/}
@@ -240,6 +243,14 @@ export default function App() {
             await s.refresh();
             await s.refreshBaselineState();
           }}
+        />
+      )}
+
+      {/* #49 Phase 9：持久「删除历史」面板（逐批撤销删除） */}
+      {deleteHistoryOpen && (
+        <DeleteHistoryPanel
+          onClose={() => setDeleteHistoryOpen(false)}
+          onUndo={s.doUndoDelete}
         />
       )}
 

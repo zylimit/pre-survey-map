@@ -199,3 +199,34 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS audit_log_ts_idx ON audit_log (ts DESC);
 CREATE INDEX IF NOT EXISTS audit_log_action_idx ON audit_log (action);
+
+-- ============================================================
+-- #49 Phase 9 · 轻量「撤销删除」（替代 site 删除的 F17 全表快照）
+-- ============================================================
+-- site 批量删除只镜像【被删那几行】到 site_delete_undo（O(删除条数)，
+-- 不再 create_restore_point 复制整表）。批次号 undo_id 由序列生成；
+-- undone 标记该批是否已撤销；环形保留最近 200 批（delete_sites 中清理）。
+-- 持久「删除历史」面板按 undo_id 列出、逐批撤销（INSERT 回 site，ON CONFLICT DO NOTHING）。
+CREATE SEQUENCE IF NOT EXISTS site_delete_undo_batch_seq;
+CREATE TABLE IF NOT EXISTS site_delete_undo (
+    undo_id      BIGINT      NOT NULL,                 -- 批次号（同一次删除共享）
+    deleted_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    undone       BOOLEAN     NOT NULL DEFAULT false,
+    -- 镜像 site 全列
+    site_id      TEXT        NOT NULL,
+    "option"     TEXT        NOT NULL DEFAULT '',
+    project      TEXT,
+    site_status  TEXT,
+    operator     TEXT,
+    category     TEXT,
+    type         TEXT,
+    lati         DOUBLE PRECISION,
+    longi        DOUBLE PRECISION,
+    extras       JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    source_file  TEXT,
+    created_at   TIMESTAMPTZ,
+    updated_at   TIMESTAMPTZ,
+    geom         GEOMETRY(Point, 4326)
+);
+CREATE INDEX IF NOT EXISTS site_delete_undo_batch_idx ON site_delete_undo (undo_id);
+CREATE INDEX IF NOT EXISTS site_delete_undo_deleted_at_idx ON site_delete_undo (deleted_at DESC);

@@ -463,15 +463,41 @@ export async function updateSite(key: SiteKey, patch: SitePatch): Promise<Featur
   return res.json();
 }
 
-// POST /api/sites/delete：批量删除，返回 {deleted, restore_point_id}
+// POST /api/sites/delete：批量删除（#49 轻量撤销），返回 {deleted, undo_id}
 export async function deleteSites(
   keys: SiteKey[],
-): Promise<{ deleted: number; restore_point_id: number }> {
+): Promise<{ deleted: number; undo_id: number }> {
   const res = await fetch("/api/sites/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ keys }),
   });
+  if (!res.ok) throw new Error(await errDetail(res));
+  return res.json();
+}
+
+// #49 Phase 9：删除历史（每批一行摘要）
+export interface DeleteHistoryItem {
+  undo_id: number;
+  deleted_at: string | null;
+  count: number;
+  layer: string;       // "operator / category / type" 摘要
+  sample: string[];    // 前 3 个 site_id
+  undone: boolean;
+}
+
+// GET /api/sites/delete-history：列最近删除批次（倒序）
+export async function fetchDeleteHistory(): Promise<DeleteHistoryItem[]> {
+  const res = await fetch("/api/sites/delete-history");
+  if (!res.ok) throw new Error(await errDetail(res));
+  return res.json();
+}
+
+// POST /api/sites/undo-delete/{undo_id}：撤销某批删除，返回 {restored, requested}
+export async function undoDelete(
+  undoId: number,
+): Promise<{ restored: number; requested: number }> {
+  const res = await fetch(`/api/sites/undo-delete/${undoId}`, { method: "POST" });
   if (!res.ok) throw new Error(await errDetail(res));
   return res.json();
 }

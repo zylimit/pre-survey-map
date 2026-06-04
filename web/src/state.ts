@@ -18,6 +18,7 @@ import {
   exportSelection,
   exportSelectionIds,
   deleteSites,
+  undoDelete,
   updateSite,
   Feature,
   FeatureCollection,
@@ -631,13 +632,31 @@ export function useAppState() {
     async (keys: SiteKey[]): Promise<string | null> => {
       try {
         const resp = await deleteSites(keys);
-        log("info", t("log.delete_site_ok", { n: resp.deleted, rp: resp.restore_point_id }));
+        log("info", t("log.delete_site_ok", { n: resp.deleted }));
         const cols = await refresh();
         rebindSelected(cols);
         return null;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         log("error", t("log.delete_site_err", { msg }));
+        return msg;
+      }
+    },
+    [log, refresh, rebindSelected],
+  );
+
+  // #49 Phase 9：撤销某批删除 → 插回 site → refresh + 重绑 selected。返回 null=成功 / string=错误。
+  const doUndoDelete = useCallback(
+    async (undoId: number): Promise<string | null> => {
+      try {
+        const resp = await undoDelete(undoId);
+        log("info", t("log.undo_delete_ok", { restored: resp.restored, requested: resp.requested }));
+        const cols = await refresh();
+        rebindSelected(cols);
+        return null;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log("error", t("log.undo_delete_err", { msg }));
         return msg;
       }
     },
@@ -715,5 +734,6 @@ export function useAppState() {
     doUpdateSite,
     doDeleteSites,
     doExportSelectionIds,
+    doUndoDelete,
   };
 }
