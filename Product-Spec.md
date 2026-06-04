@@ -41,8 +41,8 @@
 | F16 | 全局搜索结果列表（V1.x #16）| Toolbar 右上搜索框回车 → **三类要素全搜（显示名匹配，与左树过滤同口径）**；结果写入底部 Output 的**独立"搜索结果区"**（不挤占 50 条日志），封顶 200 条；区头可点汇总条"🔍 搜索匹配 N 条，飞到第一条" + **[✖ 清空结果] 按钮**；每条结果一行 = **显示名 · 核心属性 · 类型角标**，可点 → **地图飞到该要素 + 左树该节点同步高亮滚动定位**（复用 F12 双向焦点同步）|
 | F18 | 双语界面（中/英）（V1.x #21）| 默认英文；Toolbar 右上 **[EN/中]** 切换按钮；**仅切换软件自身 UI 文案**（按钮/标签/对话框/状态栏/输出日志/错误提示/树节点文件夹名/底图切换标签/基线国家名/LayerTree tooltip 与 placeholder），导入文件内容、数据字段名及字段值**不翻译**；偏好存 `localStorage`（key: `presurvey.lang`）；菲律宾工程师用英文，中国工程师可切回中文；后端 `GET /api/baseline-state` 同时返回 `name_zh` + `name_en`，前端按当前语言选择显示 |
 | F17 | 基线恢复点与回滚（V1.x #20）| **不可逆操作的安全网**。导入 commit 前 / 清除基线（F14）前 / 回滚前 **自动建恢复点**（快照 `site`/`road`/`lessor` 三表 + `baseline_state`），并提供 Toolbar [🕘 恢复点] 手动建点；保留最近 N=10 个（环形淘汰最旧）；恢复点对话框列表可**覆盖式回滚**到任一点（事务内 truncate + 从快照重灌，回滚本身也先自动建点 → 可逆）+ 快捷 [↩ 撤销上一次导入]；详见「基线恢复点与回滚机制（F17）」节 |
-| F20 | 图层体系（V1.x #24）| **替换 F7 浅树**为固定深层图层树（菲律宾 = Globe / Smart / Dito 三运营商写死，不会增加）。三种节点：📁 **文件夹**（逻辑分组，无按钮）/ 🔺 **图层**（2 按钮）/ 🎨 **样式**（按 site_status 分色图例，无按钮）。Site 按 运营商 → 类别（存量/规划/勘测）→ 类型 分层；Road / Lessor 为与 Site 平级的独立图层根（无运营商划分）。图层节点两按钮：**[导入图层]**（按导入方式**强制盖戳** operator/category/type，忽略源属性，将错就错，保留 F13 清洗 → F4 冲突两步向导）/ **[查看图层要素]**（浮动列表框，本层**筛选** + 点击定位 + 虚拟化 + **列宽可拖调**；site 图层支持**单行编辑 / 批量删除（纳入恢复点）/ 勾选导出 KMZ**，详见 #48；road/lessor 仍只读）。规划类 Macro NP / Micro NP 画半径可配透明**辐射圈**（默认 200m，下拉 50/100/150/200/250m，全局统一存 localStorage；屏幕仅渲染不入库，但**导出 KMZ 随点导出范围圈**、导入忽略，详见 #45 + #46）。渲染 = **图层图标形状 × site_status 颜色**。顶部全局 [📁 导入] 按钮移除，导入入口下沉到图层。详见「图层体系（F20 · V1.x #24）」节 |
-| F19 | 审计日志（V1.x #23）| 记录关键操作 **14 类**（open / import / export_full / export_region / export_conflicts / restore_point_create_auto / restore_point_create_manual / restore_point_delete / restore_point_rollback / restore_point_undo_last_import / clear_baseline / **audit_log_export** / **edit_site（#48）** / **delete_site（#48）**）；**身份识别 = IP + User-Agent + Session ID**（V1 不做登录、不做域账号 — 浏览器限制）；**隐藏入口：连续按 3 次 `Esc`** → 弹密码框 → 输入 `mangosv5` → Modal 表格（倒序时间 + 操作类型筛选 + 分页 50/页 + **导出 Excel**）；密码不限错误次数；**UI 只读**（无删除/编辑），**右上角 [💾 导出 Excel]** 按当前筛选结果导出；后端不开 `DELETE`/`PATCH` 端点；**永久保留**；详见「审计日志（F19）」节 |
+| F20 | 图层体系（V1.x #24）| **替换 F7 浅树**为固定深层图层树（菲律宾 = Globe / Smart / Dito 三运营商写死，不会增加）。三种节点：📁 **文件夹**（逻辑分组，无按钮）/ 🔺 **图层**（2 按钮）/ 🎨 **样式**（按 site_status 分色图例，无按钮）。Site 按 运营商 → 类别（存量/规划/勘测）→ 类型 分层；Road / Lessor 为与 Site 平级的独立图层根（无运营商划分）。图层节点两按钮：**[导入图层]**（按导入方式**强制盖戳** operator/category/type，忽略源属性，将错就错，保留 F13 清洗 → F4 冲突两步向导）/ **[查看图层要素]**（浮动列表框，本层**筛选** + 点击定位 + 虚拟化 + **列宽可拖调**；site 图层支持**单行编辑 / 批量删除（轻量撤销，#49）/ 勾选导出 KMZ**，详见 #48；road/lessor 仍只读）。规划类 Macro NP / Micro NP 画半径可配透明**辐射圈**（默认 200m，下拉 50/100/150/200/250m，全局统一存 localStorage；屏幕仅渲染不入库，但**导出 KMZ 随点导出范围圈**、导入忽略，详见 #45 + #46）。渲染 = **图层图标形状 × site_status 颜色**。顶部全局 [📁 导入] 按钮移除，导入入口下沉到图层。详见「图层体系（F20 · V1.x #24）」节 |
+| F19 | 审计日志（V1.x #23）| 记录关键操作 **15 类**（open / import / export_full / export_region / export_conflicts / restore_point_create_auto / restore_point_create_manual / restore_point_delete / restore_point_rollback / restore_point_undo_last_import / clear_baseline / **audit_log_export** / **edit_site（#48）** / **delete_site（#48）** / **undo_delete_site（#49）**）；**身份识别 = IP + User-Agent + Session ID**（V1 不做登录、不做域账号 — 浏览器限制）；**隐藏入口：连续按 3 次 `Esc`** → 弹密码框 → 输入 `mangosv5` → Modal 表格（倒序时间 + 操作类型筛选 + 分页 50/页 + **导出 Excel**）；密码不限错误次数；**UI 只读**（无删除/编辑），**右上角 [💾 导出 Excel]** 按当前筛选结果导出；后端不开 `DELETE`/`PATCH` 端点；**永久保留**；详见「审计日志（F19）」节 |
 | F21 | 定时自动备份（V1.x #42）| 后台**每 12h 自动全库备份**（复用 F17 snapshot 机制，`reason=auto_backup`，独立于恢复点）；**保留 30 天**滚动清理；**隐藏恢复入口：连按 3 次 `B`** → 弹密码框 → `mangosv5` → 备份恢复 Modal（按时间倒序列备份 → 选一个还原全库，还原前自建 pre_rollback 恢复点）；详见「定时自动备份（F21）」节 |
 
 ---
@@ -309,7 +309,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 | `lessor` | `fid` | Lessor Name / Lessor Category / Relationship（V1.x #24 起仅 Unfriendly/Normal 两态）| — | `geom POLYGON SRID 4326` |
 | **`baseline_state`**（V1.x #15 新增）| `id INT CHECK (id = 1)` 单行约束 | `iso_a2` / `name_zh` / `coverage_pct` / `points_used` / `established_at` | — | — |
 | `countries`（地理数据，docker init 时加载）| 来自 Natural Earth | `iso_a2` / `iso_a3` / `name` / `name_zh` | — | `geom MULTIPOLYGON SRID 4326`（GIST 索引）|
-| **`restore_point`**（V1.x #20 · F17 新增）| 自增 `id` | `reason`（pre_import/pre_clear/pre_rollback/manual/**pre_feature_delete #48**）/ `note` / `created_at` / `site_count` / `road_count` / `lessor_count` / `baseline_iso_a2`（摘要列，列表直接展示免反查）| — | — |
+| **`restore_point`**（V1.x #20 · F17 新增）| 自增 `id` | `reason`（pre_import/pre_clear/pre_rollback/manual/~~pre_feature_delete #48~~ **#49 弃用，删除改轻量 site_delete_undo**）/ `note` / `created_at` / `site_count` / `road_count` / `lessor_count` / `baseline_iso_a2`（摘要列，列表直接展示免反查）| — | — |
 | **`site_snapshot` / `road_snapshot` / `lessor_snapshot` / `baseline_state_snapshot`**（V1.x #20 · F17 新增）| 各自镜像源表列 + `restore_point_id`（外键 ON DELETE CASCADE）| 源表全列副本 | 同源表 | 同源表 |
 | **`audit_log`**（V1.x #23 · F19 新增）| 自增 `id BIGSERIAL` | `ts` / `session_id` / `ip` / `user_agent` / `action`（11 类枚举）/ `result`（success/failed）/ `error_msg` | `details JSONB`（按 action 不同字段不同）| — |
 
@@ -438,7 +438,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
   - Road 图层：`Property`（+ 起点经纬度，取 LineString 首坐标）
   - Lessor 图层：`Lessor Name` / `Lessor Category` / `Relationship`
   - 表头随列表滚动固定（sticky header）；虚拟化保持（固定行高、DOM 只渲可视区）
-- **增删改与勾选导出（V1.x #48 · 仅 site）**：列表框由只读升级为可操作——行前多选框 + 单行编辑 + 批量删除（纳入恢复点）+ 勾选导出 KMZ。**本期仅 site 图层**，road/lessor 仍只读，详见下方「要素增删改与勾选导出（site · V1.x #48）」节。
+- **增删改与勾选导出（V1.x #48 · 仅 site）**：列表框由只读升级为可操作——行前多选框 + 单行编辑 + 批量删除（**轻量撤销可回滚，#49**）+ 勾选导出 KMZ。**本期仅 site 图层**，road/lessor 仍只读，详见下方「要素增删改与勾选导出（site · V1.x #48）」节。
 - **筛选（非搜索）**：列表框自带筛选框，**只筛本图层**内的要素（精确叫"筛选"；右上 F16 那个才叫"搜索"，搜全库三类）。
 - **点击行 → 地图定位**：点任意一行 → 地图飞到该要素并高亮（复用 F12 双向焦点同步 + 属性面板显示）。
 - **虚拟化**：列表框承接原树的大数据量（单层可能数千行），固定行高虚拟化渲染，DOM 只渲可视区。
@@ -467,8 +467,10 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
   - **锁死字段（不可改）**：`SITE ID` + `OPTION`（主键，改 = 改身份 = 删+建，不在编辑范畴）；`OPERATOR` / `CATEGORY` / `TYPE`（盖戳三列，决定图层归属，改了节点要跨层跳走——本期不开，避免列表行当场消失的诡异交互）。表单里这五列**只读展示、置灰**。
   - **改 site_status 的副作用**：site_status 决定该点落入哪个 🎨 样式子集（勘测类）。编辑后该点的样式分桶可能变化，列表/地图实时刷新即可（同图层内，不跨层）。
 - **批量删除（勾选多行）**：勾选 N 行 → [🗑️ 删除选中] → 确认 modal（列出将删数量）→ 后端批量删除。
-  - **纳入恢复点可回滚**：删除前**自动建恢复点**（复用 F17 restore_point 体系，新增 `reason=pre_feature_delete`），删错可整体回滚。与「清除基线」「导入」的安全网一致。
-  - 一次批量删 = 一个恢复点（不是每行一个）。
+  - **轻量「撤销删除」可回滚（V1.x #49 · 取代 #48 的全表快照）**：删除**不再建 F17 全表快照恢复点**（那是给导入/清库设计的全量安全网，3W 节点时删 1 个要复制全表，O(全表)，太重）。改为：删除前**只把被删的那几行**捕获进轻量表 `site_delete_undo`（O(删除数)，与库规模无关），再 DELETE，整事务原子。
+  - **撤销**：返回 `undo_id`，提供「撤销上次删除」把那几行**再插回**；主键已被重新占用则跳过并报实际恢复数。
+  - 保留最近 **200 个删除批次**（环形淘汰；每批只几行，占用极小，常量易调）。
+  - 一次批量删 = 一个 undo 批次（不是每行一个）。`pre_feature_delete` 恢复点机制**弃用**（reason 留在 CHECK 无害，不回退已部署库）。
 - **勾选导出 KMZ**：勾选 N 行 → [💾 导出选中] → 把**勾选的 site 子集**打包 KMZ 下载（NP 范围圈规则照 #46 随点导出）。区别于 F9 框选导出（按地图选区）——这是**按列表勾选的精确子集**导出，适合"挑几个特定站点发派工"。
 - **列宽可拖拽调整（类 Excel · 纯前端，三个 kind 通用）**：表头每列右边界放拖拽手柄，**拖动手动调该列宽度**（像 Excel 拖列边）。
   - **与 #31 等比拉伸的关系**：列一旦被手动拖过 → 转为**手动固定宽**，不再参与 #31「随窗口等比拉伸」；**未手动调过的列**仍按 #31 等比填充剩余内容区。手动宽 + 自动宽混排：总宽超内容区 → 横向滚动（沿用 #31 下限逻辑）。
@@ -478,9 +480,11 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
   - 此项虽随 #48 同期落地，但**与增删改正交**（road/lessor 只读列表也享受列宽可调）。
 - **后端新增接口（site，本期）**：
   - `PATCH /api/sites/{site_id}/{option}` — 更新单条 site 的业务属性 + 坐标（坐标变更重算 geom）；校验主键存在、盖戳三列不接受变更。
-  - `POST /api/sites/delete`（批量）— 入参 site 主键列表 `[(site_id, option), ...]`；**先建 pre_feature_delete 恢复点**再事务内批量删除。
+  - `POST /api/sites/delete`（批量）— 入参 site 主键列表 `[(site_id, option), ...]`；事务内**先把被删行捕获进 `site_delete_undo`（O(删除数)）再 DELETE**（不再建 F17 全表快照恢复点，#49）；返回 `{deleted, undo_id}`。
+  - `POST /api/sites/undo-delete/{undo_id}`（#49）— 把该批次被删行**再插回** site；主键已被重新占用则 `ON CONFLICT DO NOTHING` 跳过，返回实际恢复数。
   - 勾选导出复用现有导出链路（按 id 子集，非按几何选区）；若现有 `export_selection` 仅吃 polygon，则加一条按主键列表导出的通道。
-- **审计**：编辑 → `edit_site`；批量删除 → `delete_site`（details 记删除条数 + 关联恢复点 id）；勾选导出 → 复用 `export_region`（mode 标记 `list` 子集导出）或新增 `export_selection_ids`。沿用 F19 身份识别（IP + UA + Session）。
+- **新建表 `site_delete_undo`（#49）**：镜像 site 列 + `undo_id`（批次）+ `deleted_at`；环形保留最近 20 批。轻量、与库规模无关，**取代 #48 复用 F17 全表快照的方案**。
+- **审计**：编辑 → `edit_site`；批量删除 → `delete_site`（details 记删除条数 + `undo_id`）；撤销删除 → `undo_delete_site`（#49）；勾选导出 → 复用 `export_region`（mode 标记 `list` 子集导出）或新增 `export_selection_ids`。沿用 F19 身份识别（IP + UA + Session）。
 - **权限**：V1 不做登录/权限（与「清除基线」一致），仅靠确认 modal 防误删；删除有恢复点兜底，风险可控。
 - **范围边界（本期不做）**：① road/lessor 增删改（沿用只读）；② 改主键 / 改盖戳三列（跨层移动）；③ 新建要素（要素仍只能从「导入图层」进，保留盖戳 + 几何护栏 + 去重链路，列表框不开"凭空建点"）。
 

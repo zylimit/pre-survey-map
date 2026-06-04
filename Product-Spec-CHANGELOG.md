@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-06-04 (#49)
+
+### 删除回滚改轻量「撤销删除」（取代 #48 全表快照）
+
+**类型**：重度变更（删除的回滚机制重构；新增 `site_delete_undo` 表 + undo 端点 + 改 delete 实现，前端删除提示改可点撤销；触碰 api/db/web，需重打镜像）。
+
+**触发**：用户指出 #48 的批量删除"纳入恢复点"复用了 F17 全表快照——**3W 节点时删 1 个节点要复制整张表（O(全表)）**，环形保留 10 个点最坏堆 30W 行快照，效率太低。
+
+**根因**：F17 `create_restore_point`（restore_point_helper.py:35-76）是 `INSERT INTO site_snapshot SELECT * FROM site` 全表快照，给导入/清库这类"动大量数据"设计；#48 拿它给"删几个节点"用，杀鸡用牛刀，且 F17 回滚是 `TRUNCATE 全表 + 重灌`，天生全量、无法局部。
+
+**变更**：
+- **删除不再建 F17 恢复点**：改为事务内**只把被删的那几行**捕获进新表 `site_delete_undo`（O(删除数)，与库规模无关）→ 再 DELETE。
+- **新表 `site_delete_undo`**：镜像 site 列 + `undo_id`（批次）+ `deleted_at`；环形保留**最近 200 个删除批次**（每批只几行，占用极小）。
+- **新端点 `POST /api/sites/undo-delete/{undo_id}`**：把该批次行再插回 site；主键已被重新占用则 `ON CONFLICT DO NOTHING` 跳过，返回实际恢复数。
+- **delete 返回 `{deleted, undo_id}`**（原为 `{deleted, restore_point_id}`）。
+- **前端**：删除成功提示由「恢复点可回滚」改为 **`已删 N 条 [撤销]`** 可点链接，点击调 undo 端点。
+- **审计**：新增 `undo_delete_site`（F19 14→15 类）；`delete_site` details 记 `undo_id`（原记 restore_point_id）。
+- **`pre_feature_delete` 恢复点 reason 弃用**：留在 CHECK 无害（内网已部署，不回退），但删除不再产生该 reason 的点。
+
+**决策（用户拍板）**：回滚机制=轻量「撤销删除」只存被删几条（非软删、非硬删无 undo）；保留=最近 **200 个删除批次**（用户从 10→30→20→最终 200）。
+
+**冲突检测**：
+- **vs #48 测试**：`test_site_crud_48.py` 的 delete 测试断言了 `create_restore_point 在 DELETE 前` 的调用序列——#49 删除不再建恢复点，该断言要重写为「捕获 undo 在 DELETE 前、同事务」+ 新增 undo 端点测试。
+- **vs F17**：F17 恢复点体系（导入/清库/手动）**不动**，仅删除从中解耦。
+- **vs 已部署 v1.0.5**：内网若已部署 v1.0.5（含 pre_feature_delete CHECK），#49 升级需加 `site_delete_undo` 建表迁移；CHECK 不回退。
+
+**Spec 改动**：「批量删除」节改轻量撤销 + 新表 + undo 端点 + 后端接口/审计同步；F20 表格条、#48 摘要条、F17 restore_point reason（标弃用）、F19 审计 14→15 类 同步。
+
+---
+
 ## 2026-06-04 (#48)
 
 ### 图层要素列表（site）增删改 + 勾选导出 + 列宽可调

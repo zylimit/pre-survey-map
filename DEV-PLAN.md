@@ -223,6 +223,41 @@
 
 ---
 
+# V1.x #49 增量 — 删除回滚改轻量「撤销删除」
+
+> #48 删除复用 F17 全表快照，3W 节点删 1 个要复制整表（O(全表)）。#49 改为只存被删的几行（O(删除数)）。详见 CHANGELOG #49。
+> **依赖**：在 #48 Phase 6/7 已入库基础上改。
+
+## Phase 9: 删除轻量撤销 — site_delete_undo + undo 端点 + 前端撤销 + 测试改写
+
+**交付内容**：
+- **新表 `site_delete_undo`**（`deploy/db/init.sql` + 迁移 `deploy/migrations/V3__add_site_delete_undo.sql`，幂等 `CREATE TABLE IF NOT EXISTS`）：镜像 site 全列 + `undo_id BIGINT`（批次）+ `deleted_at TIMESTAMPTZ`。
+- **改 delete 实现**（`api/routers/sites.py`）：去掉 `create_restore_point` 调用；事务内**先** `INSERT INTO site_delete_undo SELECT <undo_id>,... FROM site WHERE keys`（捕获被删行）**再** `DELETE`；环形保留最近 **200** 个删除批次（按 undo_id 淘汰最旧）；返回 `{deleted, undo_id}`。审计 `delete_site` details 记 `undo_id`。
+- **新端点 `POST /api/sites/undo-delete/{undo_id}`**（`api/routers/sites.py`）：`INSERT INTO site SELECT ... FROM site_delete_undo WHERE undo_id=$1 ON CONFLICT (site_id,"option") DO NOTHING`；返回实际恢复数；审计 `undo_delete_site`。
+- **前端撤销**（`web/src/`）：`doDeleteSites` 持有返回的 `undo_id`；删除成功提示由「恢复点可回滚」改为 `已删 N 条 [撤销]` 可点（点击 → `undoDelete(undo_id)` → 成功 refresh + 提示恢复数）。`api.ts` 加 `undoDelete`；`state.ts` 加 `doUndoDelete`。
+- **测试改写**（`api/tests/test_site_crud_48.py` 或新 `test_site_undo_49.py`）：delete 测试的调用序列断言由 `[tx_enter→restore_point→delete→tx_exit]` 改为 `[tx_enter→capture_undo→delete→tx_exit]`（不再有 restore_point）；新增 undo 端点测试（再插回 + ON CONFLICT 跳过 + 审计 undo_delete_site）。
+- `pre_feature_delete` reason 弃用（不动 CHECK，删除不再产生该 reason）。
+
+**关键文件**：
+- `deploy/db/init.sql` — 新增 `site_delete_undo` 表（幂等）
+- `deploy/migrations/V3__add_site_delete_undo.sql` — 已部署库建表迁移
+- `api/routers/sites.py` — delete 改捕获 undo（去 create_restore_point）+ 新增 undo-delete 端点 + 200 环形淘汰
+- `api/tests/test_site_crud_48.py`（改）/ 新增 undo 测试
+- `web/src/api.ts` — `undoDelete(undo_id)`
+- `web/src/state.ts` — `doUndoDelete` + `doDeleteSites` 持 undo_id
+- `web/src/components/LayerFeatureList.tsx`（或日志/toast 层）— 删除成功 `[撤销]` 可点
+
+**验收标准**：
+- 删 N 条 → `site` 少 N 行、`site_delete_undo` 多 N 行（同一 undo_id）、**未产生 restore_point**；返回含 undo_id。
+- POST undo-delete → N 行回到 site；主键被重新占用的跳过、返回实际恢复数。
+- 3W 规模删 1 个：undo 表只写 1 行（O(删除数)），无全表快照（对比 #48）。
+- 环形 200：超出淘汰最旧批次。
+- 前端删除后 `[撤销]` 可点 → 撤销 → 列表/地图/树恢复。
+- 审计 `delete_site`(含 undo_id) / `undo_delete_site` 落库。
+- pytest 改写后全绿；F17 恢复点（导入/清库/手动）链路不受影响回归通过。
+
+---
+
 ## 技术栈（沿用现有，零新引入）
 
 | 层级 | 技术 | 版本 | 说明 |
