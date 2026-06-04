@@ -16,6 +16,9 @@ import {
   downloadConflictsXlsx,
   exportAll,
   exportSelection,
+  exportSelectionIds,
+  deleteSites,
+  updateSite,
   Feature,
   FeatureCollection,
   fetchAll,
@@ -24,6 +27,8 @@ import {
   LayerStamp,
   Phase1Summary,
   proceedToConflicts,
+  SiteKey,
+  SitePatch,
   uploadFile,
 } from "./api";
 import { nameOf } from "./utils";
@@ -587,6 +592,63 @@ export function useAppState() {
     }
   }, [selectionPolygon, selectionMode, log]);
 
+  // ---------- #48 site 增删改 + 勾选导出（接 Phase 6 后端）----------
+  // 编辑/删除后统一 await refresh() 重拉三表 FeatureCollection → 地图重渲染 + 左树计数同步。
+  // 返回 null=成功，string=可读错误（同时已写日志面板）。
+
+  const doUpdateSite = useCallback(
+    async (key: SiteKey, patch: SitePatch): Promise<string | null> => {
+      try {
+        await updateSite(key, patch);
+        log("info", t("log.edit_site_ok", { id: key.site_id }));
+        await refresh();
+        return null;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log("error", t("log.edit_site_err", { msg }));
+        return msg;
+      }
+    },
+    [log, refresh],
+  );
+
+  const doDeleteSites = useCallback(
+    async (keys: SiteKey[]): Promise<string | null> => {
+      try {
+        const resp = await deleteSites(keys);
+        log("info", t("log.delete_site_ok", { n: resp.deleted, rp: resp.restore_point_id }));
+        await refresh();
+        return null;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log("error", t("log.delete_site_err", { msg }));
+        return msg;
+      }
+    },
+    [log, refresh],
+  );
+
+  const doExportSelectionIds = useCallback(
+    async (keys: SiteKey[], npRadiusM: number): Promise<void> => {
+      if (keys.length === 0) {
+        log("error", t("log.export_ids_empty"));
+        return;
+      }
+      setPhase("exporting");
+      log("info", t("log.export_ids_start", { n: keys.length }));
+      try {
+        await exportSelectionIds(keys, npRadiusM);
+        log("info", t("log.export_ids_ok"));
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log("error", t("log.export_ids_err", { msg }));
+      } finally {
+        setPhase("idle");
+      }
+    },
+    [log],
+  );
+
   return {
     sites,
     roads,
@@ -634,5 +696,8 @@ export function useAppState() {
     openLayerFeatures,
     toggleLayerFeatures,
     closeLayerFeatures,
+    doUpdateSite,
+    doDeleteSites,
+    doExportSelectionIds,
   };
 }

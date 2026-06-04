@@ -422,3 +422,68 @@ export async function exportSelection(
   });
   await downloadResponse(res, "export_region.kmz");
 }
+
+// ---------- #48 site 增删改 + 勾选导出（Phase 6 后端契约）----------
+
+// site 复合主键
+export interface SiteKey {
+  site_id: string;
+  option: string;
+}
+
+// 可编辑业务字段（仅这些；盖戳列/主键由后端 400 拦截）
+export interface SitePatch {
+  project?: string | null;
+  site_status?: string | null;
+  lati?: number | null;
+  longi?: number | null;
+}
+
+// 从错误响应里抽 FastAPI 的 detail（string 或 422 数组）→ 可读提示；失败回落 HTTP n
+async function errDetail(res: Response): Promise<string> {
+  try {
+    const j = await res.json();
+    const d = (j as { detail?: unknown })?.detail;
+    if (typeof d === "string") return d;
+    if (d != null) return JSON.stringify(d);
+    return `HTTP ${res.status}`;
+  } catch {
+    return `HTTP ${res.status}`;
+  }
+}
+
+// PATCH /api/sites：单条编辑，成功返回更新后的 site feature（与 GET /api/sites 单个 feature 同构）
+export async function updateSite(key: SiteKey, patch: SitePatch): Promise<Feature> {
+  const res = await fetch("/api/sites", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ site_id: key.site_id, option: key.option, patch }),
+  });
+  if (!res.ok) throw new Error(await errDetail(res));
+  return res.json();
+}
+
+// POST /api/sites/delete：批量删除，返回 {deleted, restore_point_id}
+export async function deleteSites(
+  keys: SiteKey[],
+): Promise<{ deleted: number; restore_point_id: number }> {
+  const res = await fetch("/api/sites/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ keys }),
+  });
+  if (!res.ok) throw new Error(await errDetail(res));
+  return res.json();
+}
+
+// POST /api/export/selection_ids：勾选子集导出 KMZ（复用 blob 下载）
+export async function exportSelectionIds(keys: SiteKey[], npRadiusM?: number): Promise<void> {
+  const body: { keys: SiteKey[]; np_radius_m?: number } = { keys };
+  if (npRadiusM != null) body.np_radius_m = npRadiusM;
+  const res = await fetch("/api/export/selection_ids", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  await downloadResponse(res, "export_region.kmz");
+}

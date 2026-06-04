@@ -18,10 +18,15 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Feature, FeatureCollection } from "../api";
+import type { Feature, FeatureCollection, SiteKey, SitePatch } from "../api";
 import type { ViewLayerTarget } from "../state";
 import { useT } from "../i18n";
 import { nameOf, STATUS_COLOR, siteStatusColor, statusBucket } from "../utils";
+import ConfirmDialog from "./ConfirmDialog";
+
+// #48：site 增删改/勾选导出列宽（固定，不参与 #31 等比拉伸；列宽可拖留到 Phase 8）
+const CHECK_W = 36;   // 行前多选 checkbox 列
+const ACTION_W = 60;  // 行尾操作列（编辑）
 
 // ─── 虚拟化常量（沿用 #16 范式）────────────────────────────────────────────────
 const ROW_H = 30;   // 数据行高（与 .lfl-row 一致）
@@ -128,14 +133,34 @@ interface Props {
   selectedId: string | number | null;
   onPick: (f: Feature) => void;   // = s.flyTo（飞到 + 选中 + 属性面板）
   onClose: () => void;
+  // #48（仅 site 用）：编辑/删除/勾选导出。返回 null=成功，string=可读错误。
+  onUpdateSite: (key: SiteKey, patch: SitePatch) => Promise<string | null>;
+  onDeleteSites: (keys: SiteKey[]) => Promise<string | null>;
+  onExportSites: (keys: SiteKey[]) => void;
 }
+
+// 取 site 复合主键
+const featKey = (f: Feature): SiteKey => ({
+  site_id: String(f.properties?.site_id ?? ""),
+  option: String(f.properties?.option ?? ""),
+});
 
 export default function LayerFeatureList({
   target, anchor, sites, roads, lessors,
   selectedId, onPick, onClose,
+  onUpdateSite, onDeleteSites, onExportSites,
 }: Props) {
   const tFn = useT();
   const [filter, setFilter] = useState("");
+
+  // #48：仅 site 图层渲染多选/操作/批量按钮；road/lessor 保持纯只读
+  const isSite = target.kind === "site";
+  // 选中集合（key=feature id，如 "site:{id}:{option}"）。切图层 / 删除后清空。
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  // 当前编辑的 site 行（null=未在编辑）
+  const [editing, setEditing] = useState<Feature | null>(null);
+  // 批量删除确认框
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // ─── #30 窗口位置 / 尺寸（组件 state；位置仅挂载时按 anchor 初始化）───────────
   const [size, setSize] = useState(() => computeInitSize());
@@ -143,7 +168,9 @@ export default function LayerFeatureList({
 
   const cols = target.kind === "site" ? SITE_COLS
     : target.kind === "road" ? ROAD_COLS : LESSOR_COLS;
-  const totalW = useMemo(() => cols.reduce((a, c) => a + c.w, 0), [cols]);
+  // #48：site 多选列(前) + 操作列(后) 计入 minWidth，保横滚下限
+  const extraW = isSite ? CHECK_W + ACTION_W : 0;
+  const totalW = useMemo(() => cols.reduce((a, c) => a + c.w, 0) + extraW, [cols, extraW]);
 
   // ─── 本层要素子集（与 Phase 3 树计数同源的过滤口径）──────────────────────────
   const layerFeatures = useMemo<Feature[]>(() => {
@@ -170,6 +197,34 @@ export default function LayerFeatureList({
     return layerFeatures.filter(f => nameOf(f).toLowerCase().includes(q));
   }, [layerFeatures, filter]);
 
+  // ─── #48 选中派生值 ──────────────────────────────────────────────────────────
+  // 选中要素从本层全集解析（选择可跨筛选保留）；删除/导出用其 {site_id,option}
+  const selectedFeatures = useMemo<Feature[]>(
+    () => (isSite ? layerFeatures.filter(f => selectedKeys.has(String(f.id))) : []),
+    [isSite, layerFeatures, selectedKeys],
+  );
+  const selectedCount = selectedFeatures.length;
+  // 全选 checkbox 只作用当前 filtered 子集（与筛选口径一致）
+  const allFilteredSelected = isSite && filtered.length > 0
+    && filtered.every(f => selectedKeys.has(String(f.id)));
+
+  const toggleOne = (id: string) => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleAllFiltered = () => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (allFilteredSelected) for (const f of filtered) next.delete(String(f.id));
+      else for (const f of filtered) next.add(String(f.id));
+      return next;
+    });
+  };
+
   // ─── 虚拟窗口 ────────────────────────────────────────────────────────────────
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -185,10 +240,14 @@ export default function LayerFeatureList({
   }, []);
 
   // ─── #30：切图层（target 变）→ 复位筛选 + 滚动（窗口不重挂载，位置尺寸保持）──
+  //     #48：同时清空选中/编辑/删除确认，避免跨图层串台
   useEffect(() => {
     setFilter("");
     setScrollTop(0);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setSelectedKeys(new Set());
+    setEditing(null);
+    setConfirmingDelete(false);
   }, [target]);
 
   // ─── F12 反向：地图选中本层要素 → 列表滚动到该行（扣掉 sticky 表头高）─────────
@@ -315,6 +374,7 @@ export default function LayerFeatureList({
   const renderRow = (f: Feature, index: number) => {
     const id = String(f.id);
     const sel = id === selStr;
+    const checked = selectedKeys.has(id);
     return (
       <div
         key={id}
@@ -323,6 +383,20 @@ export default function LayerFeatureList({
         onClick={() => onPick(f)}
         title={nameOf(f)}
       >
+        {isSite && (
+          <span
+            className="lfl-cell lfl-check"
+            style={{ flex: `${CHECK_W} 0 ${CHECK_W}px` }}
+            onClick={e => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => toggleOne(id)}
+              aria-label={tFn("lfl.sel.row")}
+            />
+          </span>
+        )}
         {cols.map(col => {
           const txt = col.get(f);
           // #37：site_status 走 siteStatusColor（已 toLowerCase，修大写退灰）；
@@ -338,6 +412,19 @@ export default function LayerFeatureList({
             </span>
           );
         })}
+        {isSite && (
+          <span
+            className="lfl-cell lfl-action"
+            style={{ flex: `${ACTION_W} 0 ${ACTION_W}px` }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              className="lfl-edit-btn"
+              onClick={() => setEditing(f)}
+              title={tFn("lfl.act.edit")}
+            >✏️</button>
+          </span>
+        )}
       </div>
     );
   };
@@ -368,6 +455,23 @@ export default function LayerFeatureList({
         />
       </div>
 
+      {/* #48：site 批量操作条（删除选中 / 导出选中）；road/lessor 不渲染 */}
+      {isSite && (
+        <div className="lfl-actions">
+          <span className="lfl-sel-count">{tFn("lfl.sel.count", { n: selectedCount })}</span>
+          <button
+            className="lfl-act danger"
+            disabled={selectedCount === 0}
+            onClick={() => setConfirmingDelete(true)}
+          >🗑️ {tFn("lfl.del.btn")}</button>
+          <button
+            className="lfl-act"
+            disabled={selectedCount === 0}
+            onClick={() => onExportSites(selectedFeatures.map(featKey))}
+          >💾 {tFn("lfl.exp.btn")}</button>
+        </div>
+      )}
+
       {total === 0 ? (
         <div className="lfl-empty">
           {layerFeatures.length === 0 ? tFn("lfl.empty") : tFn("lfl.empty.filtered")}
@@ -381,11 +485,27 @@ export default function LayerFeatureList({
           {/* #31：列宽随窗口等比拉伸填满，minWidth=totalW 保横滚下限 */}
           <div className="lfl-table" style={{ minWidth: totalW, width: "100%" }}>
             <div className="lfl-thead" style={{ minWidth: totalW, width: "100%", height: HEAD_H }}>
+              {isSite && (
+                <span className="lfl-th lfl-check" style={{ flex: `${CHECK_W} 0 ${CHECK_W}px` }}>
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={toggleAllFiltered}
+                    title={tFn("lfl.sel.all")}
+                    aria-label={tFn("lfl.sel.all")}
+                  />
+                </span>
+              )}
               {cols.map(col => (
                 <span key={col.key} className="lfl-th" style={{ flex: `${col.w} 0 ${col.w}px` }}>
                   {tFn(col.labelKey as Parameters<typeof tFn>[0])}
                 </span>
               ))}
+              {isSite && (
+                <span className="lfl-th lfl-action" style={{ flex: `${ACTION_W} 0 ${ACTION_W}px` }}>
+                  {tFn("lfl.col.actions")}
+                </span>
+              )}
             </div>
             <div className="lfl-virt" style={{ height: total * ROW_H, minWidth: totalW, width: "100%" }}>
               {visible.map((f, i) => renderRow(f, start + i))}
@@ -402,6 +522,118 @@ export default function LayerFeatureList({
           onPointerDown={e => onResizePointerDown(e, d)}
         />
       ))}
+
+      {/* #48 单行编辑表单 */}
+      {editing && (
+        <SiteEditModal
+          feature={editing}
+          onSubmit={patch => onUpdateSite(featKey(editing), patch)}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
+      {/* #48 批量删除确认（复用 ConfirmDialog；成功后清空选中） */}
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={tFn("lfl.del.title")}
+          body={tFn("lfl.del.body", { n: selectedCount })}
+          confirmLabel={tFn("lfl.del.btn")}
+          cancelLabel={tFn("lfl.del.cancel")}
+          destructive
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={async () => {
+            const err = await onDeleteSites(selectedFeatures.map(featKey));
+            setConfirmingDelete(false);
+            if (!err) setSelectedKeys(new Set());
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── #48 site 单行编辑表单（小 modal）─────────────────────────────────────────
+// 可改 project/site_status/lati/longi；site_id/option/operator/category/type 只读置灰。
+// 只提交真正变更的字段；坐标做客户端有限数校验（后端再做范围/类型兜底校验）。
+const editStr = (v: unknown): string => (v == null ? "" : String(v));
+
+function SiteEditModal({
+  feature,
+  onSubmit,
+  onClose,
+}: {
+  feature: Feature;
+  onSubmit: (patch: SitePatch) => Promise<string | null>;
+  onClose: () => void;
+}) {
+  const tFn = useT();
+  const p = feature.properties ?? {};
+  const [project, setProject] = useState(editStr(p.project));
+  const [siteStatus, setSiteStatus] = useState(editStr(p.site_status));
+  const [lati, setLati] = useState(editStr(p.lati));
+  const [longi, setLongi] = useState(editStr(p.longi));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    const patch: SitePatch = {};
+    if (project !== editStr(p.project)) patch.project = project;
+    if (siteStatus !== editStr(p.site_status)) patch.site_status = siteStatus;
+    // 坐标：仅在文本变更时纳入；空串→不改，非空必须是有限数字
+    if (lati !== editStr(p.lati)) {
+      const n = Number(lati);
+      if (lati.trim() === "" || !Number.isFinite(n)) { setErr(tFn("lfl.edit.coord_err")); return; }
+      patch.lati = n;
+    }
+    if (longi !== editStr(p.longi)) {
+      const n = Number(longi);
+      if (longi.trim() === "" || !Number.isFinite(n)) { setErr(tFn("lfl.edit.coord_err")); return; }
+      patch.longi = n;
+    }
+    if (Object.keys(patch).length === 0) { setErr(tFn("lfl.edit.nochange")); return; }
+    setErr(null);
+    setBusy(true);
+    const e = await onSubmit(patch);
+    setBusy(false);
+    if (e) setErr(e);
+    else onClose();
+  };
+
+  return (
+    <div className="modal-mask">
+      <div className="modal lfl-edit-modal">
+        <div className="modal-header">
+          <h2>{tFn("lfl.edit.title")}</h2>
+        </div>
+        <div className="modal-body lfl-edit-body">
+          {/* 只读：主键 + 盖戳列 */}
+          <label>{tFn("lfl.col.site_id")}<input value={editStr(p.site_id)} disabled /></label>
+          <label>{tFn("lfl.col.option")}<input value={editStr(p.option)} disabled /></label>
+          <label>{tFn("lfl.col.operator")}<input value={editStr(p.operator)} disabled /></label>
+          <label>{tFn("lfl.col.category")}<input value={editStr(p.category)} disabled /></label>
+          <label>{tFn("lfl.col.type")}<input value={editStr(p.type)} disabled /></label>
+          {/* 可编辑 */}
+          <label>{tFn("lfl.col.project")}
+            <input value={project} onChange={e => setProject(e.target.value)} />
+          </label>
+          <label>{tFn("lfl.col.site_status")}
+            <input value={siteStatus} onChange={e => setSiteStatus(e.target.value)} />
+          </label>
+          <label>{tFn("lfl.col.lati")}
+            <input value={lati} onChange={e => setLati(e.target.value)} inputMode="decimal" />
+          </label>
+          <label>{tFn("lfl.col.longi")}
+            <input value={longi} onChange={e => setLongi(e.target.value)} inputMode="decimal" />
+          </label>
+          {err && <div className="lfl-edit-err">{err}</div>}
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} disabled={busy}>{tFn("lfl.edit.cancel")}</button>
+          <button className="primary" onClick={submit} disabled={busy}>
+            {busy ? tFn("lfl.edit.saving") : tFn("lfl.edit.save")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

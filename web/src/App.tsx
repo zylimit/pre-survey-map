@@ -201,6 +201,9 @@ export default function App() {
           selectedId={selectedId}
           onPick={s.flyTo}
           onClose={s.closeLayerFeatures}
+          onUpdateSite={s.doUpdateSite}
+          onDeleteSites={s.doDeleteSites}
+          onExportSites={(keys) => s.doExportSelectionIds(keys, npRadiusM)}
         />
       )}
 
