@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-06-04 (#48)
+
+### 图层要素列表（site）增删改 + 勾选导出 + 列宽可调
+
+**类型**：重度变更（「查看图层要素」列表框由只读升级为可操作；新增 site 单条 update / 批量 delete 后端接口 + 恢复点联动 + 审计两类，需重打 web + api 镜像）。
+
+**触发**：用户要求在「图层节点右边眼睛点开的列表框」里给每个节点加删除、编辑功能；追加要求列宽可拖拽调整（类 Excel）。兑现 Spec 原有「本版只读……编辑能力是下一步独立需求」的占位。
+
+**决策（AskUserQuestion 四问拍板）**：
+- **编辑范围 = 业务属性 + 坐标**：可改 PROJECT/SITE STATUS 等业务字段 + LATI/LONGI（后端重算 geom）；**锁死** SITE ID/OPTION（主键）+ OPERATOR/CATEGORY/TYPE（盖戳三列，本期不开跨层移动）。
+- **删除语义 = 纳入恢复点可回滚**：删除前自动建 `pre_feature_delete` 恢复点（复用 F17），删错可整体回滚。
+- **操作粒度**：行前加 **checkbox 多选**；**编辑一次一行**；**删除支持勾选批量**；勾选子集还可**导出 KMZ**。
+- **图层范围 = 本期仅 site**；road/lessor 仍只读，待 site 验证后复制。
+- **列宽可调（追加）**：拖表头列分隔线手动调列宽（类 Excel），手动宽存 localStorage、不再参与 #31 等比拉伸；双击分隔线自适应；三个 kind 通用（与增删改正交）。
+
+**变更**：
+- **前端（LayerFeatureList）**：行前多选列 + 表头全选/反选；site 行 [✏️ 编辑]（弹表单，业务属性 + 坐标可改、主键/盖戳置灰）；[🗑️ 删除选中]（确认 modal → 批量删）；[💾 导出选中]（勾选子集导 KMZ，NP 圈照 #46 随点出）；表头列宽拖拽手柄 + localStorage 持久化 + 双击自适应。
+- **后端（api，site）**：`PATCH /api/sites/{site_id}/{option}`（更新业务属性 + 坐标重算 geom；拒改盖戳）；`POST /api/sites/delete`（批量，先建 pre_feature_delete 恢复点再事务删）；勾选导出按主键子集走导出链路（现有 export_selection 仅吃 polygon → 加按 id 列表导出通道）。
+- **恢复点**：新增 `reason=pre_feature_delete`；批量删一次 = 一个恢复点。
+- **审计**：新增 `edit_site` / `delete_site`（F19 由 12 类 → 14 类）；勾选导出复用 export_region（mode=list）或新增 export_selection_ids。
+
+**冲突检测**：
+- **vs #31（列宽等比拉伸）**：手动列宽与自动等比**混排共存**——拖过的列固定、没拖的列继续等比；非替换关系，已在 Spec 写明交互。
+- **vs 盖戳模型（F20 #24）**：编辑锁死 operator/category/type，不破坏"要素归属由盖戳定"的强类型前提；新建仍只能走导入（保留护栏 + 去重）。
+- **vs F17 快照列清单（#43 教训）**：site 表无新增列（仅改值/删行），不触发"快照三处显式列清单要同步"的坑；但删除走恢复点链路，回滚 SQL 复用现有 site_snapshot 重灌，需回归验证回滚后 site 数据完整。
+
+**Spec 改动**：「查看图层要素」节只读条改为指向 #48 + 新增「要素增删改与勾选导出（site · V1.x #48）」子节（含列宽可调）；F20 表格 [查看图层要素] 描述更新；F19 审计 12→14 类；F17 restore_point reason 加 pre_feature_delete。
+
+**待办（进入 dev-planner / dev-builder）**：本条仅完成 Spec + CHANGELOG；后端三接口、前端列表框改造、恢复点/审计联动、回归测试（含回滚验证）尚未实现。
+
+---
+
 ## 2026-06-03 (#47)
 
 ### 框选导出 KMZ 支持圆形选区

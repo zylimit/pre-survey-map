@@ -140,6 +140,89 @@
 
 ---
 
+---
+
+# V1.x #48 增量 — 图层要素列表（site）增删改 + 勾选导出 + 列宽可调
+
+> 在 F20（Phase 1–5 ✅）基础上把「查看图层要素」列表框（`LayerFeatureList`）从**只读**升级为**可操作**。
+> **本期仅 site**；road/lessor 仍只读（除列宽可调对三者通用）。详见 Product-Spec.md「要素增删改与勾选导出（site · V1.x #48）」节 + CHANGELOG #48。
+>
+> **依赖顺序**：Phase 6（后端接口）→ Phase 7（前端接通）；Phase 8（列宽）独立、可任意序，建议最后。
+>
+> **不许破坏的契约**：全局去重键不变；KMZ 自反一致性；**F17 回滚不丢列（含 site 三列 operator/category/type，Phase 1 教训）**；事务边界；盖戳模型（编辑锁死三列、新建仍走导入）。
+
+## Phase 6: 后端 site 单条编辑 + 批量删除 + 勾选导出 + 恢复点/审计联动
+
+**交付内容**：
+- **`PATCH /api/sites/{site_id}/{option}`**（单条编辑）：更新业务属性（`project` / `site_status` 等）+ 坐标 `lati`/`longi`；坐标变更时**同步重算 geom** = `ST_SetSRID(ST_MakePoint(longi, lati), 4326)`；**拒绝修改** `operator`/`category`/`type`（盖戳三列）与 `site_id`/`option`（主键）——请求带这些字段变更则 400（或忽略且不写）；成功写审计 `edit_site`；返回更新后的 site feature。
+- **`POST /api/sites/delete`**（批量删除）：入参 `{keys: [{site_id, option}, ...]}`；**事务内先 `create_restore_point(conn, reason="pre_feature_delete")` 建点**，再 `DELETE FROM site WHERE (site_id, "option") IN (...)`；写审计 `delete_site`（details 记删除条数 + `restore_point_id`）；返回 `{deleted: N, restore_point_id}`。
+- **`POST /api/export/selection_ids`**（勾选导出）：入参 `{keys: [{site_id, option}, ...], np_radius_m?}`；按主键子集从 site 表取行 → 复用 `_build_kmz_meta(scope="region", ...)` + `_kmz_response` 打包 KMZ；NP 站型照 #46 随点带圈；写审计 `export_region`（`mode="list"`）。
+- **枚举同步**：`restore_point_helper.create_restore_point` 的 reason 接受 `pre_feature_delete`（若有 reason 白名单/CHECK 则同步）；审计动作枚举/校验加 `edit_site`/`delete_site`（若 `audit.py` 有 ACTIONS 白名单）。
+
+**关键文件**：
+- `api/routers/sites.py` — 现仅 `GET ""`；新增 `PATCH /{site_id}/{option}`（update + geom 重算 + 拒改盖戳）+ `POST /delete`（批量 + 恢复点）两端点
+- `api/routers/exports.py` — 新增 `POST /selection_ids`（按主键子集；复用 `_fetch_rows` 思路或直查 site + `_build_kmz_meta`/`_kmz_response`，:71/:85）
+- `api/restore_point_helper.py` — `create_restore_point`（:11）支持 `reason="pre_feature_delete"`
+- `api/audit.py` — `write_audit`（:55）动作枚举加 `edit_site`/`delete_site`
+- `api/routers/restore_points.py` — 无需改；回归验证 `pre_feature_delete` 点经现有 `restore_from_snapshot`（:115）回滚正常
+
+**验收标准**：
+- curl `PATCH` 改一条 site 的 `site_status` + `lati`/`longi` → 库内值更新、`ST_AsGeoJSON(geom)` 坐标 = 新经纬度；带 `operator` 变更被拒（400 或库内盖戳不变）
+- curl `POST /api/sites/delete` 删 3 条 → 返回 `deleted=3` + `restore_point_id`；site 表少 3 行；restore_point 表多 1 条 `reason=pre_feature_delete`
+- **回滚验证（硬卡点）**：delete 后走现有恢复点回滚 → 3 行完整恢复，**operator/category/type 三列不丢**（Phase 1 教训）
+- curl `POST /api/export/selection_ids` 传 2 个主键 → KMZ 仅含这 2 个 site（NP 站型带圈）
+- 审计表出现 `edit_site` / `delete_site` / `export_region(mode=list)` 记录
+- 现有 F1–F20 + #47 链路回归通过（导入/清洗/冲突/导出/搜索/恢复点/审计不报错）
+
+## Phase 7: 前端列表框 site 增删改 + 勾选导出（接通 Phase 6）
+
+**交付内容**：
+- **行前多选列**：`LayerFeatureList` 每行最前加 checkbox；表头放全选/反选（仅作用当前 `filtered` 子集，与筛选口径一致）。
+- **单行编辑**：site 行 [✏️ 编辑] → 弹编辑表单（小 modal 或 inline 面板）——业务属性 + `lati`/`longi` 可改；`site_id`/`option`/`operator`/`category`/`type` **只读置灰**；保存调 `PATCH`，成功后局部刷新该行 + 地图点位/颜色。
+- **批量删除**：[🗑️ 删除选中]（勾选≥1 行启用）→ 确认 modal（显示将删条数）→ 调 `POST /api/sites/delete` → 成功后从列表/地图移除 + 提示「已删 N 条，可在恢复点回滚」。
+- **勾选导出**：[💾 导出选中]（勾选≥1 行启用）→ 调 `POST /api/export/selection_ids` → 浏览器下载 KMZ。
+- **仅 site 显示**：`target.kind === "site"` 才渲染操作列 + 三个按钮；road/lessor 列表不渲染（仍只读）。
+- **数据同步**：编辑/删除后刷新 site `FeatureCollection`（复用现有拉取或局部更新），树计数 + 地图渲染随之更新。
+- 双语文案（表单标题/字段标签/删除确认/导出/成功提示）。
+
+**关键文件**：
+- `web/src/components/LayerFeatureList.tsx` — 多选列 + 操作列 + 编辑表单 + 删除确认 + 导出按钮（均 `kind==="site"` 门控）
+- `web/src/state.ts` — 选中行集合 state + 编辑/删除/导出动作 + site 数据刷新钩子
+- `web/src/api.ts` — `patchSite` / `deleteSites` / `exportSelectionIds` 三个调用
+- `web/src/i18n.ts` — #48 文案双语
+- （可选）`web/src/components/EditSiteForm.tsx` — 编辑表单小组件（亦可内联在 LayerFeatureList）
+
+**验收标准**：
+- site 列表每行有复选框 + [编辑]；表头全选 → 当前 filtered 全勾
+- 编辑一行 `site_status` + 坐标 → 保存 → 列表该行更新、地图点位/颜色随之变；主键/盖戳字段置灰不可改
+- 勾选 3 行 → [删除选中] → 确认 → 列表少 3 行、地图少 3 点、提示可回滚；恢复点对话框出现 `pre_feature_delete` 点
+- 勾选 2 行 → [导出选中] → 下载 KMZ 仅含这 2 站
+- road/lessor 列表**无**多选/编辑/删除/导出（仍只读）
+- 中英切换 #48 文案正确；F1–F20 + #47 前端链路回归通过
+
+## Phase 8: 列表框列宽可拖调（类 Excel · 三 kind 通用）
+
+**交付内容**：
+- **列宽拖拽**：表头每列右边界加拖拽手柄，拖动手动调该列宽；最小列宽 48px 守卫；拖动走 `requestAnimationFrame` 节流（与 #30/#43 窗口拖缩一致）。
+- **与 #31 等比拉伸混排**：列一旦手动拖过 → 转**手动固定宽**，不再参与 #31「随窗口等比拉伸」；**未拖过的列**仍按 #31 等比填充剩余内容区；总宽超内容区 → 横向滚动（沿用 #31 下限）。
+- **双击自适应**：双击列分隔手柄 → 该列按内容最宽值自适应，并**清掉该列手动宽、还原自动**（Excel 双击惯例）。
+- **持久化**：手动列宽存 `localStorage`（key 按 kind + 列 key，如 `presurvey.lfl.col.site.lati`），开窗恢复；未拖列不写。
+- **三 kind 通用**：site/road/lessor 列表都享受；与 #48 增删改**正交**（多选列宽固定不可拖）。
+
+**关键文件**：
+- `web/src/components/LayerFeatureList.tsx` — 列宽 state（手动宽 `Record<colKey, number>`）+ 表头拖拽手柄 + 双击自适应 + 改造 #31 渲染（手动列固定宽、其余列等比）
+- `web/src/index.css`（或对应样式文件）— 列分隔手柄样式（`cursor: col-resize` + hover 高亮）
+- （可选）列宽 localStorage 读写 + 内容测宽工具函数（内联或 utils）
+
+**验收标准**：
+- 拖某列右边界 → 该列变宽/窄，其余未拖列仍等比填充；刷新后手动宽恢复
+- 双击分隔线 → 该列按内容自适应，且回到「未手动」态（清该列 localStorage）
+- 列宽不可拖到 < 48px；拖动不掉帧（rAF）
+- site/road/lessor 三种列表都能调列宽
+- 与 #48 编辑/删除/勾选共存不冲突；F1–F20 + #47 回归通过
+
+---
+
 ## 技术栈（沿用现有，零新引入）
 
 | 层级 | 技术 | 版本 | 说明 |
