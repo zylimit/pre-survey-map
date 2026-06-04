@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS restore_point (
     id              BIGSERIAL   PRIMARY KEY,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     reason          TEXT        NOT NULL
-                    CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual','auto_backup','pre_migrate')),
+                    CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual','auto_backup','pre_migrate','pre_feature_delete')),
     note            TEXT,
     site_count      INT,
     road_count      INT,
@@ -106,11 +106,12 @@ CREATE TABLE IF NOT EXISTS restore_point (
 
 -- #42：reason 增加 'auto_backup'（定时自动备份）。
 -- 部署系统 P2（DEPLOY-DESIGN §5）：reason 增加 'pre_migrate'（迁移前自动恢复点）。
+-- #48：reason 增加 'pre_feature_delete'（site 批量删除前自动恢复点）。
 -- 已部署库 CREATE TABLE IF NOT EXISTS 不会重跑 → 用幂等 ALTER 重建 CHECK 约束。
 -- 内联 CHECK 的默认约束名 = restore_point_reason_check。
 ALTER TABLE restore_point DROP CONSTRAINT IF EXISTS restore_point_reason_check;
 ALTER TABLE restore_point ADD CONSTRAINT restore_point_reason_check
-    CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual','auto_backup','pre_migrate'));
+    CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual','auto_backup','pre_migrate','pre_feature_delete'));
 
 -- site_snapshot: 镜像 site 全列 + restore_point_id
 CREATE TABLE IF NOT EXISTS site_snapshot (

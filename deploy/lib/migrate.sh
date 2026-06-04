@@ -95,7 +95,7 @@ _create_pre_migrate_restore_point() {
     # 1) 幂等放宽 reason CHECK，纳入 'pre_migrate'（与 init.sql 同套约束名）
     _psql_q "ALTER TABLE restore_point DROP CONSTRAINT IF EXISTS restore_point_reason_check;" >/dev/null
     _psql_q "ALTER TABLE restore_point ADD CONSTRAINT restore_point_reason_check
-             CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual','auto_backup','pre_migrate'));" >/dev/null
+             CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual','auto_backup','pre_migrate','pre_feature_delete'));" >/dev/null
 
     # 2) 单事务：建点 + 快照四表（一条 CTE）→ \gset 取 id → 回填摘要（第二条语句）→ 回显 id。
     #    psql --single-transaction 把整段 -f 输入包进同一 BEGIN/COMMIT：任一语句失败整体回滚。

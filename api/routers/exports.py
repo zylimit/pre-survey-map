@@ -56,6 +56,15 @@ def _sanitize_np_radius(v: int) -> int:
     return v if v in NP_RADIUS_OPTIONS else DEFAULT_NP_RADIUS_M
 
 
+# #48 勾选导出：按主键 (site_id,"option") 子集取 site，列别名与 SITE_SQL 对齐供 build_kml 复用
+SITE_BY_KEYS_SQL = """
+SELECT site_id, "option", project, site_status, type, lati, longi, extras, source_file,
+       CASE WHEN geom IS NULL THEN NULL ELSE ST_AsKML(geom, 15) END AS geom_kml
+FROM site
+WHERE (site_id, "option") IN (SELECT * FROM unnest($1::text[], $2::text[]))
+"""
+
+
 async def _fetch_rows(where: str, params: tuple) -> dict[str, list[dict[str, Any]]]:
     async with pool().acquire() as conn:
         sites = await conn.fetch(SITE_SQL.format(where=where), *params)
@@ -135,6 +144,45 @@ async def export_selection(body: SelectionBody, request: Request):
     await write_audit(
         action="export_region",
         details={"file_name": fname, "counts": counts, "bytes": len(kmz_bytes), "mode": mode},
+        request=request,
+    )
+    return _kmz_response(fname, kmz_bytes)
+
+
+# ---------- /api/export/selection_ids（#48 勾选导出） ----------
+
+
+class SelectionKey(BaseModel):
+    site_id: str
+    option: str = ""
+
+
+class SelectionIdsBody(BaseModel):
+    keys: list[SelectionKey]
+    np_radius_m: int = DEFAULT_NP_RADIUS_M  # #46：NP 圈半径随点带
+
+
+@router.post("/selection_ids")
+async def export_selection_ids(body: SelectionIdsBody, request: Request):
+    """勾选导出：仅导出选中 site 子集（road/lessor 不参与），scope=region。"""
+    if not body.keys:
+        raise HTTPException(status_code=400, detail="keys 不能为空")
+    np_radius_m = _sanitize_np_radius(body.np_radius_m)
+    site_ids = [k.site_id for k in body.keys]
+    options = [k.option for k in body.keys]
+
+    async with pool().acquire() as conn:
+        rows = await conn.fetch(SITE_BY_KEYS_SQL, site_ids, options)
+    data: dict[str, list[dict[str, Any]]] = {
+        "site": [dict(r) for r in rows],
+        "road": [],
+        "lessor": [],
+    }
+
+    fname, kmz_bytes, counts = _build_kmz_meta("region", data, np_radius_m)
+    await write_audit(
+        action="export_region",
+        details={"file_name": fname, "counts": counts, "bytes": len(kmz_bytes), "mode": "list"},
         request=request,
     )
     return _kmz_response(fname, kmz_bytes)
