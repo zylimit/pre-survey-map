@@ -596,12 +596,27 @@ export function useAppState() {
   // 编辑/删除后统一 await refresh() 重拉三表 FeatureCollection → 地图重渲染 + 左树计数同步。
   // 返回 null=成功，string=可读错误（同时已写日志面板）。
 
+  // Phase 7 低修复1：refresh 后按 selected.id 在新三表里重绑定 selected；
+  // 找不到（被删/不存在）→ setSelected(null)，避免属性面板显示旧值或已删项。
+  const rebindSelected = useCallback(
+    (cols: { sites: FeatureCollection; roads: FeatureCollection; lessors: FeatureCollection }) => {
+      setSelected(prev => {
+        if (!prev) return prev;
+        const id = String(prev.id);
+        const all = [...cols.sites.features, ...cols.roads.features, ...cols.lessors.features];
+        return all.find(f => String(f.id) === id) ?? null;
+      });
+    },
+    [],
+  );
+
   const doUpdateSite = useCallback(
     async (key: SiteKey, patch: SitePatch): Promise<string | null> => {
       try {
         await updateSite(key, patch);
         log("info", t("log.edit_site_ok", { id: key.site_id }));
-        await refresh();
+        const cols = await refresh();
+        rebindSelected(cols);
         return null;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -609,7 +624,7 @@ export function useAppState() {
         return msg;
       }
     },
-    [log, refresh],
+    [log, refresh, rebindSelected],
   );
 
   const doDeleteSites = useCallback(
@@ -617,7 +632,8 @@ export function useAppState() {
       try {
         const resp = await deleteSites(keys);
         log("info", t("log.delete_site_ok", { n: resp.deleted, rp: resp.restore_point_id }));
-        await refresh();
+        const cols = await refresh();
+        rebindSelected(cols);
         return null;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -625,7 +641,7 @@ export function useAppState() {
         return msg;
       }
     },
-    [log, refresh],
+    [log, refresh, rebindSelected],
   );
 
   const doExportSelectionIds = useCallback(

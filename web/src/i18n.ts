@@ -318,7 +318,8 @@ const en = {
   "lfl.edit.saving":             "Saving...",
   "lfl.edit.cancel":             "Cancel",
   "lfl.edit.nochange":           "No changes to save",
-  "lfl.edit.coord_err":          "Latitude / longitude must be a valid finite number",
+  "lfl.edit.coord_err":          "Latitude must be -90..90 and longitude -180..180 (valid finite number)",
+  "lfl.col.resize":              "Drag to resize · double-click to reset",
 
   // F19 Audit (Spec V1.x #23)
   "audit.title":                       "Audit Log",
@@ -651,7 +652,8 @@ const zh: Record<keyof typeof en, string> = {
   "lfl.edit.saving":             "保存中...",
   "lfl.edit.cancel":             "取消",
   "lfl.edit.nochange":           "没有需要保存的修改",
-  "lfl.edit.coord_err":          "经纬度必须是合法的有限数字",
+  "lfl.edit.coord_err":          "纬度需在 -90~90、经度 -180~180，且为合法有限数字",
+  "lfl.col.resize":              "拖动调整列宽 · 双击还原自动",
 
   "audit.title":                       "审计日志",
   "audit.password":                    "请输入审计密码",

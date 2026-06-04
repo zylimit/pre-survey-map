@@ -696,11 +696,27 @@ button, input, select, textarea {
 }
 .lfl-th {
   /* #31：列宽走内联 flex(grow:col.w / shrink:0 / basis:col.w)，不在此设 flex-shrink */
+  position: relative;        /* #48 Phase 8：列宽拖拽手柄定位锚 */
   box-sizing: border-box;
   padding: 0 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* #48 Phase 8：列右边界拖拽手柄（拖=调宽 / 双击=还原自动）*/
+.lfl-col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 3;
+  touch-action: none;        /* pointer 拖动不被浏览器手势吞掉 */
+}
+.lfl-col-resize:hover {
+  background: var(--selected, #4a90d9);
+  opacity: 0.55;
 }
 .lfl-virt {
   position: relative;      /* 高度/宽度由内联给（total*ROW_H / totalW）*/

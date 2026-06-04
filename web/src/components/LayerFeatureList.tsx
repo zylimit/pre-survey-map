@@ -145,6 +145,25 @@ const featKey = (f: Feature): SiteKey => ({
   option: String(f.properties?.option ?? ""),
 });
 
+// ─── #48 Phase 8 列宽可拖调 ──────────────────────────────────────────────────
+const MIN_COL_W = 48;  // 最小列宽守卫
+function colsForKind(kind: ViewLayerTarget["kind"]): Col[] {
+  return kind === "site" ? SITE_COLS : kind === "road" ? ROAD_COLS : LESSOR_COLS;
+}
+// localStorage key：按 kind+列key（如 presurvey.lfl.col.site.lati）。未拖列不写。
+const colLSKey = (kind: string, colKey: string) => `presurvey.lfl.col.${kind}.${colKey}`;
+// 开窗恢复手动列宽（仅读到 >=MIN_COL_W 的有效值）
+function readManualWidths(kind: string, cols: Col[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  try {
+    for (const c of cols) {
+      const v = Number(localStorage.getItem(colLSKey(kind, c.key)));
+      if (Number.isFinite(v) && v >= MIN_COL_W) out[c.key] = v;
+    }
+  } catch { /* localStorage 不可用则全走自动 */ }
+  return out;
+}
+
 export default function LayerFeatureList({
   target, anchor, sites, roads, lessors,
   selectedId, onPick, onClose,
@@ -166,11 +185,24 @@ export default function LayerFeatureList({
   const [size, setSize] = useState(() => computeInitSize());
   const [pos, setPos] = useState(() => initialPos(anchor, computeInitSize()));
 
-  const cols = target.kind === "site" ? SITE_COLS
-    : target.kind === "road" ? ROAD_COLS : LESSOR_COLS;
+  const cols = colsForKind(target.kind);
   // #48：site 多选列(前) + 操作列(后) 计入 minWidth，保横滚下限
   const extraW = isSite ? CHECK_W + ACTION_W : 0;
-  const totalW = useMemo(() => cols.reduce((a, c) => a + c.w, 0) + extraW, [cols, extraW]);
+
+  // ─── #48 Phase 8：手动列宽（被拖过的列）。空=全走 #31 等比。按 kind 持久化。─────
+  const [manualWidths, setManualWidths] = useState<Record<string, number>>(
+    () => readManualWidths(target.kind, colsForKind(target.kind)),
+  );
+  // 列 flex：手动拖过 → 固定宽 `0 0 Wpx`（退出等比）；未拖过 → #31 等比 `${w} 0 ${w}px`
+  const colFlex = (col: Col): string =>
+    manualWidths[col.key] != null
+      ? `0 0 ${manualWidths[col.key]}px`
+      : `${col.w} 0 ${col.w}px`;
+  // minWidth 用「有效宽」（手动优先）求和，保横滚下限随手动宽联动
+  const totalW = useMemo(
+    () => cols.reduce((a, c) => a + (manualWidths[c.key] ?? c.w), 0) + extraW,
+    [cols, extraW, manualWidths],
+  );
 
   // ─── 本层要素子集（与 Phase 3 树计数同源的过滤口径）──────────────────────────
   const layerFeatures = useMemo<Feature[]>(() => {
@@ -207,6 +239,14 @@ export default function LayerFeatureList({
   // 全选 checkbox 只作用当前 filtered 子集（与筛选口径一致）
   const allFilteredSelected = isSite && filtered.length > 0
     && filtered.every(f => selectedKeys.has(String(f.id)));
+  // Phase 7 低修复2：部分选中 → 全选 checkbox 显 indeterminate 三态
+  const someFilteredSelected = isSite && filtered.some(f => selectedKeys.has(String(f.id)));
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someFilteredSelected && !allFilteredSelected;
+    }
+  }, [someFilteredSelected, allFilteredSelected]);
 
   const toggleOne = (id: string) => {
     setSelectedKeys(prev => {
@@ -248,6 +288,8 @@ export default function LayerFeatureList({
     setSelectedKeys(new Set());
     setEditing(null);
     setConfirmingDelete(false);
+    // #48 Phase 8：切 kind 重载该 kind 的手动列宽
+    setManualWidths(readManualWidths(target.kind, colsForKind(target.kind)));
   }, [target]);
 
   // ─── F12 反向：地图选中本层要素 → 列表滚动到该行（扣掉 sticky 表头高）─────────
@@ -269,10 +311,58 @@ export default function LayerFeatureList({
   // ─── #30：拖动（header）/ 缩放（右下角），rAF 节流 ───────────────────────────
   const dragRaf = useRef<number | null>(null);
   const resizeRaf = useRef<number | null>(null);
+  const colRaf = useRef<number | null>(null);  // #48 Phase 8 列宽拖动节流
   useEffect(() => () => {
     if (dragRaf.current != null) cancelAnimationFrame(dragRaf.current);
     if (resizeRaf.current != null) cancelAnimationFrame(resizeRaf.current);
+    if (colRaf.current != null) cancelAnimationFrame(colRaf.current);
   }, []);
+
+  // #48 Phase 8：列宽拖动（表头列右边界手柄）。stopPropagation 防触发 header 窗口拖动/行点击。
+  const onColResizeDown = (e: React.PointerEvent, col: Col) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = manualWidths[col.key] ?? col.w;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    let pending: number | null = null;
+    const apply = () => {
+      colRaf.current = null;
+      if (pending != null) setManualWidths(prev => ({ ...prev, [col.key]: pending as number }));
+    };
+    const onMove = (mv: PointerEvent) => {
+      pending = Math.max(MIN_COL_W, Math.round(startW + (mv.clientX - startX)));
+      if (colRaf.current == null) colRaf.current = requestAnimationFrame(apply);
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      if (colRaf.current != null) { cancelAnimationFrame(colRaf.current); colRaf.current = null; }
+      if (pending != null) {
+        const w = pending;
+        setManualWidths(prev => ({ ...prev, [col.key]: w }));
+        try { localStorage.setItem(colLSKey(target.kind, col.key), String(w)); } catch { /* 忽略 */ }
+      }
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  };
+
+  // #48 Phase 8：双击列手柄 → 清掉该列手动宽，还原 #31 自动等比（Excel 双击惯例）
+  const onColResizeReset = (e: React.MouseEvent, col: Col) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setManualWidths(prev => {
+      if (!(col.key in prev)) return prev;
+      const next = { ...prev };
+      delete next[col.key];
+      return next;
+    });
+    try { localStorage.removeItem(colLSKey(target.kind, col.key)); } catch { /* 忽略 */ }
+  };
 
   const onHeaderPointerDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest(".lfl-close")) return;  // 关闭按钮不触发拖动
@@ -407,7 +497,7 @@ export default function LayerFeatureList({
               ? siteStatusColor(f.properties?.site_status as string | null | undefined)
               : (STATUS_COLOR[String(f.properties?.[col.key] ?? "")] ?? STATUS_COLOR[""]);
           return (
-            <span key={col.key} className="lfl-cell" style={{ flex: `${col.w} 0 ${col.w}px`, color }}>
+            <span key={col.key} className="lfl-cell" style={{ flex: colFlex(col), color }}>
               {txt}
             </span>
           );
@@ -488,6 +578,7 @@ export default function LayerFeatureList({
               {isSite && (
                 <span className="lfl-th lfl-check" style={{ flex: `${CHECK_W} 0 ${CHECK_W}px` }}>
                   <input
+                    ref={selectAllRef}
                     type="checkbox"
                     checked={allFilteredSelected}
                     onChange={toggleAllFiltered}
@@ -497,8 +588,15 @@ export default function LayerFeatureList({
                 </span>
               )}
               {cols.map(col => (
-                <span key={col.key} className="lfl-th" style={{ flex: `${col.w} 0 ${col.w}px` }}>
+                <span key={col.key} className="lfl-th" style={{ flex: colFlex(col) }}>
                   {tFn(col.labelKey as Parameters<typeof tFn>[0])}
+                  {/* #48 Phase 8：列右边界拖拽手柄（拖=调宽 / 双击=还原自动）*/}
+                  <span
+                    className="lfl-col-resize"
+                    onPointerDown={e => onColResizeDown(e, col)}
+                    onDoubleClick={e => onColResizeReset(e, col)}
+                    title={tFn("lfl.col.resize")}
+                  />
                 </span>
               ))}
               {isSite && (
@@ -579,15 +677,20 @@ function SiteEditModal({
     const patch: SitePatch = {};
     if (project !== editStr(p.project)) patch.project = project;
     if (siteStatus !== editStr(p.site_status)) patch.site_status = siteStatus;
-    // 坐标：仅在文本变更时纳入；空串→不改，非空必须是有限数字
+    // 坐标：仅在文本变更时纳入；空串→不改，非空必须是有限数字且在合法经纬度范围内
+    // （Phase 7 低修复3：补范围校验 lati∈[-90,90] / longi∈[-180,180]，后端仍兜底）
     if (lati !== editStr(p.lati)) {
       const n = Number(lati);
-      if (lati.trim() === "" || !Number.isFinite(n)) { setErr(tFn("lfl.edit.coord_err")); return; }
+      if (lati.trim() === "" || !Number.isFinite(n) || n < -90 || n > 90) {
+        setErr(tFn("lfl.edit.coord_err")); return;
+      }
       patch.lati = n;
     }
     if (longi !== editStr(p.longi)) {
       const n = Number(longi);
-      if (longi.trim() === "" || !Number.isFinite(n)) { setErr(tFn("lfl.edit.coord_err")); return; }
+      if (longi.trim() === "" || !Number.isFinite(n) || n < -180 || n > 180) {
+        setErr(tFn("lfl.edit.coord_err")); return;
+      }
       patch.longi = n;
     }
     if (Object.keys(patch).length === 0) { setErr(tFn("lfl.edit.nochange")); return; }
