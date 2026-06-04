@@ -37,6 +37,7 @@ _Last updated: 2026-06-04_
 - [P1][DOING][#7] `.claude` 框架架构改进（配置库演进中，#1/#3 已完成，#2/#4/#5 待续）（Context：sitemaster-config）
 
 ## Done（最近完成放前面）
+- 2026-06-04: [#25] v1.0.5 版本 bump + 推送远端 + ARM64 离线包发布——版本 v1.0.4→v1.0.5（deploy/config/release.conf + web/package.json）；7 个 commit 推送 origin/main 对齐（a502d93/cacd835/ec49328/42a1cea/7a51f59/e1705fa/7066539）；deployer 出 ARM64 方案B 离线包：presurvey-api-v1.0.5-20260604-152609-arm64.tar(68M)、presurvey-web-v1.0.5-20260604-152609-arm64.tar(22M)、server-deploy-api-v1.0.5.sh、server-deploy-web-v1.0.5.sh、V2__add_pre_feature_delete_reason.sql，发布至 /var/www/dl/ + img.mangosv5.app；主 Agent 独立核查通过（arm64 api 镜像含#48新码 docker cp diff==工作树排除缓存复用旧码嫌疑、镜像 arch=arm64、5条下载链接 HEAD200、api脚本含 --network-alias api+幂等 reason CHECK 迁移 pre_feature_delete、bash -n 通过）（evidence：commit 7066539）
 - 2026-06-04: [#21] #48 四步走收尾全部完成——③测试完整性：reviewer(codex) 作独立测试方写 api/tests/test_site_crud_48.py（15用例，handler直调+monkeypatch范式，delete调用序列[tx_enter→restore_point→delete→tx_exit]硬断言锁死，关键断言反向验证防伪覆盖）；主 Agent 独立复跑全量 tests/ 45 passed（含#46/#47）无回归（evidence：commit 7a51f59）；④功能测试：deployer 完整重部署本机 Docker（api镜像13af.../web镜像9bd2...，V2 reason CHECK迁移生效，network-alias api在，119条数据未丢）；主 Agent 独立核查 infra（别名/镜像时间戳/迁移/三端点真注册/web反代）+ 受控自愈 live 冒烟全过（PATCH改site_status+坐标→geom重算→还原；delete 1条 119→118→恢复点回滚→119，三列Globe/存量/Macro完整找回；selection_ids导出合法KMZ；审计edit_site/delete_site/export_region/restore_point_rollback全落库）；数据净零归位119条（evidence：commit 7a51f59 + Docker 本机部署 2026-06-04）
 - 2026-06-04: [#24] #48 Phase 8 列宽可拖拽调整完成入库——列宽拖拽手柄(min48px/rAF/stopPropagation)，手动列固定宽退出 #31 等比、未拖列仍等比，双击还原自动，localStorage 持久化(key presurvey.lfl.col.{kind}.{colKey})；顺带修 Phase 7 三低：rebindSelected(编辑/删除后按 id 重绑，找不到置 null)、表头 indeterminate 三态、坐标前端范围校验；reviewer 判可入库，遗留 2 低 backlog（列宽拖动 unmount 未移除 document listeners / rebindSelected 仅 edit/delete 路径）（evidence：commit 42a1cea）
 - 2026-06-04: [#23] #48 Phase 7 前端列表框 site 增删改+勾选导出完成入库——LayerFeatureList 行前多选 checkbox+表头全选+操作列[编辑]+批量条[删除/导出]，全 isSite 门控(road/lessor 纯只读)；SiteEditModal 改 project/site_status/lati/longi(主键+盖戳只读)；api.ts updateSite/deleteSites/exportSelectionIds；state.ts doUpdateSite/doDeleteSites/doExportSelectionIds 成功后 refresh() 同步地图+树；en/zh 双语；reviewer 判可入库，遗留 3 低（evidence：commit ec49328）
@@ -73,8 +74,7 @@ _Last updated: 2026-06-04_
 - 2026-06-04: #48 Phase 6 reviewer 低风险残留备注（未阻断入库）：lati/longi 显式传 null 会被接受走 COALESCE 不改值但记 changed field，后续可收紧校验逻辑
 - 2026-06-04: #48 四步走全部完成，5个commit入库（a502d93/cacd835/ec49328/42a1cea/7a51f59），本机 Docker 已上新版，http://localhost:5173 可访问
 - 2026-06-04: #48 收尾测试范式——handler直调+monkeypatch（不启动真实 HTTP server），delete 调用序列硬断言（防测试伪过），关键断言含反向验证
-- Needs-Confirmation：#48 完成后是否推送远端 + 是否走 release-builder 正式打包发布（用户未指示，待确认）
-- Needs-Confirmation：主仓 progress.md 本地 commit 完成（evidence：cab162e）但 https 无凭证导致 push 失败；待用户改 ssh 远程或配置 https 凭证后推送至 origin
+- 2026-06-04: v1.0.5 内网离线包发布至 img.mangosv5.app；#48 vs v1.0.4 关键差异：api 部署脚本内置幂等 reason CHECK 迁移（老库 CHECK 不含 pre_feature_delete 会拒绝 delete 建点），脚本 step4 自动执行；内网服务器实际部署（curl取包→换api含迁移→换web→冒烟）由用户在跳板机 Claude Code 执行，本次未完成，待用户操作
 
 ## Context Index（轻量索引）
 - Spec：./Product-Spec.md · Changelog：./Product-Spec-CHANGELOG.md · Plan：./DEV-PLAN.md
