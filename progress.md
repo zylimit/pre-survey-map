@@ -29,8 +29,7 @@ _Last updated: 2026-08-18_
 - 2026-05-29: 主基准区域「先入为主」固化策略确立
 
 ## TODO（权威待办清单）
-- [P0][OPEN][#1] 给 #47 圆形框选补回归测试（前端 fromCircle 多边形 → 后端 ST_Contains 严格包含）（Context：api/ web/）
-- [P1][OPEN][#2] 建立后端 pytest 基建常态化（ruff/pytest 当前环境未装）（Context：api/tests/）
+- [P1][OPEN][#2] 后端测试基建常态化收尾：pytest 已固化（python:3.12-slim 容器跑测为常态方式，tester 全程在用）；剩余 ruff 未装（Context：api/tests/）
 - [P1][OPEN][#3] `.claude` 架构改进 #2：流程三处重复 → 单一事实源（剩四步走/设计优先级）（Context：sitemaster-config）
 - [P1][OPEN][#4] `.claude` 架构改进 #4：纸面纪律可机械校验项下沉为 hook；建议给 mark-review-needed hook 加路径过滤（只对 api/ web/ 下改动标记 review，避免 /tmp 下临时脚本误触发）（Context：sitemaster-config）
 - [P2][OPEN][#5] `.claude` 架构改进 #5：CLAUDE.md 瘦身 + Sub-Agent 模型分级（Context：sitemaster-config）
@@ -43,6 +42,7 @@ _Last updated: 2026-08-18_
 - [P1][DOING][#7] `.claude` 框架架构改进（配置库演进中，#1/#3 已完成，#2/#4/#5 待续）（Context：sitemaster-config）
 
 ## Done（最近完成放前面）
+- 2026-08-18: [#37] P0 测试债清零 + 一处缺陷 red-locks 修复——tester 独立补 #47 圆形框选回归测试 17 条（fromCircle 64 段夹具保真/GEOS 严格包含语义含边界排除/全链路+审计不记几何+scope 受限路径；新增 shapely==2.0.6 依赖做不连库的空间谓词代理）（evidence：commit 2a7c942）；tester 顺带发现 export_selection polygon 缺 coordinates 下沉 DB 500 缺陷 → 红测试 3 条锁定 → implementer 修绿（应用层 400 校验）（evidence：commit 674666d）；全量 151 passed/1 skipped；已推远端
 - 2026-08-18: [#34] #50 RBAC 六 Phase 全流程完成入库——Phase 10 数据层 4 表（e726262）/ Phase 11 认证 api/auth 包 login+logout+me+change-password+401 中间件+滑动 token+5 次锁定（315c39a）/ Phase 12 admin 包 users/roles CRUD+permissions/scopes 门控全落点（f83316f）/ Phase 13 前端登录页+apiFetch token 管线+401 拦截+启动闸门+强制改密（51663a1）/ Phase 14 AdminModal 四 tab+ScopeTree 三态权限树（5e118d9）/ Phase 15 前端 scopes.ts 全链路门控+3×ESC/3×B/mangosv5 连根拔除+审计补 5 事件+username 列（91e8656）+ V4 部署接线/文档（cd5ef35）；每 Phase 走 implementer→code-reviewer→修复闭环；tester 独立全量回归 131 passed/1 skipped（test_auth_50 16 + test_admin_50 29 + test_scope_filter_50 38 新增，既有零回归）；deployer 重打镜像 + V4 迁移实测幂等（内网 v1.0.6 直升路径验证）；主 Agent 独立验收冒烟全过（admin login 200+must_change_password / 建 Globe PM 角色+用户 / 非 admin 调 admin 接口 403 / 无 danger 调清基线 403 / 审计 login 带 username / web 产物含 token 管线 / 无 token /api/sites 401）（evidence：commit e726262..cd5ef35 + 本机 Docker 部署 2026-08-18）
 - 2026-08-18: [#32] #50 需求文档层完成：Product-Spec.md（F22 节 + F19/F21 收编注记 + V1 边界认证行 + V2 候选认证条 + #48 权限条 + Toolbar [⚙管理]）+ Product-Spec-CHANGELOG.md（#50 条目）已更新；代码尚未实现（evidence：Product-Spec.md / Product-Spec-CHANGELOG.md）
 - 2026-08-17: [#31] v1.0.6 本机 WSL Docker 部署完成——测试卡点 tester 独立跑 48 passed/1 skipped/0 fail（python:3.12-slim 容器跑 pytest，因系统 Python 3.14 与 requirements pin 无 cp314 wheel 不兼容）；首轮 api 构建 pypi 官方源超时，改清华源 build-arg（未改项目文件）后成功；主 Agent 独立核查三件套全过（容器 Created 2026-08-17 22:20:34 晚于 commit 5bf1434 / api:8000/health 200 / web:5173 200 / 前端产物含 "1.0.6" / #49 新端点 delete-history→[] 与 undo-delete/999→404 符合预期）；本次为全新空卷 pre-survey-map-opencode_presurvey_pgdata（旧 119 条测试数据不可恢复，空库基线需重新导入）；镜像 tag 为 compose 默认 latest 未带 v1.0.6（evidence：Docker 本机 WSL 部署 2026-08-17，commit 5bf1434）
