@@ -12,6 +12,97 @@ export type FeatureCollection = {
   features: Feature[];
 };
 
+// ---------- #50 认证（token 管线 + 401 统一拦截）----------
+
+const TOKEN_KEY = "presurvey.token";
+
+export function getToken(): string | null {
+  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+
+function setToken(token: string): void {
+  try { localStorage.setItem(TOKEN_KEY, token); } catch { /* localStorage 不可用就放弃持久化 */ }
+}
+
+export function clearToken(): void {
+  try { localStorage.removeItem(TOKEN_KEY); } catch { /* 忽略 */ }
+}
+
+// 401 全局回调：任何业务请求 401（会话过期/被吊销）→ state.ts 接住 → 回登录页。
+// login / me / change-password 的 401 不走这里（那是密码错或 token 待验，非会话失效）。
+let unauthorizedHandler: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  unauthorizedHandler = fn;
+}
+
+// 所有 /api 请求的统一出口：注入 Bearer + 401 统一拦截（不逐调用处处理）
+async function apiFetch(
+  input: string,
+  init: RequestInit = {},
+  opts?: { skipAuthRedirect?: boolean },
+): Promise<Response> {
+  const token = getToken();
+  const headers = new Headers(init.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(input, { ...init, headers });
+  if (res.status === 401 && !opts?.skipAuthRedirect) {
+    clearToken();
+    unauthorizedHandler?.();
+  }
+  return res;
+}
+
+// login/me 响应里的用户结构（与后端 _public_user 对齐，不含内部字段）
+export interface AuthUser {
+  username: string;
+  is_admin: boolean;
+  perms: Record<string, boolean>;
+  scopes: string[];
+  must_change_password: boolean;
+}
+
+// POST /api/auth/login：成功存 token；401 detail（invalid credentials / locked）抛给登录页显示
+export async function login(
+  username: string,
+  password: string,
+): Promise<{ token: string; user: AuthUser }> {
+  const res = await apiFetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  }, { skipAuthRedirect: true });
+  if (!res.ok) throw new Error(await errDetail(res));
+  const data = (await res.json()) as { token: string; user: AuthUser };
+  setToken(data.token);
+  return data;
+}
+
+// POST /api/auth/logout：best-effort 吊销后端 session，本地 token 必清
+export async function logout(): Promise<void> {
+  try {
+    await apiFetch("/api/auth/logout", { method: "POST" }, { skipAuthRedirect: true });
+  } catch { /* 后端不可达也照常本地登出 */ }
+  clearToken();
+}
+
+// GET /api/auth/me：启动验证 token；失败由 App 闸门清 token 回登录页
+export async function fetchMe(): Promise<AuthUser> {
+  const res = await apiFetch("/api/auth/me", {}, { skipAuthRedirect: true });
+  if (!res.ok) throw new Error(await errDetail(res));
+  const data = (await res.json()) as { user: AuthUser };
+  return data.user;
+}
+
+// POST /api/auth/change-password：401=旧密码错（不触发全局拦截）/ 400=新密码不合法
+export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
+  const res = await apiFetch("/api/auth/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+  }, { skipAuthRedirect: true });
+  if (!res.ok) throw new Error(await errDetail(res));
+}
+
 // ---------- Import 协议（三阶段，Spec #12）----------
 
 export type Decision = "overwrite" | "ignore";
@@ -128,7 +219,7 @@ export async function uploadFile(file: File, stamp?: LayerStamp): Promise<Phase1
     if (stamp.type) fd.append("type", stamp.type);
     fd.append("target_kind", stamp.target_kind);
   }
-  const res = await fetch("/api/import", { method: "POST", body: fd });
+  const res = await apiFetch("/api/import", { method: "POST", body: fd });
   if (!res.ok) {
     if (res.status === 413) {
       throw new Error("服务端拒绝：文件超过 100MB 上限");
@@ -143,7 +234,7 @@ export async function proceedToConflicts(
   sessionId: string,
   decisions: { row_id: string; action: CleaningAction }[]
 ): Promise<Phase2Response> {
-  const res = await fetch(`/api/import/${sessionId}/proceed-to-conflicts`, {
+  const res = await apiFetch(`/api/import/${sessionId}/proceed-to-conflicts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ decisions }),
@@ -158,7 +249,7 @@ export async function backToCleaning(sessionId: string): Promise<{
   baseline_region: BaselineRegion | null;
   cleaning_decisions: Record<string, CleaningAction>;
 }> {
-  const res = await fetch(`/api/import/${sessionId}/back-to-cleaning`, { method: "POST" });
+  const res = await apiFetch(`/api/import/${sessionId}/back-to-cleaning`, { method: "POST" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -167,7 +258,7 @@ export async function commitImport(
   sessionId: string,
   decisions: { key: string; action: Decision }[]
 ): Promise<CommitResponse> {
-  const res = await fetch(`/api/import/${sessionId}/commit`, {
+  const res = await apiFetch(`/api/import/${sessionId}/commit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ decisions }),
@@ -177,7 +268,7 @@ export async function commitImport(
 }
 
 export async function cancelImport(sessionId: string): Promise<void> {
-  await fetch(`/api/import/${sessionId}`, { method: "DELETE" });
+  await apiFetch(`/api/import/${sessionId}`, { method: "DELETE" });
 }
 
 // #39：commit 写库进度（前端轮询）
@@ -189,7 +280,7 @@ export interface ImportProgress {
 }
 
 export async function fetchImportProgress(sessionId: string): Promise<ImportProgress> {
-  const res = await fetch(`/api/import/${sessionId}/progress`);
+  const res = await apiFetch(`/api/import/${sessionId}/progress`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -198,7 +289,7 @@ export async function fetchImportProgress(sessionId: string): Promise<ImportProg
 export async function clearBaseline(): Promise<{
   deleted: { site: number; road: number; lessor: number; baseline_state: number };
 }> {
-  const res = await fetch("/api/baseline", { method: "DELETE" });
+  const res = await apiFetch("/api/baseline", { method: "DELETE" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -215,13 +306,13 @@ export interface BaselineState {
 }
 
 export async function fetchBaselineState(): Promise<BaselineState> {
-  const res = await fetch("/api/baseline-state");
+  const res = await apiFetch("/api/baseline-state");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function downloadConflictsXlsx(sessionId: string): Promise<void> {
-  const res = await fetch(`/api/import/${sessionId}/conflicts.xlsx`);
+  const res = await apiFetch(`/api/import/${sessionId}/conflicts.xlsx`);
   await downloadResponse(res, "conflicts.xlsx");
 }
 
@@ -230,11 +321,13 @@ export async function fetchAll(): Promise<{
   roads: FeatureCollection;
   lessors: FeatureCollection;
 }> {
-  const [sites, roads, lessors] = await Promise.all([
-    fetch("/api/sites").then(r => r.json()),
-    fetch("/api/roads").then(r => r.json()),
-    fetch("/api/lessors").then(r => r.json()),
+  const rs = await Promise.all([
+    apiFetch("/api/sites"),
+    apiFetch("/api/roads"),
+    apiFetch("/api/lessors"),
   ]);
+  for (const r of rs) if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const [sites, roads, lessors] = await Promise.all(rs.map(r => r.json()));
   return { sites, roads, lessors };
 }
 
@@ -252,13 +345,13 @@ export interface RestorePoint {
 }
 
 export async function listRestorePoints(): Promise<RestorePoint[]> {
-  const res = await fetch("/api/restore-points");
+  const res = await apiFetch("/api/restore-points");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function createRestorePoint(note?: string): Promise<RestorePoint> {
-  const res = await fetch("/api/restore-points", {
+  const res = await apiFetch("/api/restore-points", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ note: note ?? null }),
@@ -268,12 +361,12 @@ export async function createRestorePoint(note?: string): Promise<RestorePoint> {
 }
 
 export async function rollbackToPoint(id: number): Promise<void> {
-  const res = await fetch(`/api/restore-points/${id}/rollback`, { method: "POST" });
+  const res = await apiFetch(`/api/restore-points/${id}/rollback`, { method: "POST" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
 export async function deleteRestorePoint(id: number): Promise<void> {
-  const res = await fetch(`/api/restore-points/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`/api/restore-points/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
@@ -291,13 +384,13 @@ export interface Backup {
 }
 
 export async function listBackups(): Promise<Backup[]> {
-  const res = await fetch("/api/backups");
+  const res = await apiFetch("/api/backups");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function restoreBackup(id: number, password: string): Promise<void> {
-  const res = await fetch(`/api/backups/${id}/restore`, {
+  const res = await apiFetch(`/api/backups/${id}/restore`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
@@ -361,7 +454,7 @@ export async function listAuditLog(
   page = 1,
   pageSize = 50,
 ): Promise<AuditLogPage> {
-  const res = await fetch(`/api/audit-log?${buildAuditQuery(filters, page, pageSize)}`);
+  const res = await apiFetch(`/api/audit-log?${buildAuditQuery(filters, page, pageSize)}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -371,7 +464,7 @@ export async function exportAuditLog(filters: AuditFilters): Promise<void> {
   if (filters.action) q.set("action", filters.action);
   if (filters.from) q.set("from", filters.from);
   if (filters.to) q.set("to", filters.to);
-  const res = await fetch(`/api/audit-log/export?${q.toString()}`);
+  const res = await apiFetch(`/api/audit-log/export?${q.toString()}`);
   await downloadResponse(res, "audit_log.xlsx");
 }
 
@@ -402,7 +495,7 @@ async function downloadResponse(res: Response, fallback: string): Promise<void> 
 // npRadiusM（#46）：导出时把当前 NP 半径透传给后端，所见即所得。缺省由后端回落 200。
 export async function exportAll(npRadiusM?: number): Promise<void> {
   const qs = npRadiusM != null ? `?np_radius_m=${npRadiusM}` : "";
-  const res = await fetch(`/api/export/all${qs}`);
+  const res = await apiFetch(`/api/export/all${qs}`);
   await downloadResponse(res, "export_full.kmz");
 }
 
@@ -415,7 +508,7 @@ export async function exportSelection(
   const body: { polygon: GeoJSONPolygon; np_radius_m?: number; mode?: string } = { polygon };
   if (npRadiusM != null) body.np_radius_m = npRadiusM;
   if (mode != null) body.mode = mode;
-  const res = await fetch("/api/export/selection", {
+  const res = await apiFetch("/api/export/selection", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -454,7 +547,7 @@ async function errDetail(res: Response): Promise<string> {
 
 // PATCH /api/sites：单条编辑，成功返回更新后的 site feature（与 GET /api/sites 单个 feature 同构）
 export async function updateSite(key: SiteKey, patch: SitePatch): Promise<Feature> {
-  const res = await fetch("/api/sites", {
+  const res = await apiFetch("/api/sites", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ site_id: key.site_id, option: key.option, patch }),
@@ -467,7 +560,7 @@ export async function updateSite(key: SiteKey, patch: SitePatch): Promise<Featur
 export async function deleteSites(
   keys: SiteKey[],
 ): Promise<{ deleted: number; undo_id: number }> {
-  const res = await fetch("/api/sites/delete", {
+  const res = await apiFetch("/api/sites/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ keys }),
@@ -488,7 +581,7 @@ export interface DeleteHistoryItem {
 
 // GET /api/sites/delete-history：列最近删除批次（倒序）
 export async function fetchDeleteHistory(): Promise<DeleteHistoryItem[]> {
-  const res = await fetch("/api/sites/delete-history");
+  const res = await apiFetch("/api/sites/delete-history");
   if (!res.ok) throw new Error(await errDetail(res));
   return res.json();
 }
@@ -497,7 +590,7 @@ export async function fetchDeleteHistory(): Promise<DeleteHistoryItem[]> {
 export async function undoDelete(
   undoId: number,
 ): Promise<{ restored: number; requested: number }> {
-  const res = await fetch(`/api/sites/undo-delete/${undoId}`, { method: "POST" });
+  const res = await apiFetch(`/api/sites/undo-delete/${undoId}`, { method: "POST" });
   if (!res.ok) throw new Error(await errDetail(res));
   return res.json();
 }
@@ -506,7 +599,7 @@ export async function undoDelete(
 export async function exportSelectionIds(keys: SiteKey[], npRadiusM?: number): Promise<void> {
   const body: { keys: SiteKey[]; np_radius_m?: number } = { keys };
   if (npRadiusM != null) body.np_radius_m = npRadiusM;
-  const res = await fetch("/api/export/selection_ids", {
+  const res = await apiFetch("/api/export/selection_ids", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

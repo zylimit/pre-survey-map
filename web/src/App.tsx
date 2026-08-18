@@ -9,6 +9,7 @@ import OutputPanel from "./components/OutputPanel";
 import ConflictDialog from "./components/ConflictDialog";
 import CleaningDialog from "./components/CleaningDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
+import LoginPage, { ForcePasswordModal } from "./components/LoginPage";
 import RestorePointDialog from "./components/RestorePointDialog";
 import DeleteHistoryPanel from "./components/DeleteHistoryPanel";
 import BaselineStatusBar from "./components/BaselineStatusBar";
@@ -44,24 +45,35 @@ export default function App() {
 
   // F19 隐藏入口：3 次 Esc（间隔 < 1s）→ 密码框 → Audit Modal
   // #39：导入提交中（uploading/committing）屏蔽 ESC，防误弹审计 / 防中断对话框
+  // #50：未通过认证闸门（登录页/改密页）时也屏蔽，防登录后误弹
   const importBusy = s.phase === "uploading" || s.phase === "committing";
+  // #50：认证闸门（me 通过且无需强制改密）；未过闸门时屏蔽隐藏入口 + 不拉数据
+  const authed = s.currentUser !== null && !s.currentUser.must_change_password;
   useEscTrigger(() => {
     // 已打开任意一个就不再弹
     if (auditPwdOpen || auditOpen) return;
     setAuditPwdOpen(true);
-  }, 3, 1000, !importBusy);
+  }, 3, 1000, authed && !importBusy);
 
   // #42 隐藏入口：连按 3 次 B → 密码框 → 备份恢复 Modal（输入态/导入中屏蔽）
   useKeyTrigger("KeyB", () => {
     if (backupPwdOpen || backupOpen) return;
     setBackupPwdOpen(true);
-  }, 3, 1000, !importBusy);
+  }, 3, 1000, authed && !importBusy);
 
+  // #50 Phase 13 启动闸门：me 验证未完成 → 启动画面；无 token/验证失败 → 登录页
   useEffect(() => {
+    void s.checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 主界面数据只在 me 通过且无需强制改密后才拉（不先闪一屏全量数据）
+  useEffect(() => {
+    if (!authed) return;
     s.refresh().catch(err => s.log("error", t("log.load_err", { msg: err.message ?? String(err) })));
     s.refreshBaselineState();  // F15：启动时拉一次主基准状态
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authed]);
 
   useEffect(() => {
     if (s.logs.length > 0 && s.logs[s.logs.length - 1].level !== "info") {
@@ -116,6 +128,17 @@ export default function App() {
     };
   }, [s.panelSizes, s.selected, outputOpen]);
 
+  // #50 Phase 13 渲染闸门：启动画面 → 登录页 → 强制改密（不可关闭）→ 主界面
+  if (!s.authChecked) {
+    return <div className="boot-splash">⏳ {tFn("auth.checking")}</div>;
+  }
+  if (!s.currentUser) {
+    return <LoginPage onLogin={s.doLogin} />;
+  }
+  if (s.currentUser.must_change_password) {
+    return <ForcePasswordModal onSubmit={s.doChangePassword} />;
+  }
+
   return (
     <div className={`app ${s.selected ? "" : "no-attr"}`} style={gridStyle}>
       <Toolbar
@@ -123,6 +146,9 @@ export default function App() {
         drawMode={s.drawMode}
         hasSelection={s.selectionPolygon !== null}
         npRadiusM={npRadiusM}
+        username={s.currentUser.username}
+        isAdmin={s.currentUser.is_admin}
+        onLogout={s.doLogout}
         onStartDraw={s.startDraw}
         onClearSelection={s.clearSelection}
         onExportAll={() => s.doExportAll(npRadiusM)}

@@ -8,6 +8,9 @@ interface Props {
   drawMode: DrawMode;
   hasSelection: boolean;
   npRadiusM: number;
+  username: string;     // #50：当前登录用户
+  isAdmin: boolean;     // #50：[⚙ 管理] 仅 admin 渲染
+  onLogout: () => void;
   onStartDraw: (mode: DrawMode) => void;
   onClearSelection: () => void;
   onExportAll: () => void;
@@ -22,6 +25,7 @@ interface Props {
 
 export default function Toolbar({
   busy, drawMode, hasSelection, npRadiusM,
+  username, isAdmin, onLogout,
   onStartDraw, onClearSelection, onExportAll, onExportSelection,
   onRefresh, onSearch, onClearBaseline, onOpenRestorePoints, onOpenDeleteHistory, onChangeNpRadius,
 }: Props) {
@@ -172,6 +176,15 @@ export default function Toolbar({
         disabled={busy}
         title={tFn("tb.delhist.tip")}
       >{tFn("tb.delhist.label")}</button>
+
+      {/* #50 Phase 13：当前用户 + [⚙ 管理]（仅 admin，Phase 14 接 Modal，先 disabled 占位）+ [登出] */}
+      <span className="tb-username" title={username}>{username}</span>
+      {isAdmin && (
+        <button disabled title={tFn("tb.admin.tip")}>{tFn("tb.admin.label")}</button>
+      )}
+      <button onClick={onLogout} title={tFn("tb.logout.tip")}>
+        {tFn("tb.logout.label")}
+      </button>
 
       {/* #19 主题切换 */}
       <button

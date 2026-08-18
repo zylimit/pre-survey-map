@@ -1,16 +1,24 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getLang, t } from "./i18n";
 import {
+  AuthUser,
   backToCleaning,
   BaselineRegion,
   BaselineState,
   cancelImport,
+  changePassword,
   CleaningAction,
   CleaningRow,
   clearBaseline,
+  clearToken,
   commitImport,
   fetchImportProgress,
+  fetchMe,
+  getToken,
   ImportProgress,
+  login,
+  logout,
+  setUnauthorizedHandler,
   ConflictRow,
   Decision,
   downloadConflictsXlsx,
@@ -187,6 +195,89 @@ export function useAppState() {
   const progressTimerRef = useRef<number | null>(null);
   // 同步防重入守卫（补 React setState/busy 异步空窗：大数据慢、用户狂点 commit）
   const committingRef = useRef(false);
+
+  // ---------- #50 Phase 13 认证状态 ----------
+  // null = 未登录；App 闸门据此渲染 LoginPage / 强制改密 / 主界面
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  // me 验证是否已完成（false = 启动画面；防「有 token 先闪一屏主界面」）
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // 业务数据清空（登出 / 会话失效共用）
+  const resetData = useCallback(() => {
+    setSites(EMPTY);
+    setRoads(EMPTY);
+    setLessors(EMPTY);
+    setSelected(null);
+    setSearchResults(null);
+    setImportSession(null);
+    setViewLayer(null);
+    setBaselineState({ established: false });
+    setLogs([]);
+    // 选区/绘制状态一并清掉，登出后不给下一位使用者留残留
+    setDrawMode(null);
+    setSelectionPolygon(null);
+    setSelectionMode(null);
+  }, []);
+
+  // 401 统一拦截落点：api.ts 任何业务请求 401 → 清当前用户 → App 回登录页
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setCurrentUser(null);
+      resetData();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [resetData]);
+
+  // 启动闸门：有 token → fetchMe 验证；无 token / 验证失败 → 清 token 回登录页
+  const checkAuth = useCallback(async () => {
+    if (!getToken()) {
+      setAuthChecked(true);
+      return;
+    }
+    try {
+      const user = await fetchMe();
+      setCurrentUser(user);
+    } catch {
+      clearToken();
+      setCurrentUser(null);
+    } finally {
+      setAuthChecked(true);
+    }
+  }, []);
+
+  // 登录成功 → token 已由 api.login 写入 → 记当前用户（must_change_password 由 App 接）
+  const doLogin = useCallback(
+    async (username: string, password: string): Promise<string | null> => {
+      try {
+        const { user } = await login(username, password);
+        setCurrentUser(user);
+        return null;
+      } catch (e: unknown) {
+        return e instanceof Error ? e.message : String(e);
+      }
+    },
+    [],
+  );
+
+  const doLogout = useCallback(async () => {
+    await logout();  // best-effort 吊销后端 session + 清本地 token
+    setCurrentUser(null);
+    resetData();
+  }, [resetData]);
+
+  // 强制改密：成功 → must_change_password 落 false，App 放进主界面
+  const doChangePassword = useCallback(
+    async (oldPassword: string, newPassword: string): Promise<string | null> => {
+      try {
+        await changePassword(oldPassword, newPassword);
+        setCurrentUser(prev => (prev ? { ...prev, must_change_password: false } : prev));
+        return null;
+      } catch (e: unknown) {
+        return e instanceof Error ? e.message : String(e);
+      }
+    },
+    [],
+  );
 
   const log = useCallback((level: LogEntry["level"], msg: string) => {
     const locale = getLang() === "zh" ? "zh-CN" : "en-US";
@@ -685,6 +776,12 @@ export function useAppState() {
   );
 
   return {
+    currentUser,
+    authChecked,
+    checkAuth,
+    doLogin,
+    doLogout,
+    doChangePassword,
     sites,
     roads,
     lessors,

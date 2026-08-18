@@ -2130,3 +2130,124 @@ button, input, select, textarea {
   10%, 30%, 50%, 70%, 90% { transform: translateX(-6px); }
   20%, 40%, 60%, 80% { transform: translateX(6px); }
 }
+
+/* ---- #50 Phase 13 登录页 / 启动画面 / 强制改密 ---- */
+
+.boot-splash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-app);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.login-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-app);
+}
+
+.login-card {
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-modal);
+  padding: 28px 24px 24px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.login-title {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text);
+}
+
+.login-card input,
+.force-pw-body input {
+  width: 100%;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.login-card input:focus,
+.force-pw-body input:focus {
+  border-color: var(--accent);
+}
+
+.login-card input:disabled,
+.force-pw-body input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.login-err {
+  color: var(--error);
+  font-size: 12px;
+}
+
+.login-btn {
+  background: var(--accent);
+  color: var(--bg-app);
+  border: none;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.login-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.login-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.force-pw-modal {
+  width: 380px;
+}
+
+.force-pw-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.force-pw-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Toolbar 当前用户名（暗/亮主题均走 muted 次文字） */
+.tb-username {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  margin-left: auto;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
