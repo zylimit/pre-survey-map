@@ -1,7 +1,9 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Callable
 
+import bcrypt
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
@@ -24,6 +26,42 @@ MultiPartParser.max_file_size = 200 * 1024 * 1024
 # F1 Spec：单文件上限 100MB（前端 + 后端 + nginx 三端配齐）
 MAX_BODY_BYTES = 100 * 1024 * 1024
 MAX_BODY_MB = MAX_BODY_BYTES // (1024 * 1024)
+
+logger = logging.getLogger("startup")
+
+
+async def ensure_admin_seed(pool) -> None:
+    """#50：admin 角色 + admin 用户种子（判空幂等）。
+
+    无 is_admin=true 的角色则插 name='admin'；无 username='admin' 的用户则插
+    bcrypt('admin123') + must_change_password=true（首登强制改密）。
+    """
+    async with pool.acquire() as conn:
+        role_id = await conn.fetchval(
+            "SELECT id FROM app_role WHERE is_admin = true ORDER BY id LIMIT 1"
+        )
+        if role_id is None:
+            role_id = await conn.fetchval(
+                "INSERT INTO app_role (name, is_admin, perms) VALUES ($1, true, '{}'::jsonb)"
+                " RETURNING id",
+                "admin",
+            )
+            logger.info("已插入 admin 角色")
+
+        user_exists = await conn.fetchval(
+            "SELECT 1 FROM app_user WHERE username = $1", "admin"
+        )
+        if user_exists is None:
+            # bcrypt 5.x 接受 bytes；哈希含 salt，每次种子生成不同，但判空保证只插一次
+            password_hash = bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode()
+            await conn.execute(
+                "INSERT INTO app_user (username, password_hash, role_id)"
+                " VALUES ($1, $2, $3)",
+                "admin",
+                password_hash,
+                role_id,
+            )
+            logger.info("已插入 admin 用户（初始密码 admin123，首登强制改密）")
 
 
 class MaxBodySizeMiddleware:
@@ -58,8 +96,12 @@ async def lifespan(_: FastAPI):
         await ensure_countries_loaded(pool())
     except Exception as e:
         # 加载失败不阻塞启动；地理判定会退化（in_sea / not_in_baseline 不触发）
-        import logging
-        logging.getLogger("startup").error(f"countries 加载失败：{e}")
+        logger.error(f"countries 加载失败：{e}")
+    # #50：admin 角色/用户种子（判空幂等；失败不阻塞启动，与审计容错风格一致）
+    try:
+        await ensure_admin_seed(pool())
+    except Exception as e:
+        logger.warning(f"admin 种子失败：{e}")
     # #42：起后台定时备份任务（每 12h + 启动补偿）
     backup_task = asyncio.create_task(backup_loop())
     try:

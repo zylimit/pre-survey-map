@@ -191,11 +191,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
     session_id  TEXT,
     ip          TEXT,
     user_agent  TEXT,
+    username    TEXT,
     action      TEXT       NOT NULL,
     details     JSONB,
     result      TEXT       NOT NULL DEFAULT 'success',
     error_msg   TEXT
 );
+-- #50：已部署库升级用幂等加列（未登录请求记 NULL）
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS username TEXT;
 
 CREATE INDEX IF NOT EXISTS audit_log_ts_idx ON audit_log (ts DESC);
 CREATE INDEX IF NOT EXISTS audit_log_action_idx ON audit_log (action);
@@ -230,3 +233,49 @@ CREATE TABLE IF NOT EXISTS site_delete_undo (
 );
 CREATE INDEX IF NOT EXISTS site_delete_undo_batch_idx ON site_delete_undo (undo_id);
 CREATE INDEX IF NOT EXISTS site_delete_undo_deleted_at_idx ON site_delete_undo (deleted_at DESC);
+
+-- ============================================================
+-- #50 Phase 10 · 用户与角色权限（RBAC：登录 + 功能权限 × 数据权限）
+-- ============================================================
+-- 只建结构；admin 角色/用户的 bcrypt 哈希种子由 api 启动时写入
+-- （api/main.py lifespan → ensure_admin_seed，判空幂等）。
+
+-- app_role: 角色表。perms 4 开关键：import / export / edit_delete / danger，
+-- 布尔值，缺省 false。is_admin=true 的角色拥有全部权限（不可改/删，见 Phase 12）。
+CREATE TABLE IF NOT EXISTS app_role (
+    id          BIGSERIAL   PRIMARY KEY,
+    name        TEXT        UNIQUE NOT NULL,
+    is_admin    BOOLEAN     DEFAULT false,
+    perms       JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- app_user: 用户表。must_change_password 默认 true（建号/种子后首登强制改密）。
+CREATE TABLE IF NOT EXISTS app_user (
+    id                   BIGSERIAL   PRIMARY KEY,
+    username             TEXT        UNIQUE NOT NULL,
+    password_hash        TEXT        NOT NULL,
+    role_id              BIGINT      REFERENCES app_role(id),
+    disabled             BOOLEAN     DEFAULT false,
+    must_change_password BOOLEAN     DEFAULT true,
+    created_at           TIMESTAMPTZ DEFAULT now()
+);
+
+-- app_role_scope: 数据权限（图层文件夹节点，子级继承）。
+-- scope_node 取值域：site / site:Globe / site:Smart / site:Dito /
+--   site:<运营商>:<EXISTING|PLANNED|SURVEY> / road / lessor
+CREATE TABLE IF NOT EXISTS app_role_scope (
+    id          BIGSERIAL   PRIMARY KEY,
+    role_id     BIGINT      REFERENCES app_role(id) ON DELETE CASCADE,
+    scope_node  TEXT        NOT NULL,
+    UNIQUE (role_id, scope_node)
+);
+
+-- auth_session: 登录会话（token = URL-safe 随机 32 字节，7 天滑动过期）。
+CREATE TABLE IF NOT EXISTS auth_session (
+    token       TEXT        PRIMARY KEY,
+    user_id     BIGINT      REFERENCES app_user(id) ON DELETE CASCADE,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auth_session_expires_at_idx ON auth_session (expires_at);
