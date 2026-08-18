@@ -7,3 +7,5 @@ lxml==5.3.0
 openpyxl==3.1.5
 bcrypt==5.0.0
 pytest
+# 测试支撑：#47 圆形选区回归测试用 GEOS(=PostGIS ST_Contains 同语义) 做不连库空间谓词代理验证
+shapely==2.0.6
