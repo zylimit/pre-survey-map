@@ -201,6 +201,8 @@ export function useAppState() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   // me 验证是否已完成（false = 启动画面；防「有 token 先闪一屏主界面」）
   const [authChecked, setAuthChecked] = useState(false);
+  // #50 Phase 14：管理 Modal 开关（Toolbar [⚙ 管理] 触发）
+  const [adminOpen, setAdminOpen] = useState(false);
 
   // 业务数据清空（登出 / 会话失效共用）
   const resetData = useCallback(() => {
@@ -217,6 +219,7 @@ export function useAppState() {
     setDrawMode(null);
     setSelectionPolygon(null);
     setSelectionMode(null);
+    setAdminOpen(false);   // #50 Phase 14：管理 Modal 一并关
   }, []);
 
   // 401 统一拦截落点：api.ts 任何业务请求 401 → 清当前用户 → App 回登录页
@@ -278,6 +281,10 @@ export function useAppState() {
     },
     [],
   );
+
+  // #50 Phase 14：管理 Modal 开关
+  const openAdmin = useCallback(() => setAdminOpen(true), []);
+  const closeAdmin = useCallback(() => setAdminOpen(false), []);
 
   const log = useCallback((level: LogEntry["level"], msg: string) => {
     const locale = getLang() === "zh" ? "zh-CN" : "en-US";
@@ -782,6 +789,9 @@ export function useAppState() {
     doLogin,
     doLogout,
     doChangePassword,
+    adminOpen,
+    openAdmin,
+    closeAdmin,
     sites,
     roads,
     lessors,

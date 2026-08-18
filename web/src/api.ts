@@ -606,3 +606,80 @@ export async function exportSelectionIds(keys: SiteKey[], npRadiusM?: number): P
   });
   await downloadResponse(res, "export_region.kmz");
 }
+
+// ---------- #50 Phase 14 管理接口（admin-only；400 detail 由调用方做 i18n 映射）----------
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  role_id: number;
+  role_name: string | null;
+  disabled: boolean;
+  created_at: string | null;
+}
+
+export interface AdminRole {
+  id: number;
+  name: string;
+  is_admin: boolean;
+  perms: Record<string, boolean>;
+  scopes: string[];
+  user_count: number;
+}
+
+async function adminRequest<T>(input: string, init?: RequestInit): Promise<T> {
+  const res = await apiFetch(input, init);
+  if (!res.ok) throw new Error(await errDetail(res));
+  return res.json() as Promise<T>;
+}
+
+function jsonInit(method: string, body: unknown): RequestInit {
+  return {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
+export async function listAdminUsers(): Promise<AdminUser[]> {
+  return adminRequest("/api/admin/users");
+}
+
+export async function createAdminUser(
+  username: string,
+  roleId: number,
+  password: string,
+): Promise<AdminUser> {
+  return adminRequest("/api/admin/users", jsonInit("POST", { username, role_id: roleId, password }));
+}
+
+export async function resetUserPassword(userId: number, password: string): Promise<void> {
+  await adminRequest(`/api/admin/users/${userId}/reset-password`, jsonInit("POST", { password }));
+}
+
+export async function toggleUserDisabled(userId: number): Promise<{ id: number; disabled: boolean }> {
+  return adminRequest(`/api/admin/users/${userId}/toggle-disabled`, { method: "POST" });
+}
+
+export async function listAdminRoles(): Promise<AdminRole[]> {
+  return adminRequest("/api/admin/roles");
+}
+
+export async function createAdminRole(
+  name: string,
+  perms: Record<string, boolean>,
+  scopes: string[],
+): Promise<AdminRole> {
+  return adminRequest("/api/admin/roles", jsonInit("POST", { name, perms, scopes }));
+}
+
+export async function updateAdminRole(
+  roleId: number,
+  patch: { name?: string; perms?: Record<string, boolean>; scopes?: string[] },
+): Promise<void> {
+  await adminRequest(`/api/admin/roles/${roleId}`, jsonInit("PATCH", patch));
+}
+
+export async function deleteAdminRole(roleId: number): Promise<void> {
+  await adminRequest(`/api/admin/roles/${roleId}`, { method: "DELETE" });
+}

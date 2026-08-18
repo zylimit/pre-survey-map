@@ -16,6 +16,7 @@ import BaselineStatusBar from "./components/BaselineStatusBar";
 import AuditPasswordPrompt from "./components/AuditPasswordPrompt";
 import AuditModal from "./components/AuditModal";
 import BackupRestoreDialog from "./components/BackupRestoreDialog";
+import AdminModal from "./components/admin/AdminModal";
 import { useEscTrigger } from "./hooks/useEscTrigger";
 import { useKeyTrigger } from "./hooks/useKeyTrigger";
 import { useAppState } from "./state";
@@ -53,13 +54,13 @@ export default function App() {
     // 已打开任意一个就不再弹
     if (auditPwdOpen || auditOpen) return;
     setAuditPwdOpen(true);
-  }, 3, 1000, authed && !importBusy);
+  }, 3, 1000, authed && !importBusy && !s.adminOpen);
 
   // #42 隐藏入口：连按 3 次 B → 密码框 → 备份恢复 Modal（输入态/导入中屏蔽）
   useKeyTrigger("KeyB", () => {
     if (backupPwdOpen || backupOpen) return;
     setBackupPwdOpen(true);
-  }, 3, 1000, authed && !importBusy);
+  }, 3, 1000, authed && !importBusy && !s.adminOpen);
 
   // #50 Phase 13 启动闸门：me 验证未完成 → 启动画面；无 token/验证失败 → 登录页
   useEffect(() => {
@@ -148,6 +149,7 @@ export default function App() {
         npRadiusM={npRadiusM}
         username={s.currentUser.username}
         isAdmin={s.currentUser.is_admin}
+        onOpenAdmin={s.openAdmin}
         onLogout={s.doLogout}
         onStartDraw={s.startDraw}
         onClearSelection={s.clearSelection}
@@ -318,6 +320,17 @@ export default function App() {
         <BackupRestoreDialog
           password={backupPwd}
           onClose={() => { setBackupOpen(false); setBackupPwd(""); }}
+          onRestored={async () => {
+            await s.refresh();
+            await s.refreshBaselineState();
+          }}
+        />
+      )}
+
+      {/* #50 Phase 14：管理 Modal（用户/角色/审计/备份四 tab；还原成功同样刷新数据） */}
+      {s.adminOpen && (
+        <AdminModal
+          onClose={s.closeAdmin}
           onRestored={async () => {
             await s.refresh();
             await s.refreshBaselineState();

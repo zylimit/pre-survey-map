@@ -10,11 +10,12 @@ import ConfirmDialog from "./ConfirmDialog";
  */
 interface Props {
   password: string;
-  onClose: () => void;
+  onClose?: () => void;
   onRestored: () => void;
+  embedded?: boolean;   // #50 Phase 14：嵌入 AdminModal 作为 tab（无遮罩/标题/关闭）
 }
 
-export default function BackupRestoreDialog({ password, onClose, onRestored }: Props) {
+export default function BackupRestoreDialog({ password, onClose, onRestored, embedded }: Props) {
   const tFn = useT();
   const { lang } = useLang();
   const [backups, setBackups] = useState<Backup[]>([]);
@@ -51,14 +52,7 @@ export default function BackupRestoreDialog({ password, onClose, onRestored }: P
       hour: "2-digit", minute: "2-digit",
     });
 
-  return (
-    <div className="modal-mask">
-      <div className="modal restore-dialog">
-        <div className="modal-header">
-          <h2>{tFn("bk.title")}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-
+  const list = (
         <div className="restore-list">
           {loading && <div className="restore-empty">{tFn("bk.loading")}</div>}
           {!loading && backups.length === 0 && (
@@ -84,9 +78,9 @@ export default function BackupRestoreDialog({ password, onClose, onRestored }: P
             </div>
           ))}
         </div>
-      </div>
+  );
 
-      {confirm && (
+  const confirmDialog = confirm && (
         <ConfirmDialog
           title={tFn("bk.confirm.title")}
           body={tFn("bk.confirm.body", {
@@ -101,7 +95,28 @@ export default function BackupRestoreDialog({ password, onClose, onRestored }: P
           onConfirm={() => handleRestore(confirm)}
           onCancel={() => setConfirm(null)}
         />
-      )}
+  );
+
+  // #50 Phase 14：embedded = 作为 AdminModal 的 tab 渲染（无遮罩/标题/关闭按钮）
+  if (embedded) {
+    return (
+      <div className="backup-embed">
+        {list}
+        {confirmDialog}
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-mask">
+      <div className="modal restore-dialog">
+        <div className="modal-header">
+          <h2>{tFn("bk.title")}</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        {list}
+      </div>
+      {confirmDialog}
     </div>
   );
 }

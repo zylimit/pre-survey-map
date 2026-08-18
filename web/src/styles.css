@@ -2251,3 +2251,357 @@ button, input, select, textarea {
   text-overflow: ellipsis;
   max-width: 160px;
 }
+
+/* ============ #50 Phase 14 管理 Modal（用户/角色/审计/备份四 tab）============ */
+
+.admin-modal {
+  width: 70vw;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-app);
+  flex: 0 0 auto;
+}
+
+.admin-tab {
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.admin-tab:hover {
+  color: var(--text);
+}
+
+.admin-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.admin-tab-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 用户/角色 tab 公共骨架 */
+.admin-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-app);
+  flex: 0 0 auto;
+}
+
+.admin-toolbar button.primary,
+.admin-form button.primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.admin-toolbar button.primary:hover:not(:disabled),
+.admin-form button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.admin-toolbar button.primary:disabled,
+.admin-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-err {
+  padding: 8px 16px 0;
+}
+
+.admin-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-app);
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.admin-form input,
+.admin-form select {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 12px;
+  outline: none;
+}
+
+.admin-form input:focus,
+.admin-form select:focus {
+  border-color: var(--accent);
+}
+
+.admin-form button {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.admin-form button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.admin-role-form {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.admin-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-form-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.admin-perms-row {
+  gap: 14px;
+}
+
+.admin-perm-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.admin-scopes-row {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 权限勾选树 */
+.scope-tree {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  padding: 8px 12px;
+  max-height: 240px;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.scope-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.scope-node input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.scope-node-en {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+/* 用户/角色表格（对齐 audit-table 风格） */
+.admin-table-wrap {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg-panel);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.admin-table thead {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elevated);
+  z-index: 1;
+}
+
+.admin-table th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.admin-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.admin-col-ts {
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.admin-status-on {
+  color: var(--accent);
+}
+
+.admin-status-off {
+  color: var(--error);
+}
+
+.admin-row-actions {
+  white-space: nowrap;
+}
+
+.admin-row-actions button {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+  margin-right: 6px;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.admin-row-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.admin-row-actions button.danger:hover:not(:disabled) {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.admin-row-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius);
+  background: var(--accent-20);
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.admin-perms-summary {
+  color: var(--text-muted);
+}
+
+/* 审计/备份 tab 嵌入容器（内容组件去掉遮罩/标题后撑满 tab 区） */
+.audit-embed {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.backup-embed {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.backup-embed .restore-list {
+  flex: 1;
+  overflow: auto;
+}
+
+/* 备份还原密码门（内联版 audit-pwd，Phase 15 随隐藏入口拆除） */
+.backup-gate {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px 16px;
+  max-width: 320px;
+}
+
+.backup-gate-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.backup-gate input {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+}
+
+.backup-gate input:focus {
+  border-color: var(--accent);
+}

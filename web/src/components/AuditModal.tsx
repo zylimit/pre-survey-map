@@ -3,7 +3,8 @@ import { AuditAction, AuditLogItem, exportAuditLog, listAuditLog } from "../api"
 import { I18nKey, useLang, useT } from "../i18n";
 
 interface Props {
-  onClose: () => void;
+  onClose?: () => void;
+  embedded?: boolean;   // #50 Phase 14：嵌入 AdminModal 作为 tab（无遮罩/标题/关闭）
 }
 
 const ACTIONS: AuditAction[] = [
@@ -47,7 +48,7 @@ const TIME_PRESETS: { key: I18nKey; hours: number | null }[] = [
   { key: "audit.filter.time.30d",    hours: 24 * 30 },
 ];
 
-export default function AuditModal({ onClose }: Props) {
+export default function AuditModal({ onClose, embedded }: Props) {
   const tFn = useT();
   const { lang } = useLang();
   const [items, setItems] = useState<AuditLogItem[]>([]);
@@ -123,14 +124,8 @@ export default function AuditModal({ onClose }: Props) {
     }
   };
 
-  return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="modal audit-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>{tFn("audit.title")}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-
+  const body = (
+    <>
         <div className="audit-toolbar">
           <label>
             <span>{tFn("audit.filter.action")}</span>
@@ -251,6 +246,22 @@ export default function AuditModal({ onClose }: Props) {
             >{tFn("audit.pager.last")} »</button>
           </div>
         </div>
+    </>
+  );
+
+  // #50 Phase 14：embedded = 作为 AdminModal 的 tab 渲染（无遮罩/标题/关闭按钮）
+  if (embedded) {
+    return <div className="audit-embed">{body}</div>;
+  }
+
+  return (
+    <div className="modal-mask" onClick={onClose}>
+      <div className="modal audit-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{tFn("audit.title")}</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        {body}
       </div>
     </div>
   );
