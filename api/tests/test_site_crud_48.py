@@ -15,9 +15,10 @@ from datetime import datetime, timezone
 import pytest
 from fastapi import HTTPException
 
-from routers import exports, sites
-from routers.exports import SelectionIdsBody, export_selection_ids
-from routers.sites import (
+from exports import router as exports
+from sites import router as sites
+from exports.router import SelectionIdsBody, export_selection_ids
+from sites.router import (
     DeleteBody,
     SitePatchBody,
     delete_history,

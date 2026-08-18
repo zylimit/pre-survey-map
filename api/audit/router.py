@@ -16,9 +16,9 @@ from fastapi.responses import Response
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from audit import write_audit
+from .service import write_audit
 from auth.permissions import require_admin
-from db import pool
+from core.db import pool
 
 # #50 Phase 12：审计日志端点收编管理界面 → admin-only
 router = APIRouter(dependencies=[Depends(require_admin)])

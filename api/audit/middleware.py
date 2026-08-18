@@ -68,7 +68,7 @@ class SessionCookieMiddleware:
         if newly_issued and method == "GET":
             try:
                 from starlette.requests import Request
-                from audit import write_audit
+                from .service import write_audit
                 request = Request(scope, receive)
                 await write_audit(
                     action="open",

@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 import bcrypt
 
-from db import pool
+from core.db import pool
 
 logger = logging.getLogger("auth")
 

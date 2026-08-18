@@ -11,14 +11,22 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.formparsers import MultiPartParser
 
 from admin import router as admin_router
-from audit_middleware import SessionCookieMiddleware
+from audit.middleware import SessionCookieMiddleware
+from audit.router import router as audit_router
 from auth.middleware import AuthMiddleware
 from auth.router import router as auth_router
 from auth.service import session_cleanup_loop
-from backup_scheduler import backup_loop
-from db import close_pool, init_pool, ping, pool
-from geo_loader import ensure_countries_loaded
-from routers import audit, backups, baseline, exports, imports, lessors, restore_points, roads, sites
+from backups.router import router as backups_router
+from backups.scheduler import backup_loop
+from baseline.router import router as baseline_router
+from core.db import close_pool, init_pool, ping, pool
+from exports.router import router as exports_router
+from geo.loader import ensure_countries_loaded
+from imports.router import router as imports_router
+from lessors.router import router as lessors_router
+from restore.router import router as restore_points_router
+from roads.router import router as roads_router
+from sites.router import router as sites_router
 
 # SpooledTemporaryFile 默认 1MB 触发磁盘溢写，溢写路径调用 run_in_threadpool，
 # 在 k8s pod 线程耗尽时抛出 RuntimeError: can't start new thread。
@@ -143,14 +151,14 @@ async def health():
     return {"status": "ok", "db": await ping()}
 
 
-app.include_router(sites.router, prefix="/api/sites", tags=["sites"])
+app.include_router(sites_router, prefix="/api/sites", tags=["sites"])
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
-app.include_router(roads.router, prefix="/api/roads", tags=["roads"])
-app.include_router(lessors.router, prefix="/api/lessors", tags=["lessors"])
-app.include_router(imports.router, prefix="/api/import", tags=["import"])
-app.include_router(exports.router, prefix="/api/export", tags=["export"])
-app.include_router(baseline.router, prefix="/api", tags=["baseline"])
-app.include_router(restore_points.router, prefix="/api/restore-points", tags=["restore_points"])
-app.include_router(backups.router, prefix="/api/backups", tags=["backups"])
-app.include_router(audit.router, prefix="/api", tags=["audit"])
+app.include_router(roads_router, prefix="/api/roads", tags=["roads"])
+app.include_router(lessors_router, prefix="/api/lessors", tags=["lessors"])
+app.include_router(imports_router, prefix="/api/import", tags=["import"])
+app.include_router(exports_router, prefix="/api/export", tags=["export"])
+app.include_router(baseline_router, prefix="/api", tags=["baseline"])
+app.include_router(restore_points_router, prefix="/api/restore-points", tags=["restore_points"])
+app.include_router(backups_router, prefix="/api/backups", tags=["backups"])
+app.include_router(audit_router, prefix="/api", tags=["audit"])

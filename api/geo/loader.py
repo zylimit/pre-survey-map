@@ -9,7 +9,7 @@ import logging
 import os
 from typing import Optional
 
-logger = logging.getLogger("geo_loader")
+logger = logging.getLogger("geo.loader")
 
 GEOJSON_PATH = "/app/geo_data/ne_10m_admin_0_countries.geojson"
 

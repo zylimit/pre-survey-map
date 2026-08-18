@@ -12,8 +12,8 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from db import pool
-from restore_point_helper import create_restore_point
+from core.db import pool
+from restore.helper import create_restore_point
 
 BACKUP_INTERVAL_SECONDS = 12 * 3600   # 每 12h
 RETENTION_DAYS = 30                    # 保留 30 天

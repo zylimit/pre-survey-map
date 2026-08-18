@@ -1,13 +1,13 @@
 """#47 选区导出 KMZ —— 应用层契约测试（不连真库）。
 
-被测端点：POST /api/export/selection（routers/exports.py::export_selection）
+被测端点：POST /api/export/selection（exports/router.py::export_selection）
 
 执行方式：直调 handler `export_selection(body, request)` + 走 Pydantic 校验，
 不使用 fastapi.testclient（容器内未装 httpx），也不连 DB：
-- routers.exports._fetch_rows  → async stub，返回固定空行集（不触 PostGIS）。
-- routers.exports._build_kmz_meta → 返回固定 (fname, bytes, counts)，
+- exports.router._fetch_rows  → async stub，返回固定空行集（不触 PostGIS）。
+- exports.router._build_kmz_meta → 返回固定 (fname, bytes, counts)，
   绕开 build_kml 对 site 行字段的真实依赖，聚焦本测关注点（mode / 半径 / 校验 / 响应）。
-- routers.exports.write_audit → async stub，捕获传入 details 供断言 mode。
+- exports.router.write_audit → async stub，捕获传入 details 供断言 mode。
 
 handler 内 polygon 校验用 `raise HTTPException(400, ...)`；
 polygon 非 dict 的非法情形先被 Pydantic（polygon: dict[str, Any]）拦为 ValidationError
@@ -27,8 +27,8 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from routers import exports
-from routers.exports import SelectionBody, export_selection
+from exports import router as exports
+from exports.router import SelectionBody, export_selection
 
 
 # 捕获 write_audit 收到的 details

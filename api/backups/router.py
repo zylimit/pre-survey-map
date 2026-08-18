@@ -10,10 +10,10 @@ POST /api/backups/{id}/restore → 还原（复用 F17 rollback）
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from audit import write_audit
+from audit.service import write_audit
 from auth.permissions import require_admin
-from db import pool
-from restore_point_helper import create_restore_point, restore_from_snapshot
+from core.db import pool
+from restore.helper import create_restore_point, restore_from_snapshot
 
 # #50 Phase 12：备份恢复端点收编管理界面 → admin-only
 router = APIRouter(dependencies=[Depends(require_admin)])

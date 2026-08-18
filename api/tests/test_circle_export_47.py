@@ -25,8 +25,8 @@ import math
 import pytest
 from shapely.geometry import Point, Polygon
 
-from routers import exports
-from routers.exports import SelectionBody, export_selection
+from exports import router as exports
+from exports.router import SelectionBody, export_selection
 
 # ---------- 前端管线复刻（web/src/components/MapView.tsx:415） ----------
 # drawend: geom 是 ol/geom Circle（3857，单位米）→ fromCircle(geom, 64) 转内接 64 边形

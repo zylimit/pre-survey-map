@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 from starlette.requests import Request
 
-from db import pool
+from core.db import pool
 
 logger = logging.getLogger("audit")
 

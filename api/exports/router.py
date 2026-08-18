@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from audit import write_audit
+from audit.service import write_audit
 from auth.permissions import require_perm
 from auth.scopes import (
     can_see_lessor,
@@ -23,7 +23,7 @@ from auth.scopes import (
     site_scope_pairs,
     site_scope_where,
 )
-from db import pool
+from core.db import pool
 from exporters.kmz import build_kml, pack_kmz
 
 # #50 Phase 12：全端点 export 功能权限门控（admin 恒过）

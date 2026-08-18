@@ -23,12 +23,15 @@ from auth.scopes import (
     validate_scope_node,
     visible_scopes,
 )
-from routers import exports, imports, roads, sites
-from routers.exports import SelectionBody, SelectionIdsBody, export_all, export_selection, export_selection_ids
-from routers.imports import import_file
-from routers.lessors import list_lessors
-from routers.roads import list_roads
-from routers.sites import DeleteBody, SitePatchBody, delete_sites, list_sites, undo_delete, update_site
+from exports import router as exports
+from imports import router as imports
+from roads import router as roads
+from sites import router as sites
+from exports.router import SelectionBody, SelectionIdsBody, export_all, export_selection, export_selection_ids
+from imports.router import import_file
+from lessors.router import list_lessors
+from roads.router import list_roads
+from sites.router import DeleteBody, SitePatchBody, delete_sites, list_sites, undo_delete, update_site
 
 
 class _FakeRequest:

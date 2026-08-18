@@ -15,7 +15,7 @@
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from db import pool
+from core.db import pool
 
 from .service import resolve_user
 

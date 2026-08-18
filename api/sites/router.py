@@ -6,7 +6,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from audit import write_audit
+from audit.service import write_audit
 from auth.permissions import require_perm
 from auth.scopes import (
     request_scopes,
@@ -14,7 +14,7 @@ from auth.scopes import (
     site_scope_pairs,
     site_scope_where,
 )
-from db import pool
+from core.db import pool
 
 router = APIRouter()
 logger = logging.getLogger("sites")

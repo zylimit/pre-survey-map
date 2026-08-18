@@ -20,7 +20,7 @@ import pytest
 asyncpg = pytest.importorskip("asyncpg")
 
 # 被测常量：用于绑定本集成测试验证的谓词就是 exports.CONTAINS_CLAUSE 所用谓词
-from routers import exports  # 置于 importorskip 后，避免 asyncpg 缺失时被导入链卡住
+from exports import router as exports  # 置于 importorskip 后，避免 asyncpg 缺失时被导入链卡住
 
 
 # 圆参数（近似圆多边形）

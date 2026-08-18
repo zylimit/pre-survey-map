@@ -16,9 +16,9 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 from admin.validators import _check_perms, _check_scopes
-from audit import write_audit
+from audit.service import write_audit
 from auth.service import coerce_perms
-from db import pool
+from core.db import pool
 
 router = APIRouter()
 

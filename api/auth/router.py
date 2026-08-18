@@ -16,8 +16,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
-from audit import write_audit
-from db import pool
+from audit.service import write_audit
+from core.db import pool
 
 from .service import (
     coerce_perms,

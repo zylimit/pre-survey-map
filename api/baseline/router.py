@@ -9,10 +9,10 @@ V1 不做权限控制，前端弹确认 modal 防误点。
 
 from fastapi import APIRouter, Depends, Request
 
-from audit import write_audit
+from audit.service import write_audit
 from auth.permissions import require_perm
-from db import pool
-from restore_point_helper import create_restore_point
+from core.db import pool
+from restore.helper import create_restore_point
 
 router = APIRouter()
 
