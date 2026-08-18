@@ -21,6 +21,8 @@ export default function BackupRestoreDialog({ onClose, onRestored, embedded }: P
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<Backup | null>(null);
+  // #50 Phase 15 review（Low）：restore 失败透出给用户（沿用 LoginPage error state 机制）
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,10 +37,15 @@ export default function BackupRestoreDialog({ onClose, onRestored, embedded }: P
 
   const handleRestore = async (b: Backup) => {
     setBusy(true);
+    setError(null);
     try {
       await restoreBackup(b.id);
       await load();
       onRestored();
+    } catch (e) {
+      // api 抛 Error("HTTP <status>")；403 复用 admin.err.forbidden 双语，其余兜底 bk.err
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg.includes("403") ? tFn("admin.err.forbidden") : tFn("bk.err", { msg }));
     } finally {
       setBusy(false);
       setConfirm(null);
@@ -53,6 +60,7 @@ export default function BackupRestoreDialog({ onClose, onRestored, embedded }: P
 
   const list = (
         <div className="restore-list">
+          {error && <div className="login-err">{error}</div>}
           {loading && <div className="restore-empty">{tFn("bk.loading")}</div>}
           {!loading && backups.length === 0 && (
             <div className="restore-empty">{tFn("bk.empty")}</div>

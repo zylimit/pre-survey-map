@@ -214,6 +214,7 @@ const en = {
   "bk.confirm.body":       "Restore to auto backup\n({time}, site {s} · road {r} · lessor {l})\n\nCurrent data will be completely replaced.\nA [Before Rollback] point will be auto-created so you can undo.\n\nContinue?",
   "bk.confirm.ok":         "Confirm Restore",
   "bk.confirm.cancel":     "Cancel",
+  "bk.err":                "Restore failed ({msg})",
 
   // CleaningDialog
   "cl.step":               "Step 1: Data Cleaning · {file}",
@@ -660,6 +661,7 @@ const zh: Record<keyof typeof en, string> = {
   "bk.confirm.body":       "还原到自动备份\n（{time}，site {s} · road {r} · lessor {l}）\n\n当前数据将被完全替换。\n还原前会自动建一个「回滚前」恢复点，可再退回。\n\n确定继续？",
   "bk.confirm.ok":         "确定还原",
   "bk.confirm.cancel":     "取消",
+  "bk.err":                "还原失败（{msg}）",
 
   "cl.step":               "步骤 1：数据清洗 · {file}",
   "cl.baseline.none":      "基准区域：未识别（库与本文件都无法定位到任何国家）",

@@ -1997,6 +1997,7 @@ button, input, select, textarea {
   vertical-align: top;
 }
 .audit-table .col-ts     { white-space: nowrap; font-family: var(--font-mono); font-size: 11px; }
+.audit-table .col-username { white-space: nowrap; }
 .audit-table .col-action { white-space: nowrap; }
 .audit-table .col-details { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-table .col-ip     { white-space: nowrap; font-family: var(--font-mono); font-size: 11px; }
