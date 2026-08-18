@@ -262,19 +262,202 @@
 
 ---
 
-## 技术栈（沿用现有，零新引入）
+# V1.x #50 增量 — 用户与角色权限（登录页 + RBAC）
+
+> 推翻 V1「不做账号鉴权」Pinned 边界。新增登录体系 + 功能权限 × 数据权限（图层文件夹节点，子级继承，查看=编辑同权）+ [⚙管理] Modal（用户/角色/审计/备份收编）。详见 Product-Spec.md「用户与角色权限（F22 · V1.x #50）」节 + CHANGELOG #50。
+>
+> **依赖顺序**：Phase 10（数据层）→ 11（认证）→ 12（管理接口+权限门控）→ 13（前端登录管线）→ 14（管理 Modal）→ 15（前端权限渲染+收尾）。13 依赖 11；14 依赖 12+13；15 依赖 13、14。
+>
+> **不许破坏的契约**：全局去重键不变；KMZ 自反一致性；F17 回滚不丢列；事务边界；盖戳模型；F19 审计后端约束（无 DELETE/PATCH、永久保留、元审计）。**数据权限是读取/操作过滤层，不改写库逻辑**。
+>
+> **新依赖**：`bcrypt==5.0.0`（api/requirements.txt；≥3.8 兼容，有 cp312 abi3 wheel；5.x 起密码超 72 字节报错而非静默截断——密码校验须拒 >72 字节输入）。
+
+## Phase 10: 数据层 — 4 张新表 + audit_log 加列 + admin 种子
+
+**交付内容**：
+- 新表 `app_user`：`id BIGSERIAL` 主键 / `username TEXT UNIQUE NOT NULL` / `password_hash TEXT NOT NULL` / `role_id BIGINT REFERENCES app_role(id)` / `disabled BOOLEAN DEFAULT false` / `must_change_password BOOLEAN DEFAULT true` / `created_at TIMESTAMPTZ DEFAULT now()`。
+- 新表 `app_role`：`id BIGSERIAL` 主键 / `name TEXT UNIQUE NOT NULL` / `is_admin BOOLEAN DEFAULT false` / `perms JSONB NOT NULL DEFAULT '{}'`（4 开关：`import`/`export`/`edit_delete`/`danger`，布尔值，缺省 false）/ `created_at`。
+- 新表 `app_role_scope`：`id BIGSERIAL` 主键 / `role_id BIGINT REFERENCES app_role(id) ON DELETE CASCADE` / `scope_node TEXT NOT NULL`（取值域：`site` / `site:Globe` / `site:Smart` / `site:Dito` / `site:Globe:EXISTING` … `site:<运营商>:<EXISTING|PLANNED|SURVEY>` / `road` / `lessor`），`UNIQUE(role_id, scope_node)`。
+- 新表 `auth_session`：`token TEXT PRIMARY KEY`（URL-safe 随机 32 字节）/ `user_id BIGINT REFERENCES app_user(id) ON DELETE CASCADE` / `expires_at TIMESTAMPTZ NOT NULL` / `created_at TIMESTAMPTZ DEFAULT now()`；`expires_at` 建索引（清理用）。
+- `audit_log` 表 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS username TEXT`（可空，未登录请求记空）。
+- **admin 种子**（幂等）：无 admin 角色则插 `name='admin', is_admin=true`；无 admin 用户则插 `username='admin', password_hash=bcrypt('admin123'), must_change_password=true`（bcrypt 哈希在建表后由 api 启动种子逻辑完成，init.sql 只建结构、不写哈希——哈希生成放 `api/main.py` lifespan 启动钩子，判空再插）。
+- `deploy/migrations/V4__add_rbac.sql`：上述 4 表 + audit_log 加列，全幂等（`CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`），已部署库升级用。
+- `init.sql` 同步加 4 表结构 + audit_log 列（新部署首跑即有）。
+
+**关键文件**：
+- `deploy/db/init.sql` — 4 张新表 DDL + `audit_log` 加 `username` 列（幂等）
+- `deploy/migrations/V4__add_rbac.sql` — 新建，已部署库迁移
+- `api/requirements.txt` — 加 `bcrypt==5.0.0`
+- `api/main.py` — lifespan 启动种子：admin 角色 + admin 用户（判空幂等；bcrypt 哈希在此生成）
+
+**验收标准**：
+- 空库启动后 `\d app_user / app_role / app_role_scope / auth_session` 结构齐全；`\d audit_log` 含 `username` 列
+- 启动后 `SELECT username, must_change_password FROM app_user` 有 `admin/t` 一行；`app_role` 有 `admin/is_admin=t` 一行
+- 重复重启容器种子不重复插入（幂等）；V4 迁移在已有库（v1.0.6 结构）上重复执行不报错
+
+## Phase 11: 后端认证 — login/logout/me + 鉴权中间件 + 登录审计
+
+**交付内容**：
+- 新建 `api/auth.py`：`hash_password`（bcrypt，拒 >72 字节）/ `verify_password` / `create_session`（`secrets.token_urlsafe(32)`，expires=now+7d）/ `resolve_user(token)`（查 auth_session JOIN app_user，过期/禁用 → None；命中则**滑动续期** expires_at=now+7d）/ `revoke_sessions(user_id)`（禁用/重置密码时调）/ 定时清理过期 session（挂在现有 backup_scheduler 同款调度或启动任务，每日一次）。
+- 新建 `api/routers/auth.py`：
+  - `POST /api/auth/login` `{username, password}` → 校验用户存在/未禁用/密码 → 成功写审计 `login`（username）+ 返回 `{token, user: {username, is_admin, perms, scopes, must_change_password}}`（不含 role——Phase 13 前端 state 不消费，review 裁决划掉）；失败写 `login_failed`（记尝试账号）+ 401。**连续失败 5 次锁 10 分钟**（内存计数器按 username+IP，重启清零可接受；**已知接受项**：锁定键的 IP 半取自 XFF、客户端可轮换绕过——符合 Spec「防内网脚本爆破，够用即止」威胁模型，review 裁决接受不修复）。
+  - `POST /api/auth/logout` → 删当前 token 行 + 审计 `logout`。
+  - `GET /api/auth/me` → 返回当前用户 + 角色 perms + scopes（前端启动拉一次）。
+  - `POST /api/auth/change-password` `{old_password, new_password}` → 校验旧密码 + 新密码 ≥8 位 ≤72 字节 → 改 hash + `must_change_password=false` + **吊销该用户其他全部 session**（保留当前）。
+- 鉴权中间件（`api/main.py` 挂载，在现有 audit_middleware 之前）：除白名单（`POST /api/auth/login`、`GET /health`）外所有 `/api/*` 请求校验 `Authorization: Bearer` token → 无效/过期/禁用 → **401** `{detail:"unauthenticated"}`；有效则把 `user` 对象挂到 `request.state.user` 供下游权限门控和审计使用。
+- 审计写入路径（`api/audit.py`）补 `username` 字段：从 `request.state.user` 取（未登录=login/health 路径记 NULL）。
+
+**关键文件**：
+- `api/auth.py` — 新建（hash/session/续期/吊销/清理）
+- `api/routers/auth.py` — 新建（login/logout/me/change-password）
+- `api/main.py` — 挂 auth router + 鉴权中间件（白名单 login/health）+ lifespan 挂 session 清理任务
+- `api/audit.py` — `write_audit` 加 `username` 参数/取 `request.state.user`
+- `api/audit_middleware.py` — session_id cookie 逻辑不动；确认与鉴权中间件顺序（鉴权先跑）
+- `api/tests/test_auth_50.py` — 新建：login 成功/失败/锁定、me、logout 吊销、过期拒访、滑动续期、change-password 吊销其他 session（monkeypatch 范式同 test_site_crud_48.py）
+
+**验收标准**：
+- 无 token 调 `GET /api/sites` → 401；错 token → 401；有效 token → 200
+- login 错密码 5 次 → 第 6 次 401/429 且提示锁定；`audit_log` 有 5 条 `login_failed`（username 记尝试账号）
+- login 成功 → `audit_log` 有 `login` 行且 `username='admin'`；`GET /api/auth/me` 带 token 返回 is_admin=true
+- 改密后旧 token（其他 session）401，当前 session 仍可用；pytest test_auth_50.py 全绿 + 既有 48 条测试无回归
+
+## Phase 12: 后端管理接口 + 功能权限门控 + 数据权限过滤
+
+**交付内容**：
+- 新建 `api/routers/admin.py`（全部要求 `is_admin`，否则 403）：
+  - `GET /api/admin/users` → 用户列表（id/username/role/disabled/created_at）
+  - `POST /api/admin/users` `{username, role_id, password}` → 建号（`must_change_password=true`）；审计 `user_manage`（details: 目标用户+create）
+  - `POST /api/admin/users/{id}/reset-password` `{password}` → 重设 + 吊销该用户全部 session；审计 `user_manage`（reset）
+  - `POST /api/admin/users/{id}/toggle-disabled` → 禁用/启用；禁用即吊销全部 session；审计 `user_manage`（disable/enable）；**admin 用户（is_admin 角色的用户）拒禁用**（400）
+  - `GET /api/admin/roles` → 角色列表（含 perms + scopes + 挂载用户数）
+  - `POST /api/admin/roles` `{name, perms, scopes[]}` → 建角色；审计 `role_manage`（details: 角色名+权限快照）
+  - `PATCH /api/admin/roles/{id}` → 改 perms/scopes/name；**is_admin 角色拒改**（400）；审计 `role_manage`
+  - `DELETE /api/admin/roles/{id}` → **is_admin 拒删**；**有用户挂载拒删**（400 提示先迁用户）；审计 `role_manage`
+- 功能权限门控（依赖注入 `require_perm("import"|"export"|"edit_delete"|"danger")`，非 admin 且无该 perm → 403）：
+  - `import`：`/api/import*`（imports.py 全端点）
+  - `export`：`/api/export/*`（exports.py 整库/选区/selection_ids）
+  - `edit_delete`：`PATCH /api/sites/{...}` / `POST /api/sites/delete` / `POST /api/sites/undo-delete/{id}`
+  - `danger`：`/api/restore-points*` 全部 + `POST /api/baseline/clear`（baseline.py 清除端点）
+  - admin 角色恒过全部门控；审计日志端点（`/api/audit-log*`）与备份端点（`/api/backups*`）改 **admin-only**（收编进管理界面）。
+- **数据权限过滤**（核心）：`auth.py` 加 `visible_scopes(user) → list[str]`（admin → 全量哨兵）；把 scope 集合换算成 site 过滤条件（`operator`/`category` 子集对，如 `site:Globe` → operator='Globe' 全部；`site:Globe:SURVEY` → operator='Globe' AND category='勘测'——注意 scope 英文节点名到库内中文类别值的映射表放 `auth.py` 单一真源）+ road/lessor 布尔可见性。落点：
+  - `GET /api/sites` / `GET /api/roads` / `GET /api/lessors`：SQL WHERE 追加 scope 过滤（不可见类型直接返回空 FeatureCollection）
+  - exports.py 三端点：同一过滤（选区/勾选导出也不可越权导出）
+  - imports.py：盖戳目标图层必须在可见 scope 内（否则 403）
+  - F16 全局搜索若走前端已加载数据则天然受限（后端已过滤），若有独立搜索端点同步加过滤
+  - `DELETE /api/sites/delete` / `PATCH` / `undo-delete`：目标行必须在可见 scope 内（越权行跳过并报数，不静默成功）
+- 审计 `user_manage` / `role_manage` 写入；登录态请求审计 `username` 全链路贯通。
+
+**关键文件**：
+- `api/routers/admin.py` — 新建（users/roles CRUD + 全部守卫）
+- `api/auth.py` — `visible_scopes` / scope→SQL 条件换算（含英文节点名↔中文类别映射表）/ `require_perm` 依赖
+- `api/routers/sites.py` / `roads.py` / `lessors.py` — GET 加 scope WHERE；PATCH/delete/undo 加行级 scope 校验
+- `api/routers/exports.py` — 三端点加 scope 过滤 + `export` perm 门控
+- `api/routers/imports.py` — `import` perm + 盖戳目标 scope 校验
+- `api/routers/restore_points.py` / `baseline.py` — `danger` perm 门控
+- `api/routers/audit.py` / `backups.py` — admin-only
+- `api/tests/test_admin_50.py` / `test_scope_filter_50.py` — 新建（monkeypatch 范式：admin 守卫、角色删除守卫、scope 换算表、越权行跳过、导出过滤）
+
+**验收标准**：
+- 非 admin 无 `import` perm 调 `/api/import` → 403；有 perm 但目标图层不可见 → 403
+- `Globe PM`（scope=site:Globe）`GET /api/sites` 只含 operator='Globe' 行；`GET /api/roads` 返回空（未勾 road）；选区导出 KMZ 只含 Globe 点
+- `执行者`（scope=三家 SURVEY）只见 operator×category=勘测 的子集
+- 非 admin 调 `/api/admin/*` / `/api/audit-log*` / `/api/backups*` → 403
+- 删有用户挂载的角色 → 400；改 admin 角色 → 400；禁用 admin 用户 → 400
+- 审计出现 `user_manage`/`role_manage` 且带 username；pytest 新测试全绿 + 既有测试无回归
+
+## Phase 13: 前端登录页 + token 管线 + 首登强制改密
+
+**交付内容**：
+- 新建 `LoginPage.tsx`（全屏页）：账号/密码输入 + [登录]；错误提示（401=账号或密码错 / 锁定提示）；登录成功存 token 到 `localStorage`（key `presurvey.token`）→ 拉 `/api/auth/me` → 进主界面。
+- `api.ts` 全局改造：所有请求自动带 `Authorization: Bearer <token>`；响应 401 → 清 token + 跳登录页（统一拦截点，不逐调用处处理）。
+- `App.tsx` 启动闸门：无 token → 渲染 LoginPage；有 token → 先 `GET /api/auth/me` 验证（失败清 token 回登录页）→ 通过才渲染主界面（树/地图/面板全部在 me 成功后挂载，避免先闪一屏全量数据）。
+- **首登强制改密**：`me.must_change_password=true` → 强制弹改密 Modal（不可关闭，旧密码+新密码≥8位+确认），改完才能进主界面。
+- `Toolbar.tsx`：右端显示当前 `username` + [登出]（调 logout → 清 token → 回登录页）+ **[⚙ 管理] 按钮仅 `is_admin` 渲染**（Phase 14 接通 Modal）。
+- `state.ts`：当前用户 state（username/is_admin/perms/scopes）+ login/logout action。
+- i18n 双语（登录页/改密/登出/错误提示）。
+
+**关键文件**：
+- `web/src/components/LoginPage.tsx` — 新建
+- `web/src/api.ts` — token 注入 + 401 拦截 + auth/login/logout/me/change-password 调用
+- `web/src/App.tsx` — 启动闸门（LoginPage ↔ 主界面）+ 强制改密 Modal
+- `web/src/state.ts` — auth state + login/logout/changePassword action
+- `web/src/components/Toolbar.tsx` — username + [登出] + [⚙]（admin 门控渲染）
+- `web/src/i18n.ts` — #50 文案双语
+
+**验收标准**：
+- 无 token 访问 → 只见登录页；错误密码提示明确；admin/admin123 首登 → 强制改密（关不掉）→ 改完进主界面
+- 主界面仅在 me 验证通过后挂载（DevTools Network 确认业务数据请求都在 me 之后）
+- Toolbar 显示用户名；[登出] → 回登录页且旧 token 调 API 401；非 admin 登录 → 无 [⚙] 按钮
+- token 过期（可后端手动改 expires_at 模拟）→ 下一请求 401 → 自动回登录页
+- F18 中英切换登录页文案正确；现有界面（登录后）无视觉回归
+
+## Phase 14: 前端管理 Modal — 用户管理 + 角色管理 + 审计/备份收编
+
+**交付内容**：
+- 新建 `AdminModal.tsx`（全屏遮罩 Modal，风格同 AuditModal），四个 tab：**用户 / 角色 / 审计日志 / 备份恢复**。
+- **用户 tab**：表格（用户名/角色/状态/创建时间）+ [新建用户]（用户名 + 角色下拉 + 初始密码）+ 行操作 [重置密码]（弹输入新密码）/ [禁用·启用]；admin 用户行禁用操作置灰（title 提示不可禁用）。
+- **角色 tab**：角色列表 + [新建角色]/[编辑]/[删除]；编辑表单 = 名称 + 4 个功能权限 checkbox（导入/导出/编辑删除/高危操作）+ **文件夹权限勾选树**（复刻 LayerTree 骨架：SITE→运营商→类别 / Road / Lessor，三态 checkbox，勾父全选子，子级继承语义）；删除有用户挂载的角色 → 后端 400 错误透出提示；admin 角色行只读。
+- **审计 tab**：现有 `AuditModal.tsx` 内容搬入为 tab（不改其内部逻辑）。
+- **备份 tab**：现有 `BackupRestoreDialog.tsx` 内容搬入为 tab。
+- `api.ts` 加 admin 系列调用（users/roles CRUD）。
+
+**关键文件**：
+- `web/src/components/AdminModal.tsx` — 新建（四 tab 框架 + 用户 tab + 角色 tab）
+- `web/src/components/AuditModal.tsx` — 改为可作为 tab 嵌入（props 适配，逻辑不动）
+- `web/src/components/BackupRestoreDialog.tsx` — 同上
+- `web/src/components/Toolbar.tsx` — [⚙] 接通 AdminModal
+- `web/src/api.ts` / `web/src/state.ts` — admin 调用 + Modal 开关 state
+- `web/src/i18n.ts` — 管理界面文案双语
+
+**验收标准**：
+- admin 点 [⚙] → 四 tab 齐全；建 `Globe PM` 角色（勾 site:Globe + 三功能权限）→ 角色列表出现；建用户 `globe_pm1` 挂该角色 → 用户列表出现
+- 用 globe_pm1 登录（强制改密后）→ 只见 Globe 目录（Phase 15 完整验证）
+- 角色树三态勾选：勾 Globe → 其下类别全勾；取消子项 → 父转半选；保存后 scopes 与勾选一致
+- 删除挂着 globe_pm1 的角色 → 提示不可删；重置密码后旧 session 401；审计/备份 tab 功能与原独立 Modal 一致
+- 中英切换管理界面文案正确
+
+## Phase 15: 前端权限渲染 + 隐藏入口拆除 + 回归收尾
+
+**交付内容**：
+- **数据权限隐藏**（按 `me.scopes` 前端收窄渲染，与后端过滤对齐）：`LayerTree.tsx` 不渲染无权限文件夹/图层/样式节点；`MapView.tsx` 不渲染无权限要素（后端已过滤，前端双保险）；`LayerFeatureList` 入口只对有权限图层可达；树节点计数与可见数据一致。
+- **功能权限按钮门控**（按 `me.perms`）：无 `import` → 图层 [导入图层] 按钮不渲染；无 `export` → Toolbar [导出 KMZ]、列表框 [导出选中] 不渲染；无 `edit_delete` → 列表框多选列/[编辑]/[删除选中]/Toolbar [删除历史] 不渲染；无 `danger` → [清除基线]/[恢复点] 不渲染。
+- **隐藏入口拆除**：删 `useEscTrigger`（3×ESC）与 3×B 键盘监听、`AuditPasswordPrompt.tsx` 组件及 i18n 相关文案；审计/备份唯一入口 = [⚙ 管理]。
+- **回归测试补全**：`test_scope_filter_50.py` / `test_admin_50.py` / `test_auth_50.py`（Phase 11/12 已建）+ 既有 48 条全量重跑；前端构建零 TS 错误。
+- **DEPLOY 注意**：V4 迁移进离线包部署脚本（参照 V2/V3 接线方式）；部署文档补 admin 初始密码说明。
+
+**关键文件**：
+- `web/src/components/LayerTree.tsx` / `MapView.tsx` / `LayerFeatureList.tsx` — scopes 过滤渲染
+- `web/src/components/Toolbar.tsx` — perms 门控 + 去隐藏入口触发
+- `web/src/hooks/`（useEscTrigger 所在）— 删除 3×ESC/3×B 监听
+- `web/src/components/AuditPasswordPrompt.tsx` — 删除文件
+- `web/src/App.tsx` / `web/src/state.ts` / `web/src/i18n.ts` — 清理隐藏入口残留
+- `deploy/deploy.sh` 或 `deploy/prod/`（V2/V3 迁移接线处）— V4 迁移进部署链路
+- `deploy/README.md` 或 `DEPLOY.md` — 补 admin 初始密码 + 首登改密说明
+
+**验收标准**：
+- globe_pm1 登录：树只见 SITE→GLOBE（Smart/Dito/Road/Lessor 无）；地图无别家点；搜索/导出结果只有 Globe
+- 执行者角色登录：只见三家 SURVEY 目录；无 [导入]/[编辑]/[删除] 按角色 perms 门控正确
+- 连按 3×ESC / 3×B 无任何反应；代码库 grep 无 `mangosv5` 残留
+- 非 admin 浏览器直接敲 URL 无管理界面入口；admin 全流程可用
+- pytest 全量绿（既有 48 + 新增）；`npm run build` 零错误；docker compose 重部署冒烟通过
+
+---
+
+## 技术栈（沿用现有，唯一新增 bcrypt）
 
 | 层级 | 技术 | 版本 | 说明 |
 |------|------|------|------|
 | 前端 | React + TypeScript | 现有 | 沿用 F1–F19 |
 | 地图 | OpenLayers | 现有 | F20 用 `RegularShape` 画站型形状（标准 API，无新依赖）|
 | 后端 | Python + FastAPI | 现有 | 导入器加盖戳 + 几何护栏 |
+| 密码哈希 | **bcrypt** | **5.0.0（#50 新增，PyPI 实查最新版）** | requirements.txt pin `bcrypt==5.0.0`；5.x 密码超 72 字节报错，校验须拒超长输入 |
+| 会话 | 自建 DB token（auth_session） | — | 不引 JWT 库：admin 禁用/重置须立即吊销，DB token 天然可吊销 |
 | 数据库 | PostgreSQL 16 + PostGIS | `postgis/postgis:16-3.4` | site 加 3 列 + snapshot 同步 |
 | 解析 | fastkml/pykml + openpyxl | 现有 | 状态值规范化 |
 | 国际化 | 自建轻量 i18n（en/zh） | 现有 | F18 体系，新增节点文案 |
 | 部署 | Docker + 腾讯云 | 现有 | init.sql 幂等升级 |
 
-## 数据库表（F20 改动）
+## 数据库表（F20 + #50 改动）
 
 | 表名 | 所属 Phase | 改动 |
 |------|-----------|------|
@@ -282,8 +465,14 @@
 | `site_snapshot` | Phase 1 | 同步新增三列（F17 回滚不丢列）|
 | `road` | Phase 2 | 去重键改 `Property`（DDL 不变，逻辑变）|
 | `lessor` | Phase 2 | relationship 仅 Unfriendly/Normal（DDL 不变，值变）|
+| `app_user` | Phase 10（#50）| **新建**：username 唯一 / password_hash / role_id / disabled / must_change_password |
+| `app_role` | Phase 10（#50）| **新建**：name 唯一 / is_admin / perms JSONB（import/export/edit_delete/danger）|
+| `app_role_scope` | Phase 10（#50）| **新建**：role_id + scope_node（`site:Globe:SURVEY` 式节点串，子级继承）|
+| `auth_session` | Phase 10（#50）| **新建**：token 主键 / user_id / expires_at（7 天滑动）|
+| `audit_log` | Phase 10（#50）| 加 `username TEXT` 列（可空）|
+| `site_delete_undo` | Phase 9（#49）| 已建（镜像 site + undo_id + undone，环形 200 批）|
 
-> 无新建表。F17 的 restore_point / road_snapshot / lessor_snapshot / baseline_state_snapshot / audit_log 等表不动。
+> F20 无新建表。#50 新建 4 张（app_user / app_role / app_role_scope / auth_session）+ audit_log 加列，走 init.sql + V4 幂等迁移。F17 的 restore_point / *_snapshot / baseline_state_snapshot 等表不动。
 
 ## 开发规则
 

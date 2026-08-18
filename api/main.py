@@ -13,6 +13,9 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.formparsers import MultiPartParser
 
 from audit_middleware import SessionCookieMiddleware
+from auth.middleware import AuthMiddleware
+from auth.router import router as auth_router
+from auth.service import session_cleanup_loop
 from backup_scheduler import backup_loop
 from db import close_pool, init_pool, ping, pool
 from geo_loader import ensure_countries_loaded
@@ -104,22 +107,27 @@ async def lifespan(_: FastAPI):
         logger.warning(f"admin 种子失败：{e}")
     # #42：起后台定时备份任务（每 12h + 启动补偿）
     backup_task = asyncio.create_task(backup_loop())
+    # #50 Phase 11：过期 session 每日清理任务
+    cleanup_task = asyncio.create_task(session_cleanup_loop())
     try:
         yield
     finally:
-        backup_task.cancel()
-        try:
-            await backup_task
-        except asyncio.CancelledError:
-            pass
+        for task in (backup_task, cleanup_task):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         await close_pool()
 
 
 app = FastAPI(title="pre-survey-map api", version="0.1.0", lifespan=lifespan)
 
-# 顺序：CORS（最外层处理预检）→ MaxBody（拦超大请求）→ SessionCookie（注入 sid）
-# Starlette 中间件后注册的反而是最外层 → 先注册 Cookie 后注册 CORS
+# 顺序（外→内）：CORS（最外层处理预检）→ MaxBody（拦超大请求）→ Auth（#50 鉴权）
+# → SessionCookie（注入 sid）→ 路由。Starlette 后注册的反而是最外层。
+# Auth 在 SessionCookie 外层：未认证 401 的请求不签发 sid cookie、不触发 open 审计。
 app.add_middleware(SessionCookieMiddleware)
+app.add_middleware(AuthMiddleware)
 app.add_middleware(MaxBodySizeMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -137,6 +145,7 @@ async def health():
 
 
 app.include_router(sites.router, prefix="/api/sites", tags=["sites"])
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(roads.router, prefix="/api/roads", tags=["roads"])
 app.include_router(lessors.router, prefix="/api/lessors", tags=["lessors"])
 app.include_router(imports.router, prefix="/api/import", tags=["import"])

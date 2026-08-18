@@ -52,25 +52,43 @@ def _sid_of(request: Optional[Request]) -> Optional[str]:
     return getattr(request.state, "session_id", None)
 
 
+def _username_of(request: Optional[Request]) -> Optional[str]:
+    """#50 Phase 11：登录态请求从 request.state.user（鉴权中间件注入）取真实用户名。"""
+    if request is None:
+        return None
+    user = getattr(request.state, "user", None)
+    if not user:
+        return None
+    return user.get("username")
+
+
 async def write_audit(
     action: str,
     details: Optional[dict[str, Any]] = None,
     result: str = "success",
     error_msg: Optional[str] = None,
     request: Optional[Request] = None,
+    username: Optional[str] = None,
 ) -> None:
-    """同步写一条审计；失败只 WARNING，绝不抛出。"""
+    """同步写一条审计；失败只 WARNING，绝不抛出。
+
+    username：显式传优先（login/login_failed 时 request.state 尚无 user）；
+    未传则自动从 request.state.user 取；未登录请求（login/health）记 NULL。
+    """
+    if username is None:
+        username = _username_of(request)
     try:
         async with pool().acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO audit_log
-                    (session_id, ip, user_agent, action, details, result, error_msg)
-                VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+                    (session_id, ip, user_agent, username, action, details, result, error_msg)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
                 """,
                 _sid_of(request),
                 _ip_of(request),
                 _ua_of(request),
+                username,
                 action,
                 json.dumps(details or {}, default=str, ensure_ascii=False),
                 result,
