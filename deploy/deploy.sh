@@ -433,10 +433,16 @@ _cloud_run_migrations_remote() {
 #   方式：docker exec DB_CTN psql TRUNCATE 全部业务表 + 追踪表（最稳：不删容器/卷、不丢 schema，
 #   保留 init.sql 建好的结构；下次 --migrate-db 会重新从 V0/当前基线对齐）。
 #   重置 schema_migrations 让迁移器视为"待重新应用"。
+#   清单含 #50 RBAC 4 表（app_user/app_role/app_role_scope/auth_session）：逐表
+#   TRUNCATE ... CASCADE，FK 顺序无关（auth_session→app_user、app_role_scope→app_role 由 CASCADE 兜住）。
+#   注意：reset 后 app_role/app_user 为空——api 启动（lifespan）会跑 ensure_admin_seed 判空幂等
+#   重建 admin 角色 + admin 用户（初始密码 admin123，首登强制改密）；重启 api 或等下次启动即恢复登录。
+#   取舍：audit_log 不在清单是 by-design——审计留痕不应随 reset 抹掉；
+#   而 #49 的 site_delete_undo 必须清（无 FK，残留会让用户对已清空的库 undo 复活 reset 前删除的旧 site）。
 _cloud_reset_db() {
     step "🔴 reset：TRUNCATE 测试库业务数据（仅 ${DB_CTN}:${DB_NAME}，保留表结构）"
     require_cmd ssh
-    # 远端 docker exec psql；CASCADE 处理外键（快照/恢复点）。schema_migrations 一并清，迁移器重新对齐。
+    # 远端 docker exec psql；CASCADE 处理外键（快照/恢复点/RBAC）。schema_migrations 一并清，迁移器重新对齐。
     _cloud_ssh "docker exec -i '$DB_CTN' psql -U '$DB_USER' -d '$DB_NAME' -v ON_ERROR_STOP=1 -c \"
         DO \\\$\\\$
         DECLARE t text;
@@ -446,7 +452,9 @@ _cloud_reset_db() {
             WHERE schemaname='public'
               AND tablename IN ('site','road','lessor','baseline_state',
                                 'site_snapshot','road_snapshot','lessor_snapshot',
-                                'baseline_state_snapshot','restore_point','schema_migrations')
+                                'baseline_state_snapshot','restore_point','schema_migrations',
+                                'app_user','app_role','app_role_scope','auth_session',
+                                'site_delete_undo')
           LOOP
             EXECUTE format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', t);
           END LOOP;

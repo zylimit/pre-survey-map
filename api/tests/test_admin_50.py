@@ -19,14 +19,14 @@ from fastapi import HTTPException
 # 均为模块级 import），用 importlib 取回子模块对象。
 admin_users = importlib.import_module("admin.users")
 admin_roles = importlib.import_module("admin.roles")
-from admin.users import (  # noqa: E402
+from admin.users import (
     CreateUserBody,
     ResetPasswordBody,
     create_user,
     reset_password,
     toggle_disabled,
 )
-from admin.roles import (  # noqa: E402
+from admin.roles import (
     CreateRoleBody,
     PatchRoleBody,
     create_role,
@@ -34,7 +34,7 @@ from admin.roles import (  # noqa: E402
     list_roles,
     update_role,
 )
-from auth.permissions import require_admin, require_perm  # noqa: E402
+from auth.permissions import require_admin, require_perm
 
 
 DT = datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -136,7 +136,7 @@ def captured(monkeypatch):
 
 def _patch_pool(monkeypatch, conn):
     """users/roles 两模块各自 import 了 pool，统一打到同一个假连接上。"""
-    fake = lambda: _Pool(conn)  # noqa: E731
+    fake = lambda: _Pool(conn)
     monkeypatch.setattr(admin_users, "pool", fake)
     monkeypatch.setattr(admin_roles, "pool", fake)
 

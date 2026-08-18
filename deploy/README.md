@@ -98,8 +98,9 @@ deploy.sh --help
 > `./deploy/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro` 挂载它做空库首次初始化。
 > 它的内容已拷贝为 `migrations/V0__baseline.sql`（版本化基线）；两者同步，删 init.sql 会断 cloud/本地建库链路。
 
-> ⚠️ **测试库 V2 残留说明**：腾讯云测试库 `schema_migrations` 含 version 2 `tmp_verify`（P2/P4 端到端验证遗留），
-> 而本地 `migrations/` 只有 V0/V1。这是无害状态——执行器只应用「序号 > 库内当前版本」的文件，V2 已记账即被跳过，不影响生产、不需处理。后续若真有 V2 业务迁移，从 V3 起编号或先清理该测试库该行。
+> ⚠️ **测试库 V2 残留说明（历史）**：腾讯云测试库 `schema_migrations` 曾含 version 2 `tmp_verify`（P2/P4 端到端验证遗留）。
+> 本地 `migrations/` 现为 V0–V4（V2 起已有正式业务迁移）。若该测试库仍残留 tmp_verify 的 V2 记账行，
+> 真实 V2 在该库会被视为"已应用"而跳过（V3/V4 正常应用）——需人工核对：直接 `--reset-db` 重来或清掉该行即可；新建库无此问题。
 
 > 📌 **升级到含 #50（RBAC）的版本（应用 V4 迁移后）**：首次访问会弹出登录页。
 > 内置 admin 账号：`admin` / 初始密码 `admin123`（由 api 启动时自动种子，判空幂等），**首登强制改密**后才能进主界面。

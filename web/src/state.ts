@@ -292,6 +292,21 @@ export function useAppState() {
     setLogs(prev => [...prev.slice(-49), { ts, level, msg }]);
   }, []);
 
+  // Phase 7 低修复1 + #26：refresh 后按 selected.id 在新三表里重绑定 selected；
+  // 找不到（被删/不存在）→ setSelected(null)，避免属性面板显示旧值或已删项。
+  // 收敛进 refresh 内部 = 编辑/删除/撤销/导入/清基线/回滚/还原/手动刷新全路径自动覆盖。
+  const rebindSelected = useCallback(
+    (cols: { sites: FeatureCollection; roads: FeatureCollection; lessors: FeatureCollection }) => {
+      setSelected(prev => {
+        if (!prev) return prev;
+        const id = String(prev.id);
+        const all = [...cols.sites.features, ...cols.roads.features, ...cols.lessors.features];
+        return all.find(f => String(f.id) === id) ?? null;
+      });
+    },
+    [],
+  );
+
   const refresh = useCallback(async () => {
     setPhase("loading");
     try {
@@ -299,11 +314,12 @@ export function useAppState() {
       setSites(sites);
       setRoads(roads);
       setLessors(lessors);
+      rebindSelected({ sites, roads, lessors });
       return { sites, roads, lessors };
     } finally {
       setPhase("idle");
     }
-  }, []);
+  }, [rebindSelected]);
 
   const refreshBaselineState = useCallback(async () => {
     try {
@@ -693,29 +709,15 @@ export function useAppState() {
 
   // ---------- #48 site 增删改 + 勾选导出（接 Phase 6 后端）----------
   // 编辑/删除后统一 await refresh() 重拉三表 FeatureCollection → 地图重渲染 + 左树计数同步。
+  // refresh 内部已 rebindSelected（见 refresh 定义），无需各调用点重复重绑。
   // 返回 null=成功，string=可读错误（同时已写日志面板）。
-
-  // Phase 7 低修复1：refresh 后按 selected.id 在新三表里重绑定 selected；
-  // 找不到（被删/不存在）→ setSelected(null)，避免属性面板显示旧值或已删项。
-  const rebindSelected = useCallback(
-    (cols: { sites: FeatureCollection; roads: FeatureCollection; lessors: FeatureCollection }) => {
-      setSelected(prev => {
-        if (!prev) return prev;
-        const id = String(prev.id);
-        const all = [...cols.sites.features, ...cols.roads.features, ...cols.lessors.features];
-        return all.find(f => String(f.id) === id) ?? null;
-      });
-    },
-    [],
-  );
 
   const doUpdateSite = useCallback(
     async (key: SiteKey, patch: SitePatch): Promise<string | null> => {
       try {
         await updateSite(key, patch);
         log("info", t("log.edit_site_ok", { id: key.site_id }));
-        const cols = await refresh();
-        rebindSelected(cols);
+        await refresh();
         return null;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -723,7 +725,7 @@ export function useAppState() {
         return msg;
       }
     },
-    [log, refresh, rebindSelected],
+    [log, refresh],
   );
 
   const doDeleteSites = useCallback(
@@ -731,8 +733,7 @@ export function useAppState() {
       try {
         const resp = await deleteSites(keys);
         log("info", t("log.delete_site_ok", { n: resp.deleted }));
-        const cols = await refresh();
-        rebindSelected(cols);
+        await refresh();
         return null;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -740,17 +741,16 @@ export function useAppState() {
         return msg;
       }
     },
-    [log, refresh, rebindSelected],
+    [log, refresh],
   );
 
-  // #49 Phase 9：撤销某批删除 → 插回 site → refresh + 重绑 selected。返回 null=成功 / string=错误。
+  // #49 Phase 9：撤销某批删除 → 插回 site → refresh（内部重绑 selected）。返回 null=成功 / string=错误。
   const doUndoDelete = useCallback(
     async (undoId: number): Promise<string | null> => {
       try {
         const resp = await undoDelete(undoId);
         log("info", t("log.undo_delete_ok", { restored: resp.restored, requested: resp.requested }));
-        const cols = await refresh();
-        rebindSelected(cols);
+        await refresh();
         return null;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -758,7 +758,7 @@ export function useAppState() {
         return msg;
       }
     },
-    [log, refresh, rebindSelected],
+    [log, refresh],
   );
 
   const doExportSelectionIds = useCallback(

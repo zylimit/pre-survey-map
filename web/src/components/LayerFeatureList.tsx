@@ -334,6 +334,15 @@ export default function LayerFeatureList({
     if (colRaf.current != null) cancelAnimationFrame(colRaf.current);
   }, []);
 
+  // #26 review 遗留：拖动进行中组件 unmount 时，pointerdown 挂上的 document
+  // pointermove/pointerup 监听会泄漏（onUp 永远不会触发）。各 pointerdown handler
+  // 注册一个 cleanup 到此 ref，unmount 统一兜底移除 + 还原 body 样式。
+  const activeDragCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => {
+    activeDragCleanup.current?.();
+    activeDragCleanup.current = null;
+  }, []);
+
   // #48 Phase 8：列宽拖动（表头列右边界手柄）。stopPropagation 防触发 header 窗口拖动/行点击。
   const onColResizeDown = (e: React.PointerEvent, col: Col) => {
     e.preventDefault();
@@ -356,6 +365,7 @@ export default function LayerFeatureList({
       document.removeEventListener("pointerup", onUp);
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
+      if (activeDragCleanup.current === cleanup) activeDragCleanup.current = null;
       if (colRaf.current != null) { cancelAnimationFrame(colRaf.current); colRaf.current = null; }
       if (pending != null) {
         const w = pending;
@@ -365,6 +375,14 @@ export default function LayerFeatureList({
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
+    // unmount 兜底注册（onUp 正常触发后自清）
+    const cleanup = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+    activeDragCleanup.current = cleanup;
   };
 
   // #48 Phase 8：双击列手柄 → 清掉该列手动宽，还原 #31 自动等比（Excel 双击惯例）
@@ -399,11 +417,19 @@ export default function LayerFeatureList({
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       document.body.style.userSelect = "";
+      if (activeDragCleanup.current === cleanup) activeDragCleanup.current = null;
       if (dragRaf.current != null) { cancelAnimationFrame(dragRaf.current); dragRaf.current = null; }
       if (pending) setPos(pending);
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
+    // unmount 兜底注册（onUp 正常触发后自清）
+    const cleanup = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.body.style.userSelect = "";
+    };
+    activeDragCleanup.current = cleanup;
   };
 
   // #43：八方向拉伸。含 w/n 时锚点在对侧 → 同步改 pos.left/top（坑1）；都走 clamp。
@@ -439,6 +465,7 @@ export default function LayerFeatureList({
       document.removeEventListener("pointerup", onUp);
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
+      if (activeDragCleanup.current === cleanup) activeDragCleanup.current = null;
       if (resizeRaf.current != null) { cancelAnimationFrame(resizeRaf.current); resizeRaf.current = null; }
       if (pending) {
         setSize({ w: pending.w, h: pending.h });
@@ -449,6 +476,14 @@ export default function LayerFeatureList({
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
+    // unmount 兜底注册（onUp 正常触发后自清）
+    const cleanup = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+    activeDragCleanup.current = cleanup;
   };
 
   // ─── 可视区切片（content-Y = HEAD_H + i*ROW_H，故窗口先扣 HEAD_H）────────────

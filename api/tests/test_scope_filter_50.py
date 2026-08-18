@@ -23,7 +23,7 @@ from auth.scopes import (
     validate_scope_node,
     visible_scopes,
 )
-from routers import exports, imports, lessors, roads, sites
+from routers import exports, imports, roads, sites
 from routers.exports import SelectionBody, SelectionIdsBody, export_all, export_selection, export_selection_ids
 from routers.imports import import_file
 from routers.lessors import list_lessors
