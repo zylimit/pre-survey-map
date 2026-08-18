@@ -29,19 +29,15 @@ _Last updated: 2026-08-18_
 - 2026-05-29: 主基准区域「先入为主」固化策略确立
 
 ## TODO（权威待办清单）
-- [P1][OPEN][#2] 后端测试基建常态化收尾：pytest 已固化（python:3.12-slim 容器跑测为常态方式，tester 全程在用）；剩余 ruff 未装（Context：api/tests/）
-- [P1][OPEN][#3] `.claude` 架构改进 #2：流程三处重复 → 单一事实源（剩四步走/设计优先级）（Context：sitemaster-config）
-- [P1][OPEN][#4] `.claude` 架构改进 #4：纸面纪律可机械校验项下沉为 hook；建议给 mark-review-needed hook 加路径过滤（只对 api/ web/ 下改动标记 review，避免 /tmp 下临时脚本误触发）（Context：sitemaster-config）
-- [P2][OPEN][#5] `.claude` 架构改进 #5：CLAUDE.md 瘦身 + Sub-Agent 模型分级（Context：sitemaster-config）
-- [P2][OPEN][#6] V2 候选评估：双工作区 / 多人协同 / AI能力 / 单要素删除 / 邮件派工
-- [P2][OPEN][#35] api/ 存量平铺文件整体重构为 feature 包（用户反馈模块化方向，#50 新代码已执行，存量待整理）（Context：api/）
-- [P2][OPEN][#36] deploy.sh _cloud_reset_db TRUNCATE 清单补 RBAC 4 表 + README 陈旧描述修订（Context：deploy/）
-- [P2][OPEN][#26] #48/#49 遗留 backlog：列宽 unmount 未移除 document listeners / rebindSelected 全路径覆盖（#48 Phase 8 reviewer 遗留，未阻断入库）（Context：web/src/components/LayerFeatureList）
+- [P1][OPEN][#3] `.claude` 架构改进 #2：流程三处重复 → 单一事实源（剩四步走/设计优先级）（配置库事项，不阻塞本仓；Context：sitemaster-config）
+- [P1][OPEN][#4] `.claude` 架构改进 #4：纸面纪律可机械校验项下沉为 hook；建议给 mark-review-needed hook 加路径过滤（只对 api/ web/ 下改动标记 review，避免 /tmp 下临时脚本误触发）（配置库事项，不阻塞本仓；Context：sitemaster-config）
+- [P2][OPEN][#5] `.claude` 架构改进 #5：CLAUDE.md 瘦身 + Sub-Agent 模型分级（配置库事项，不阻塞本仓；Context：sitemaster-config）
 
 ## In Progress
-- [P1][DOING][#7] `.claude` 框架架构改进（配置库演进中，#1/#3 已完成，#2/#4/#5 待续）（Context：sitemaster-config）
+- [P1][DOING][#7] `.claude` 框架架构改进（本仓已迁移 .opencode；#3/#4/#5 属 sitemaster-config 配置库事项，与本仓代码无关，不阻塞本仓）（Context：sitemaster-config）
 
 ## Done（最近完成放前面）
+- 2026-08-18: [#38] backlog 全清（#36/#26/#2/#35/#6 五连 DONE）——#36 deploy reset 清单补 RBAC 4 表+site_delete_undo（review 顺手抓出同类遗漏）+README 修订；#26 前端拖拽 document listeners unmount cleanup（三 handler 配平）+rebindSelected 收敛进 refresh（3 处显式调用→0，结构性免疫）；#2 ruff==0.16.3 引入+零风险修复 10 条（存量 118 条列清单不修：UP045×82 大头）；#35 api/ 平铺→feature 包大重构（11 包：core/geo/audit/backups/restore/baseline/imports/sites/roads/lessors/exports，routers/ 消除，纯搬迁零逻辑改动，reviewer 六路攻击击不破+亲跑 151 passed）；#6 V2 评估落 Spec（双工作区搁置/多人冲突不做/单要素删除关闭/邮件派工=最有价值候选/工作空间+点聚合+模糊去重等真实信号）（evidence：commits 09cf8c3 + 17e1c47 + c9c71c9）
 - 2026-08-18: [#37] P0 测试债清零 + 一处缺陷 red-locks 修复——tester 独立补 #47 圆形框选回归测试 17 条（fromCircle 64 段夹具保真/GEOS 严格包含语义含边界排除/全链路+审计不记几何+scope 受限路径；新增 shapely==2.0.6 依赖做不连库的空间谓词代理）（evidence：commit 2a7c942）；tester 顺带发现 export_selection polygon 缺 coordinates 下沉 DB 500 缺陷 → 红测试 3 条锁定 → implementer 修绿（应用层 400 校验）（evidence：commit 674666d）；全量 151 passed/1 skipped；已推远端
 - 2026-08-18: [#34] #50 RBAC 六 Phase 全流程完成入库——Phase 10 数据层 4 表（e726262）/ Phase 11 认证 api/auth 包 login+logout+me+change-password+401 中间件+滑动 token+5 次锁定（315c39a）/ Phase 12 admin 包 users/roles CRUD+permissions/scopes 门控全落点（f83316f）/ Phase 13 前端登录页+apiFetch token 管线+401 拦截+启动闸门+强制改密（51663a1）/ Phase 14 AdminModal 四 tab+ScopeTree 三态权限树（5e118d9）/ Phase 15 前端 scopes.ts 全链路门控+3×ESC/3×B/mangosv5 连根拔除+审计补 5 事件+username 列（91e8656）+ V4 部署接线/文档（cd5ef35）；每 Phase 走 implementer→code-reviewer→修复闭环；tester 独立全量回归 131 passed/1 skipped（test_auth_50 16 + test_admin_50 29 + test_scope_filter_50 38 新增，既有零回归）；deployer 重打镜像 + V4 迁移实测幂等（内网 v1.0.6 直升路径验证）；主 Agent 独立验收冒烟全过（admin login 200+must_change_password / 建 Globe PM 角色+用户 / 非 admin 调 admin 接口 403 / 无 danger 调清基线 403 / 审计 login 带 username / web 产物含 token 管线 / 无 token /api/sites 401）（evidence：commit e726262..cd5ef35 + 本机 Docker 部署 2026-08-18）
 - 2026-08-18: [#32] #50 需求文档层完成：Product-Spec.md（F22 节 + F19/F21 收编注记 + V1 边界认证行 + V2 候选认证条 + #48 权限条 + Toolbar [⚙管理]）+ Product-Spec-CHANGELOG.md（#50 条目）已更新；代码尚未实现（evidence：Product-Spec.md / Product-Spec-CHANGELOG.md）
@@ -78,6 +74,7 @@ _Last updated: 2026-08-18_
 - Assumption：v1.0.6 离线包 api 脚本已内置 V2+V3 幂等迁移，内网服务器从 v1.0.4 直升 v1.0.6 可安全执行（Confidence：High）
 
 ## Notes（简要要点）
+- 2026-08-18: review 发现的重复犯错模式——TRUNCATE reset 清单连续漏新表（V3 site_delete_undo、V4 RBAC 4 表），根因=清单硬编码；长期解法候选：information_schema 动态枚举或建表登记（记 feedback 或留 Notes 供进化引擎扫描）
 - 2026-08-18: 用户反馈「模块化分包」已记录 feedback（.opencode/feedback/feature-modular-package-structure.md）——#50 新代码落地为 api/auth/ + api/admin/ + web/src/components/admin/ 包结构；存量老文件平铺整体重构记 backlog（TODO #35）
 - 2026-08-18: #50 review 接受项留痕——登录锁定 IP 键可被 XFF 轮换绕过（符合 Spec「内网够用即止」威胁模型，已记 DEV-PLAN）；export-only 角色列表框无法勾选（多选列绑 edit_delete，spec 字面如此，框选导出可用）
 - 2026-08-18: fast-mode 120h 已开（用户拍板全速开发，到期自动失效）
