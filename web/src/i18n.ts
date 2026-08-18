@@ -126,7 +126,6 @@ const en = {
   "admin.perm.danger":             "Danger Ops",
   "admin.roles.delete.confirm.title": "Delete Role",
   "admin.roles.delete.confirm.body":  "Delete role [{name}]?\nThis cannot be undone.",
-  "admin.backup.gate.hint":        "Enter the backup password to continue",
   // 后端 admin detail（api/admin/*.py）双语映射；未匹配串直出原文
   "admin.err.username_required":   "Username is required",
   "admin.err.username_exists":     "Username [{name}] already exists",
@@ -140,7 +139,7 @@ const en = {
   "admin.err.role_in_use":         "Role still has {n} user(s) — migrate them first",
   "admin.err.invalid_scope":       "Invalid scope node",
   "admin.err.invalid_perms":       "Invalid permission key",
-
+  "admin.err.forbidden":           "You do not have permission to perform this operation",
   // MapView basemap labels + drag
   "map.basemap.esri":      "Esri Sat",
   "map.basemap.google":    "Google Sat",
@@ -423,8 +422,6 @@ const en = {
 
   // F19 Audit (Spec V1.x #23)
   "audit.title":                       "Audit Log",
-  "audit.password":                    "Audit password",
-  "audit.password_wrong":              "Wrong password",
   "audit.loading":                     "Loading...",
   "audit.empty":                       "No audit records",
   "audit.total":                       "Total: {n}",
@@ -443,6 +440,7 @@ const en = {
   "audit.pager.next":                  "Next",
   "audit.pager.last":                  "Last",
   "audit.col.ts":                      "Time",
+  "audit.col.username":                "User",
   "audit.col.action":                  "Action",
   "audit.col.details":                 "Details",
   "audit.col.ip":                      "IP",
@@ -461,6 +459,11 @@ const en = {
   "audit.action.rp_rollback":          "RP Rollback",
   "audit.action.rp_undo_last_import":  "Undo Last Import",
   "audit.action.audit_log_export":     "Audit Export",
+  "audit.action.login":                "Sign In",
+  "audit.action.login_failed":         "Sign-in Failed",
+  "audit.action.logout":               "Sign Out",
+  "audit.action.user_manage":          "User Mgmt",
+  "audit.action.role_manage":          "Role Mgmt",
 } as const;
 
 const zh: Record<keyof typeof en, string> = {
@@ -572,7 +575,6 @@ const zh: Record<keyof typeof en, string> = {
   "admin.perm.danger":             "高危操作",
   "admin.roles.delete.confirm.title": "删除角色",
   "admin.roles.delete.confirm.body":  "删除角色 [{name}]？\n此操作不可撤销。",
-  "admin.backup.gate.hint":        "请输入备份密码以继续",
   // 后端 admin detail（api/admin/*.py）双语映射；未匹配串直出原文
   "admin.err.username_required":   "用户名不能为空",
   "admin.err.username_exists":     "用户名 [{name}] 已存在",
@@ -586,6 +588,7 @@ const zh: Record<keyof typeof en, string> = {
   "admin.err.role_in_use":         "角色仍挂载 {n} 个用户，请先迁移用户",
   "admin.err.invalid_scope":       "非法 scope 节点",
   "admin.err.invalid_perms":       "非法权限键",
+  "admin.err.forbidden":           "无权限执行此操作",
 
   // MapView basemap labels + drag
   "map.basemap.esri":      "Esri 卫星",
@@ -857,8 +860,6 @@ const zh: Record<keyof typeof en, string> = {
   "lfl.col.resize":              "拖动调整列宽 · 双击还原自动",
 
   "audit.title":                       "审计日志",
-  "audit.password":                    "请输入审计密码",
-  "audit.password_wrong":              "密码错误",
   "audit.loading":                     "加载中...",
   "audit.empty":                       "暂无审计记录",
   "audit.total":                       "共 {n} 条",
@@ -877,6 +878,7 @@ const zh: Record<keyof typeof en, string> = {
   "audit.pager.next":                  "下一页",
   "audit.pager.last":                  "末页",
   "audit.col.ts":                      "时间",
+  "audit.col.username":                "用户",
   "audit.col.action":                  "操作",
   "audit.col.details":                 "详情",
   "audit.col.ip":                      "IP",
@@ -895,6 +897,11 @@ const zh: Record<keyof typeof en, string> = {
   "audit.action.rp_rollback":          "回滚",
   "audit.action.rp_undo_last_import":  "撤销上次导入",
   "audit.action.audit_log_export":     "审计日志导出",
+  "audit.action.login":                "登录",
+  "audit.action.login_failed":         "登录失败",
+  "audit.action.logout":               "登出",
+  "audit.action.user_manage":          "用户管理",
+  "audit.action.role_manage":          "角色管理",
 };
 
 // ---------- 模块级状态 ----------

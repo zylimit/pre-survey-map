@@ -21,7 +21,7 @@ function mapAuthErr(detail: string, tFn: TFn, ctx: "login" | "pw"): string {
 
 /**
  * #50 Phase 13 · 登录页 + 首登强制改密 Modal（Spec F22「登录」节）
- * 视觉对齐现有 modal/audit-pwd 惯例，全部走 theme.css 变量（双主题自适应）。
+ * 视觉对齐现有 modal 惯例，全部走 theme.css 变量（双主题自适应）。
  */
 
 interface LoginProps {

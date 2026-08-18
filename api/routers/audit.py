@@ -61,6 +61,7 @@ def _row_to_dict(r) -> dict[str, Any]:
         "session_id": r["session_id"],
         "ip": r["ip"],
         "user_agent": r["user_agent"],
+        "username": r["username"],   # #50 Phase 15：审计表「用户」列（Phase 10 已加列，此处透出）
         "action": r["action"],
         "details": r["details"],
         "result": r["result"],

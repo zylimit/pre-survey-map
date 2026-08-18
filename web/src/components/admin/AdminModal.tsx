@@ -5,7 +5,7 @@
  * 审计/备份 tab 内嵌复用现有 AuditModal / BackupRestoreDialog（embedded 模式，逻辑不动）。
  * ESC / 点遮罩可关（非强制改密，正常 Modal 行为）。
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useT } from "../../i18n";
 import AuditModal from "../AuditModal";
 import BackupRestoreDialog from "../BackupRestoreDialog";
@@ -35,6 +35,8 @@ export function mapAdminErr(detail: string, tFn: TFn): string {
   if (d === "password exceeds 72 bytes") return tFn("pw.err.too_long");
   if (d.includes("非法 scope")) return tFn("admin.err.invalid_scope");
   if (d.includes("非法权限键")) return tFn("admin.err.invalid_perms");
+  // #50 Phase 15（Phase 14 review Low 修复）：后端 403（require_admin/require_perm）双语透出
+  if (d.includes("forbidden")) return tFn("admin.err.forbidden");
   return detail;
 }
 
@@ -55,10 +57,11 @@ interface Props {
 export default function AdminModal({ onClose, onRestored }: Props) {
   const tFn = useT();
   const [tab, setTab] = useState<TabKey>("users");
-  // 备份 tab 的还原密码门（后端 restore 仍校验共享密码；Phase 15 随隐藏入口一并拆除）
-  const [backupPwd, setBackupPwd] = useState<string | null>(null);
+  // #50 Phase 15：备份密码门已拆除——admin-only 门控即是防线，备份 tab 直接进内容
 
-  // ESC 关闭（ForcePasswordModal 那种关不掉的除外——这是正常 Modal）
+  // ESC 关闭（ForcePasswordModal 那种关不掉的除外——这是正常 Modal）。
+  // Phase 15（Phase 14 review Low 修复）：子 Modal（重置密码/确认框）内 ESC 已
+  // stopPropagation，不会穿透误关本 Modal。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -92,59 +95,10 @@ export default function AdminModal({ onClose, onRestored }: Props) {
           {tab === "roles" && <RolesTab />}
           {tab === "audit" && <AuditModal embedded />}
           {tab === "backup" && (
-            backupPwd != null ? (
-              <BackupRestoreDialog
-                embedded
-                password={backupPwd}
-                onRestored={onRestored}
-              />
-            ) : (
-              <BackupPasswordGate onPass={setBackupPwd} />
-            )
+            <BackupRestoreDialog embedded onRestored={onRestored} />
           )}
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * 备份还原密码门（内联版 AuditPasswordPrompt——共享密码 mangosv5 是 #42 遗留，
- * 后端 POST /api/backups/{id}/restore 仍校验；Phase 15 拆隐藏入口时一并移除）。
- */
-const BACKUP_PASSWORD = "mangosv5";
-
-function BackupPasswordGate({ onPass }: { onPass: (pwd: string) => void }) {
-  const tFn = useT();
-  const [value, setValue] = useState("");
-  const [error, setError] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  const submit = () => {
-    if (value === BACKUP_PASSWORD) {
-      onPass(value);
-      return;
-    }
-    setError(true);
-  };
-
-  return (
-    <form
-      className="backup-gate"
-      onSubmit={e => { e.preventDefault(); submit(); }}
-    >
-      <div className="backup-gate-hint">{tFn("admin.backup.gate.hint")}</div>
-      <input
-        ref={inputRef}
-        type="password"
-        value={value}
-        onChange={e => { setValue(e.target.value); setError(false); }}
-        placeholder={tFn("audit.password")}
-        autoComplete="off"
-      />
-      {error && <div className="login-err">{tFn("audit.password_wrong")}</div>}
-    </form>
   );
 }

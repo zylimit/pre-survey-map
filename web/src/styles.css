@@ -2094,43 +2094,6 @@ button, input, select, textarea {
   padding: 0 10px;
 }
 
-/* ---- 审计密码框 ---- */
-
-.audit-pwd {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  padding: 20px;
-  box-shadow: var(--shadow-modal);
-  min-width: 280px;
-}
-.audit-pwd input {
-  width: 100%;
-  background: var(--bg-input);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  font-size: 14px;
-  outline: none;
-}
-.audit-pwd input:focus {
-  border-color: var(--accent);
-}
-.audit-pwd-err {
-  margin-top: 8px;
-  color: var(--error);
-  font-size: 12px;
-}
-.audit-pwd-shake {
-  animation: audit-shake 400ms ease;
-}
-@keyframes audit-shake {
-  0%, 100% { transform: translateX(0); }
-  10%, 30%, 50%, 70%, 90% { transform: translateX(-6px); }
-  20%, 40%, 60%, 80% { transform: translateX(6px); }
-}
-
 /* ---- #50 Phase 13 登录页 / 启动画面 / 强制改密 ---- */
 
 .boot-splash {
@@ -2576,32 +2539,4 @@ button, input, select, textarea {
 .backup-embed .restore-list {
   flex: 1;
   overflow: auto;
-}
-
-/* 备份还原密码门（内联版 audit-pwd，Phase 15 随隐藏入口拆除） */
-.backup-gate {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 24px 16px;
-  max-width: 320px;
-}
-
-.backup-gate-hint {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.backup-gate input {
-  background: var(--bg-input);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px 12px;
-  font-size: 13px;
-  outline: none;
-}
-
-.backup-gate input:focus {
-  border-color: var(--accent);
 }

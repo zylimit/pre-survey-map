@@ -20,7 +20,10 @@ export default function ConfirmDialog({
 
   return (
     <div className="modal-mask">
-      <div className="modal confirm-modal">
+      <div
+        className="modal confirm-modal"
+        onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); onCancel(); } }}
+      >
         <div className="modal-header">
           <h2>{title}</h2>
         </div>

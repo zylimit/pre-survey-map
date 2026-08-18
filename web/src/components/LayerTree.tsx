@@ -24,6 +24,10 @@ import type { Phase, ViewLayerTarget } from "../state";
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Download, Eye } from "lucide-react";
 import { useT } from "../i18n";
 import { STATUS_COLOR, statusBucket } from "../utils";
+import {
+  categoryVisible, lessorVisible, operatorVisible, roadVisible, siteRootVisible,
+  type ScopeCtx,
+} from "../scopes";
 import ResizeHandle from "./ResizeHandle";
 import SiteShapeIcon from "./SiteShapeIcon";
 
@@ -64,6 +68,10 @@ interface Props {
   phase: Phase;
   onResize: (px: number) => void;
   onResizeEnd: () => void;
+  // #50 Phase 15：数据权限（无权限文件夹/图层/样式节点不渲染）+ 功能权限（import 门控）
+  scopes: string[];
+  isAdmin: boolean;
+  canImport: boolean;
 }
 
 // ─── 组件 ────────────────────────────────────────────────────────────────────
@@ -73,9 +81,13 @@ function LayerTree({
   selectedId, hiddenIds,
   onSetKindVisible, onImportLayer, onViewLayer, phase,
   onResize, onResizeEnd,
+  scopes, isAdmin, canImport,
 }: Props) {
   const tFn = useT();
   const busy = phase !== "idle";
+
+  // #50 Phase 15：scope 判定上下文（不可见节点的子树整棵不渲染，计数与可见性一致）
+  const scopeCtx: ScopeCtx = useMemo(() => ({ isAdmin, scopes }), [isAdmin, scopes]);
 
   // 展开状态：flat key→bool（默认：Site 根 + Road + Lessor 展开；Operator 折叠）
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
@@ -306,16 +318,19 @@ function LayerTree({
         {/* #27-2：两按钮紧跟文字后，默认隐藏，hover 行才显示（CSS）；计数靠右 */}
         <span className="folder-title layer-label">{label}</span>
         <div className="layer-actions">
-          {/* #32：两按钮改纯 lucide 图标，文字进 title/aria-label */}
-          <button
-            className="layer-btn layer-btn-icon"
-            disabled={busy}
-            onClick={() => openPicker(stamp)}
-            title={tFn("lt.btn.import_layer.tip")}
-            aria-label={tFn("lt.btn.import_layer")}
-          >
-            <Download size={14} strokeWidth={1.8} />
-          </button>
+          {/* #32：两按钮改纯 lucide 图标，文字进 title/aria-label；
+              #50 Phase 15：无 import 权限 → [导入图层] 不渲染 */}
+          {canImport && (
+            <button
+              className="layer-btn layer-btn-icon"
+              disabled={busy}
+              onClick={() => openPicker(stamp)}
+              title={tFn("lt.btn.import_layer.tip")}
+              aria-label={tFn("lt.btn.import_layer")}
+            >
+              <Download size={14} strokeWidth={1.8} />
+            </button>
+          )}
           <button
             className="layer-btn layer-btn-view layer-btn-icon"
             disabled={busy || cnt === 0}
@@ -419,10 +434,14 @@ function LayerTree({
       />
       <div className="tree-scroll">
 
-        {/* ══ 📁 Site ══ */}
+        {/* ══ 📁 Site ══（#50 Phase 15：无 site 系 scope → 整棵不渲染） */}
+        {siteRootVisible(scopeCtx) && (
+          <>
         <FolderRow nodeKey="site" label={tFn("lt.tree.site")} depth={0} />
 
         {isOpen("site") && OPERATORS.map(op => {
+          // #50 Phase 15：无权限运营商子树整棵不渲染
+          if (!operatorVisible(scopeCtx, op)) return null;
           const opKey = op;
           const opIds = siteMap.get(opKey) ?? [];
           // i18n key: "lt.tree.op.Globe" etc.（#36：📁 抽成独立 Folder 图标列，文字去前缀）
@@ -434,6 +453,8 @@ function LayerTree({
               <FolderRow nodeKey={opKey} label={opLabel} depth={1} />
 
               {isOpen(opKey) && CATEGORIES.map(cat => {
+                // #50 Phase 15：无权限类别子树整棵不渲染（图层/样式随子树消失）
+                if (!categoryVisible(scopeCtx, op, cat)) return null;
                 const catKey = `${op}/${cat}`;
                 const catIds = siteMap.get(catKey) ?? [];
                 const catLabelKey = cat === "存量" ? "lt.tree.cat.legacy"
@@ -516,8 +537,12 @@ function LayerTree({
             </div>
           );
         })}
+          </>
+        )}
 
-        {/* ══ 🔺 Road ══ */}
+        {/* ══ 🔺 Road ══（#50 Phase 15：无 road scope → 整层不渲染） */}
+        {roadVisible(scopeCtx) && (
+          <>
         <LayerRow
           nodeKey="road"
           label={tFn("lt.tree.road")}
@@ -536,8 +561,12 @@ function LayerTree({
             highlighted={hl === "road/__style__"}
           />
         )}
+          </>
+        )}
 
-        {/* ══ 🔺 Lessor ══ */}
+        {/* ══ 🔺 Lessor ══（#50 Phase 15：无 lessor scope → 整层不渲染） */}
+        {lessorVisible(scopeCtx) && (
+          <>
         <LayerRow
           nodeKey="lessor"
           label={tFn("lt.tree.lessor")}
@@ -562,6 +591,8 @@ function LayerTree({
             />
           );
         })}
+          </>
+        )}
 
       </div>
       <ResizeHandle

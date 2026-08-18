@@ -6,16 +6,15 @@ import ConfirmDialog from "./ConfirmDialog";
 /**
  * #42 · 自动备份恢复 Modal（仿 RestorePointDialog）。
  * 列出 reason='auto_backup' 的备份（时间倒序 + 三类计数）→ 选一个 → 二次确认 → 还原。
- * password 由 3×B 密码门验证后传入（后端 restore 仍二次校验 mangosv5）。
+ * #50 Phase 15：共享还原密码已拆除（后端 admin-only 门控即是防线），唯一入口 = 管理 Modal 备份 tab。
  */
 interface Props {
-  password: string;
   onClose?: () => void;
   onRestored: () => void;
   embedded?: boolean;   // #50 Phase 14：嵌入 AdminModal 作为 tab（无遮罩/标题/关闭）
 }
 
-export default function BackupRestoreDialog({ password, onClose, onRestored, embedded }: Props) {
+export default function BackupRestoreDialog({ onClose, onRestored, embedded }: Props) {
   const tFn = useT();
   const { lang } = useLang();
   const [backups, setBackups] = useState<Backup[]>([]);
@@ -37,7 +36,7 @@ export default function BackupRestoreDialog({ password, onClose, onRestored, emb
   const handleRestore = async (b: Backup) => {
     setBusy(true);
     try {
-      await restoreBackup(b.id, password);
+      await restoreBackup(b.id);
       await load();
       onRestored();
     } finally {

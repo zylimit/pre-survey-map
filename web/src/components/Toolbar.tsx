@@ -11,6 +11,10 @@ interface Props {
   username: string;     // #50：当前登录用户
   isAdmin: boolean;     // #50：[⚙ 管理] 仅 admin 渲染
   onOpenAdmin: () => void;  // #50 Phase 14：打开管理 Modal
+  // #50 Phase 15：功能权限门控（App 已按 is_admin 放行折算好传入）
+  canExport: boolean;      // export → [导出 KMZ] 下拉
+  canEditDelete: boolean;  // edit_delete → [删除历史]
+  canDanger: boolean;      // danger → [清除基线] / [恢复点]
   onLogout: () => void;
   onStartDraw: (mode: DrawMode) => void;
   onClearSelection: () => void;
@@ -26,7 +30,7 @@ interface Props {
 
 export default function Toolbar({
   busy, drawMode, hasSelection, npRadiusM,
-  username, isAdmin, onOpenAdmin, onLogout,
+  username, isAdmin, onOpenAdmin, canExport, canEditDelete, canDanger, onLogout,
   onStartDraw, onClearSelection, onExportAll, onExportSelection,
   onRefresh, onSearch, onClearBaseline, onOpenRestorePoints, onOpenDeleteHistory, onChangeNpRadius,
 }: Props) {
@@ -75,7 +79,9 @@ export default function Toolbar({
   return (
     <div className="toolbar" ref={rootRef}>
       {/* F20 Phase 5：顶部全局 [📁 导入] 按钮已移除——导入唯一入口下沉到图层
-          [导入图层]（Phase 3 接通）。地图拖拽导入（onDropFiles）仍保留为 F1 旁路。 */}
+          [导入图层]（Phase 3 接通）。地图拖拽导入（onDropFiles）仍保留为 F1 旁路。
+          #50 Phase 15：无 export 权限 → 整个导出下拉不渲染 */}
+      {canExport && (
       <div className="dropdown">
         <button
           onClick={() => setOpenMenu(openMenu === "export" ? null : "export")}
@@ -98,6 +104,7 @@ export default function Toolbar({
           </div>
         )}
       </div>
+      )}
 
       <div className="dropdown">
         <button
@@ -159,24 +166,31 @@ export default function Toolbar({
         </button>
       </div>
 
+      {/* #50 Phase 15：danger 权限门控 [清除基线] / [恢复点]；edit_delete 门控 [删除历史] */}
+      {canDanger && (
       <button
         className="danger"
         disabled={busy}
         onClick={onClearBaseline}
         title={tFn("tb.clear.tip")}
       >{tFn("tb.clear.label")}</button>
+      )}
 
+      {canDanger && (
       <button
         onClick={onOpenRestorePoints}
         disabled={busy}
         title={tFn("tb.restore.tip")}
       >{tFn("tb.restore.label")}</button>
+      )}
 
+      {canEditDelete && (
       <button
         onClick={onOpenDeleteHistory}
         disabled={busy}
         title={tFn("tb.delhist.tip")}
       >{tFn("tb.delhist.label")}</button>
+      )}
 
       {/* #50：当前用户 + [⚙ 管理]（仅 admin，Phase 14 已接通 AdminModal）+ [登出] */}
       <span className="tb-username" title={username}>{username}</span>

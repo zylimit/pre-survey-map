@@ -20,6 +20,12 @@ const ACTIONS: AuditAction[] = [
   "restore_point_rollback",
   "restore_point_undo_last_import",
   "audit_log_export",
+  // #50 Phase 15：RBAC 新事件
+  "login",
+  "login_failed",
+  "logout",
+  "user_manage",
+  "role_manage",
 ];
 
 const ACTION_KEY: Record<AuditAction, I18nKey> = {
@@ -35,6 +41,11 @@ const ACTION_KEY: Record<AuditAction, I18nKey> = {
   restore_point_rollback:          "audit.action.rp_rollback",
   restore_point_undo_last_import:  "audit.action.rp_undo_last_import",
   audit_log_export:                "audit.action.audit_log_export",
+  login:                           "audit.action.login",
+  login_failed:                    "audit.action.login_failed",
+  logout:                          "audit.action.logout",
+  user_manage:                     "audit.action.user_manage",
+  role_manage:                     "audit.action.role_manage",
 };
 
 const PAGE_SIZE = 50;
@@ -166,6 +177,7 @@ export default function AuditModal({ onClose, embedded }: Props) {
             <thead>
               <tr>
                 <th className="col-ts">{tFn("audit.col.ts")}</th>
+                <th className="col-username">{tFn("audit.col.username")}</th>
                 <th className="col-action">{tFn("audit.col.action")}</th>
                 <th className="col-details">{tFn("audit.col.details")}</th>
                 <th className="col-ip">{tFn("audit.col.ip")}</th>
@@ -176,10 +188,10 @@ export default function AuditModal({ onClose, embedded }: Props) {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={7} className="audit-empty">{tFn("audit.loading")}</td></tr>
+                <tr><td colSpan={8} className="audit-empty">{tFn("audit.loading")}</td></tr>
               )}
               {!loading && items.length === 0 && (
-                <tr><td colSpan={7} className="audit-empty">{tFn("audit.empty")}</td></tr>
+                <tr><td colSpan={8} className="audit-empty">{tFn("audit.empty")}</td></tr>
               )}
               {!loading && items.map(it => {
                 const open = expanded === it.id;
@@ -192,6 +204,7 @@ export default function AuditModal({ onClose, embedded }: Props) {
                       onClick={() => setExpanded(open ? null : it.id)}
                     >
                       <td className="col-ts">{fmtTs(it.ts)}</td>
+                      <td className="col-username">{it.username ?? "—"}</td>
                       <td className="col-action">
                         <span className={`audit-badge audit-act-${it.action}`}>
                           {fmtAction(it.action)}
@@ -207,7 +220,7 @@ export default function AuditModal({ onClose, embedded }: Props) {
                     </tr>
                     {open && (
                       <tr className="audit-row-detail">
-                        <td colSpan={7}>
+                        <td colSpan={8}>
                           <pre>{JSON.stringify(it.details ?? {}, null, 2)}</pre>
                           {it.error_msg && (
                             <pre className="audit-err">{it.error_msg}</pre>

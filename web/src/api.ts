@@ -389,11 +389,10 @@ export async function listBackups(): Promise<Backup[]> {
   return res.json();
 }
 
-export async function restoreBackup(id: number, password: string): Promise<void> {
+// #50 Phase 15：共享还原密码已拆除（端点 admin-only），restore 不再带请求体
+export async function restoreBackup(id: number): Promise<void> {
   const res = await apiFetch(`/api/backups/${id}/restore`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
@@ -412,7 +411,13 @@ export type AuditAction =
   | "restore_point_rollback"
   | "restore_point_undo_last_import"
   | "clear_baseline"
-  | "audit_log_export";
+  | "audit_log_export"
+  // #50 Phase 15：RBAC 新事件
+  | "login"
+  | "login_failed"
+  | "logout"
+  | "user_manage"
+  | "role_manage";
 
 export interface AuditLogItem {
   id: number;
@@ -420,6 +425,7 @@ export interface AuditLogItem {
   session_id: string | null;
   ip: string | null;
   user_agent: string | null;
+  username: string | null;   // #50 Phase 10 起 audit_log.username；未登录请求记空
   action: AuditAction;
   details: Record<string, unknown> | null;
   result: string;

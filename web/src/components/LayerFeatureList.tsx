@@ -22,6 +22,7 @@ import type { Feature, FeatureCollection, SiteKey, SitePatch } from "../api";
 import type { ViewLayerTarget } from "../state";
 import { useT } from "../i18n";
 import { nameOf, STATUS_COLOR, siteStatusColor, statusBucket } from "../utils";
+import { targetVisible, type ScopeCtx } from "../scopes";
 import ConfirmDialog from "./ConfirmDialog";
 
 // #48：site 增删改/勾选导出列宽（固定，不参与 #31 等比拉伸；列宽可拖留到 Phase 8）
@@ -137,6 +138,11 @@ interface Props {
   onUpdateSite: (key: SiteKey, patch: SitePatch) => Promise<string | null>;
   onDeleteSites: (keys: SiteKey[]) => Promise<string | null>;
   onExportSites: (keys: SiteKey[]) => void;
+  // #50 Phase 15：数据权限双保险（不可见图层入口不渲染）+ 功能权限门控
+  scopes: string[];
+  isAdmin: boolean;
+  canExport: boolean;      // export → [导出选中]
+  canEditDelete: boolean;  // edit_delete → 多选列 / [编辑] / [删除选中]
 }
 
 // 取 site 复合主键
@@ -168,12 +174,22 @@ export default function LayerFeatureList({
   target, anchor, sites, roads, lessors,
   selectedId, onPick, onClose,
   onUpdateSite, onDeleteSites, onExportSites,
+  scopes, isAdmin, canExport, canEditDelete,
 }: Props) {
   const tFn = useT();
   const [filter, setFilter] = useState("");
 
+  // #50 Phase 15：scope 判定上下文；不可见图层 → 整窗不渲染（树节点已不渲染，此处双保险）
+  const scopeCtx: ScopeCtx = useMemo(() => ({ isAdmin, scopes }), [isAdmin, scopes]);
+  const layerVisible = targetVisible(scopeCtx, target);
+
   // #48：仅 site 图层渲染多选/操作/批量按钮；road/lessor 保持纯只读
+  // #50 Phase 15：多选列/[编辑]/[删除选中] 按 edit_delete 门控；[导出选中] 按 export 门控
   const isSite = target.kind === "site";
+  const showCheck = isSite && canEditDelete;
+  const showEdit = isSite && canEditDelete;
+  const showDelete = canEditDelete;
+  const showExportBtn = canExport;
   // 选中集合（key=feature id，如 "site:{id}:{option}"）。切图层 / 删除后清空。
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   // 当前编辑的 site 行（null=未在编辑）
@@ -186,8 +202,8 @@ export default function LayerFeatureList({
   const [pos, setPos] = useState(() => initialPos(anchor, computeInitSize()));
 
   const cols = colsForKind(target.kind);
-  // #48：site 多选列(前) + 操作列(后) 计入 minWidth，保横滚下限
-  const extraW = isSite ? CHECK_W + ACTION_W : 0;
+  // #48：site 多选列(前) + 操作列(后) 计入 minWidth，保横滚下限（#50：按权限门控折算）
+  const extraW = (showCheck ? CHECK_W : 0) + (showEdit ? ACTION_W : 0);
 
   // ─── #48 Phase 8：手动列宽（被拖过的列）。空=全走 #31 等比。按 kind 持久化。─────
   const [manualWidths, setManualWidths] = useState<Record<string, number>>(
@@ -473,7 +489,7 @@ export default function LayerFeatureList({
         onClick={() => onPick(f)}
         title={nameOf(f)}
       >
-        {isSite && (
+        {showCheck && (
           <span
             className="lfl-cell lfl-check"
             style={{ flex: `${CHECK_W} 0 ${CHECK_W}px` }}
@@ -502,7 +518,7 @@ export default function LayerFeatureList({
             </span>
           );
         })}
-        {isSite && (
+        {showEdit && (
           <span
             className="lfl-cell lfl-action"
             style={{ flex: `${ACTION_W} 0 ${ACTION_W}px` }}
@@ -518,6 +534,9 @@ export default function LayerFeatureList({
       </div>
     );
   };
+
+  // #50 Phase 15 双保险：无权限图层的列表入口不渲染（树节点已不渲染，正常路径不可达）
+  if (!layerVisible) return null;
 
   return (
     <div
@@ -545,20 +564,25 @@ export default function LayerFeatureList({
         />
       </div>
 
-      {/* #48：site 批量操作条（删除选中 / 导出选中）；road/lessor 不渲染 */}
-      {isSite && (
+      {/* #48：site 批量操作条（删除选中 / 导出选中）；road/lessor 不渲染；
+          #50 Phase 15：删除按 edit_delete、导出按 export 分别门控 */}
+      {isSite && (showDelete || showExportBtn) && (
         <div className="lfl-actions">
           <span className="lfl-sel-count">{tFn("lfl.sel.count", { n: selectedCount })}</span>
-          <button
-            className="lfl-act danger"
-            disabled={selectedCount === 0}
-            onClick={() => setConfirmingDelete(true)}
-          >🗑️ {tFn("lfl.del.btn")}</button>
-          <button
-            className="lfl-act"
-            disabled={selectedCount === 0}
-            onClick={() => onExportSites(selectedFeatures.map(featKey))}
-          >💾 {tFn("lfl.exp.btn")}</button>
+          {showDelete && (
+            <button
+              className="lfl-act danger"
+              disabled={selectedCount === 0}
+              onClick={() => setConfirmingDelete(true)}
+            >🗑️ {tFn("lfl.del.btn")}</button>
+          )}
+          {showExportBtn && (
+            <button
+              className="lfl-act"
+              disabled={selectedCount === 0}
+              onClick={() => onExportSites(selectedFeatures.map(featKey))}
+            >💾 {tFn("lfl.exp.btn")}</button>
+          )}
         </div>
       )}
 
@@ -575,7 +599,7 @@ export default function LayerFeatureList({
           {/* #31：列宽随窗口等比拉伸填满，minWidth=totalW 保横滚下限 */}
           <div className="lfl-table" style={{ minWidth: totalW, width: "100%" }}>
             <div className="lfl-thead" style={{ minWidth: totalW, width: "100%", height: HEAD_H }}>
-              {isSite && (
+              {showCheck && (
                 <span className="lfl-th lfl-check" style={{ flex: `${CHECK_W} 0 ${CHECK_W}px` }}>
                   <input
                     ref={selectAllRef}
@@ -599,7 +623,7 @@ export default function LayerFeatureList({
                   />
                 </span>
               ))}
-              {isSite && (
+              {showEdit && (
                 <span className="lfl-th lfl-action" style={{ flex: `${ACTION_W} 0 ${ACTION_W}px` }}>
                   {tFn("lfl.col.actions")}
                 </span>

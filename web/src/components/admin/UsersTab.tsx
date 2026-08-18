@@ -200,7 +200,11 @@ export default function UsersTab() {
 
       {resetTarget && (
         <div className="modal-mask" onClick={() => setResetTarget(null)}>
-          <div className="modal confirm-modal" onClick={e => e.stopPropagation()}>
+          <div
+            className="modal confirm-modal"
+            onClick={e => e.stopPropagation()}
+            onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); setResetTarget(null); setResetPw(""); } }}
+          >
             <div className="modal-header">
               <h2>{tFn("admin.users.reset.title", { name: resetTarget.username })}</h2>
             </div>

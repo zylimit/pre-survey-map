@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
@@ -26,6 +26,7 @@ import {
   metersToProjRadius, withAlpha, STATUS_COLOR, LAYER_COLOR,
   type ShapeKind,
 } from "../utils";
+import { filterByScope, type ScopeCtx } from "../scopes";
 
 type BasemapKey = "positron" | "osm" | "esri" | "google";
 
@@ -50,6 +51,9 @@ interface Props {
   onSelectFeature: (f: Feature | null) => void;
   onSelectionDrawn: (polygon: GeoJSONPolygon, mode: DrawMode) => void;
   onFitAll: () => void;
+  // #50 Phase 15：数据权限双保险（数据已被后端过滤，前端渲染前再按 scope 过滤一次）
+  scopes: string[];
+  isAdmin: boolean;
 }
 
 // 仅「UI chrome 色」从 theme.css 读（选中高亮 / 选区框）。
@@ -157,8 +161,14 @@ function MapView({
   sites, roads, lessors, selectedId, flyTarget,
   drawMode, selectionPolygon, hiddenIds, fitAllEpoch, layoutEpoch, npRadiusM,
   onDropDisabled, onSelectFeature, onSelectionDrawn, onFitAll,
+  scopes, isAdmin,
 }: Props) {
   const tFn = useT();
+  // #50 Phase 15：前端双保险——渲染前按 scope 过滤（site 按 operator/category，road/lessor 按类型）
+  const scopeCtx: ScopeCtx = useMemo(() => ({ isAdmin, scopes }), [isAdmin, scopes]);
+  const visSites = useMemo(() => filterByScope(scopeCtx, "site", sites), [scopeCtx, sites]);
+  const visRoads = useMemo(() => filterByScope(scopeCtx, "road", roads), [scopeCtx, roads]);
+  const visLessors = useMemo(() => filterByScope(scopeCtx, "lessor", lessors), [scopeCtx, lessors]);
   const basemapLabel: Record<BasemapKey, string> = {
     positron: "Positron",
     osm: "OSM",
@@ -308,11 +318,11 @@ function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 数据变更 → 加载到 sources + fit bounds
+  // 数据变更 → 加载到 sources + fit bounds（#50：加载的是 scope 过滤后的子集）
   useEffect(() => {
-    loadInto(sitesSrc.current, sites);
-    loadInto(roadsSrc.current, roads);
-    loadInto(lessorsSrc.current, lessors);
+    loadInto(sitesSrc.current, visSites);
+    loadInto(roadsSrc.current, visRoads);
+    loadInto(lessorsSrc.current, visLessors);
 
     if (!mapRef.current) return;
     const merged = safeMergedExtent([sitesSrc.current, roadsSrc.current, lessorsSrc.current]);
@@ -323,7 +333,7 @@ function MapView({
         duration: 400,
       });
     }
-  }, [sites, roads, lessors]);
+  }, [visSites, visRoads, visLessors]);
 
   // 选中状态变化 → 重画当前样式
   useEffect(() => {

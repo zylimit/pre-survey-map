@@ -55,7 +55,7 @@ export function compressScopes(sel: Set<string>): string[] {
   } else {
     for (const op of fullOps) out.push(`site:${op}`);
     for (const op of OPERATORS) {
-      if ((fullOps as readonly string[]).includes(op)) continue;
+      if (fullOps.includes(op)) continue;
       for (const c of CATEGORIES) {
         if (sel.has(`site:${op}:${c.node}`)) out.push(`site:${op}:${c.node}`);
       }
