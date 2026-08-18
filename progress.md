@@ -1,5 +1,5 @@
 # Project: Pre-Survey Map
-_Last updated: 2026-06-04_
+_Last updated: 2026-08-18_
 
 > 项目记忆文件。维护规则见 `.claude/CLAUDE.md [项目记忆规则]`，由 progress-recorder agent 增量维护。
 > 指令：`/record` 增量合并 · `/archive` 快照归档（条目 >100 时）· `/recap` 回顾当前状态。
@@ -9,15 +9,16 @@ _Last updated: 2026-06-04_
 - 定位：B/S 站点勘测数据统一管理平台；单一用户=勘测数据维护工程师；核心价值=避免勘测员重复跑已勘测的点
 - 技术栈：前端 OpenLayers + TS/React（`web/`）；后端 Python FastAPI + PostgreSQL/PostGIS（`api/`）；Docker 部署
 - 主基准区域算法：先入为主，一次性固化、**永不重算**；换基线唯一通道 = F14 清除基线
-- 身份识别 = IP + User-Agent + Session ID（V1 不做登录，浏览器限制）
+- ~~身份识别 = IP + User-Agent + Session ID（V1 不做登录）~~ **#50 起作废**：登录页（账号密码）+ RBAC；审计身份=真实 username + IP/UA/Session 三件套（2026-08-18）
 - 不可逆操作（导入 commit / 清除基线 / 回滚）前自动建恢复点（F17，保留最近 10 个）
 - 数据导入 V1 一次一个文件，单文件 ≤100MB
-- V1 边界（不做）：账号鉴权 / 双工作区 / 多人协同 / AI能力 / 单要素删除 / 邮件自动发送
+- V1 边界（不做）：~~账号鉴权（#50 已做）~~ / 双工作区 / 多人协同并发冲突处理（#50 只做多账号登录，后写赢）/ AI能力 / 单要素删除 / 邮件自动发送
 - 多 repo 提交隔离：本项目含两个独立 git repo——主仓 pre-survey-map（origin=https://github.com/zylimit/pre-survey-map）+ 配置库 .claude/=sitemaster-config（origin=ssh git@github.com:zylimit/sitemaster-config）。多个独立 repo 的 add/commit/push 必须各自独立执行、分别验收远程同步状态，禁止耦合进同一脚本（认证差异 ssh/https 会掩盖单点失败，造成"半成功"烂局）（2026-06-04）
 - #48 约束红线（本期禁止）：改 site_id/option 主键 / 改 operator/category/type 盖戳三列 / 凭空建点 三者本期不做（2026-06-04）
 - #49 约束：site_delete_undo 表环形队列保留最近 200 批；delete 接口去掉建恢复点（改为写 undo 表）；evict 容错 try/except（不连累主删除事务）（2026-06-04）
 
 ## Decisions（按时间追加，历史不可改）
+- 2026-08-18: #50 用户与角色权限拍板——登录页（账号+密码，bcrypt，auth_session DB token 7天滑动可吊销，非JWT）；功能权限4开关（import/export/edit_delete/danger）+ 数据权限=图层树任意文件夹节点子级继承、查看=编辑同权、无权限完全隐藏（后端SQL过滤）；仅内置 admin 角色（全权限不可删），其余角色 admin 界面手建；F19审计3×ESC / F21备份3×B 隐藏入口废除收编进 [⚙管理] Modal；并发不管后写赢；审计 15→20 类（+login/login_failed/logout/user_manage/role_manage）
 - 2026-06-04: `.claude` 抽出为独立私有配置库 sitemaster-config，纯备份/版本管理，与主仓各自演进
 - 2026-06-04: progress-recorder 采用「瘦 agent + 厚 skill」架构；progress.md 统一为八区块模板
 - 2026-06-02: 引入语义化版本号（#38），界面=镜像 tag=部署包前缀三处一致
@@ -34,12 +35,17 @@ _Last updated: 2026-06-04_
 - [P1][OPEN][#4] `.claude` 架构改进 #4：纸面纪律可机械校验项下沉为 hook；建议给 mark-review-needed hook 加路径过滤（只对 api/ web/ 下改动标记 review，避免 /tmp 下临时脚本误触发）（Context：sitemaster-config）
 - [P2][OPEN][#5] `.claude` 架构改进 #5：CLAUDE.md 瘦身 + Sub-Agent 模型分级（Context：sitemaster-config）
 - [P2][OPEN][#6] V2 候选评估：双工作区 / 多人协同 / AI能力 / 单要素删除 / 邮件派工
+- [P2][OPEN][#35] api/ 存量平铺文件整体重构为 feature 包（用户反馈模块化方向，#50 新代码已执行，存量待整理）（Context：api/）
+- [P2][OPEN][#36] deploy.sh _cloud_reset_db TRUNCATE 清单补 RBAC 4 表 + README 陈旧描述修订（Context：deploy/）
 - [P2][OPEN][#26] #48/#49 遗留 backlog：列宽 unmount 未移除 document listeners / rebindSelected 全路径覆盖（#48 Phase 8 reviewer 遗留，未阻断入库）（Context：web/src/components/LayerFeatureList）
 
 ## In Progress
 - [P1][DOING][#7] `.claude` 框架架构改进（配置库演进中，#1/#3 已完成，#2/#4/#5 待续）（Context：sitemaster-config）
 
 ## Done（最近完成放前面）
+- 2026-08-18: [#34] #50 RBAC 六 Phase 全流程完成入库——Phase 10 数据层 4 表（e726262）/ Phase 11 认证 api/auth 包 login+logout+me+change-password+401 中间件+滑动 token+5 次锁定（315c39a）/ Phase 12 admin 包 users/roles CRUD+permissions/scopes 门控全落点（f83316f）/ Phase 13 前端登录页+apiFetch token 管线+401 拦截+启动闸门+强制改密（51663a1）/ Phase 14 AdminModal 四 tab+ScopeTree 三态权限树（5e118d9）/ Phase 15 前端 scopes.ts 全链路门控+3×ESC/3×B/mangosv5 连根拔除+审计补 5 事件+username 列（91e8656）+ V4 部署接线/文档（cd5ef35）；每 Phase 走 implementer→code-reviewer→修复闭环；tester 独立全量回归 131 passed/1 skipped（test_auth_50 16 + test_admin_50 29 + test_scope_filter_50 38 新增，既有零回归）；deployer 重打镜像 + V4 迁移实测幂等（内网 v1.0.6 直升路径验证）；主 Agent 独立验收冒烟全过（admin login 200+must_change_password / 建 Globe PM 角色+用户 / 非 admin 调 admin 接口 403 / 无 danger 调清基线 403 / 审计 login 带 username / web 产物含 token 管线 / 无 token /api/sites 401）（evidence：commit e726262..cd5ef35 + 本机 Docker 部署 2026-08-18）
+- 2026-08-18: [#32] #50 需求文档层完成：Product-Spec.md（F22 节 + F19/F21 收编注记 + V1 边界认证行 + V2 候选认证条 + #48 权限条 + Toolbar [⚙管理]）+ Product-Spec-CHANGELOG.md（#50 条目）已更新；代码尚未实现（evidence：Product-Spec.md / Product-Spec-CHANGELOG.md）
+- 2026-08-17: [#31] v1.0.6 本机 WSL Docker 部署完成——测试卡点 tester 独立跑 48 passed/1 skipped/0 fail（python:3.12-slim 容器跑 pytest，因系统 Python 3.14 与 requirements pin 无 cp314 wheel 不兼容）；首轮 api 构建 pypi 官方源超时，改清华源 build-arg（未改项目文件）后成功；主 Agent 独立核查三件套全过（容器 Created 2026-08-17 22:20:34 晚于 commit 5bf1434 / api:8000/health 200 / web:5173 200 / 前端产物含 "1.0.6" / #49 新端点 delete-history→[] 与 undo-delete/999→404 符合预期）；本次为全新空卷 pre-survey-map-opencode_presurvey_pgdata（旧 119 条测试数据不可恢复，空库基线需重新导入）；镜像 tag 为 compose 默认 latest 未带 v1.0.6（evidence：Docker 本机 WSL 部署 2026-08-17，commit 5bf1434）
 - 2026-06-04: [#30] #49 ARM64 v1.0.6 离线包发布——deployer 打包 api 镜像 35fdb6c/web 镜像 4d42e2b（均 arm64），发布 img.mangosv5.app：presurvey-api/web-v1.0.6-20260604-183508-arm64.tar + server-deploy-api/web-v1.0.6.sh + V2+V3 迁移 sql；主 Agent 独立核查全绿（arm64 api 镜像 diff==工作树含#49码排除0.42s缓存旧码嫌疑、6链接 HEAD200、脚本含 alias+V2+V3 迁移、bash -n 通过）（evidence：commit 729acc4 + img.mangosv5.app 2026-06-04）
 - 2026-06-04: [#29] v1.0.5→v1.0.6 版本 bump 推送远端——版本 bump 至 v1.0.6（evidence：commit 729acc4 推送 origin/main）
 - 2026-06-04: [#28] #49 本机 Docker 重部署 + 受控 live 冒烟净零——deployer 本机重部署（镜像 e3cfe75，V3 迁移）；主 Agent 独立核查 infra + 受控 live 冒烟全过（delete→{deleted,undo_id}→GET delete-history 列批次→undo-delete/5 {restored:1} 三列完整→404 路径→审计 delete_site/undo_delete_site）；顺带用 F17 恢复点 34 把#49开发期丢失的1条测试 site 捞回（本机 119 条）；net-zero 归位（evidence：Docker 本机部署 2026-06-04，commit 8518b9d）
@@ -72,6 +78,12 @@ _Last updated: 2026-06-04_
 - Assumption：v1.0.6 离线包 api 脚本已内置 V2+V3 幂等迁移，内网服务器从 v1.0.4 直升 v1.0.6 可安全执行（Confidence：High）
 
 ## Notes（简要要点）
+- 2026-08-18: 用户反馈「模块化分包」已记录 feedback（.opencode/feedback/feature-modular-package-structure.md）——#50 新代码落地为 api/auth/ + api/admin/ + web/src/components/admin/ 包结构；存量老文件平铺整体重构记 backlog（TODO #35）
+- 2026-08-18: #50 review 接受项留痕——登录锁定 IP 键可被 XFF 轮换绕过（符合 Spec「内网够用即止」威胁模型，已记 DEV-PLAN）；export-only 角色列表框无法勾选（多选列绑 edit_delete，spec 字面如此，框选导出可用）
+- 2026-08-18: fast-mode 120h 已开（用户拍板全速开发，到期自动失效）
+- 2026-08-18: deployer 遗留 backlog——deploy.sh `_cloud_reset_db` TRUNCATE 清单未含 RBAC 4 表；deploy/README.md 有 V2 时代陈旧描述（已立 TODO #36）
+- 2026-08-17: 本机跑测试的固化方式 = python:3.12-slim 容器 + 清华源 + trusted-host（企业 MITM 代理导致 GitHub/pypi 官方源 SSL/超时不可用；系统 Python 3.14 无法装 pin 依赖）
+- 2026-08-17: 本机 WSL 部署痛点——api 镜像 pip 需清华源 build-arg（compose 未配 build.args）；镜像 tag=latest 不带版本号是 compose 现状
 - 2026-06-04: progress.md 由初始化扫描（Product-Spec.md + CHANGELOG）建立，后续由 progress-recorder agent 维护
 - 2026-06-04: 修复悬空引用——progress-recorder agent 原缺 skills 字段且未登记调度表，本次补全闭环
 - 2026-06-04: mark-review-needed hook 只按文件扩展名匹配、不看路径，/tmp 下 .sh 临时脚本误触发了 stop-gate review 闸门；是 TODO #4（纸面纪律 vs hook 覆盖）的活样本，#4 落地时应给该 hook 加路径过滤
