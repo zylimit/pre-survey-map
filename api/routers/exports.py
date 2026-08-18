@@ -189,6 +189,14 @@ async def export_selection(body: SelectionBody, request: Request):
     poly = body.polygon
     if not isinstance(poly, dict) or poly.get("type") != "Polygon":
         raise HTTPException(status_code=400, detail="polygon 必须是 GeoJSON Polygon 对象")
+    coords = poly.get("coordinates")
+    if (
+        not isinstance(coords, list)
+        or not coords
+        or not isinstance(coords[0], list)
+        or not coords[0]
+    ):
+        raise HTTPException(status_code=400, detail="polygon.coordinates 必须是非空 LinearRing 列表")
     np_radius_m = _sanitize_np_radius(body.np_radius_m)
     mode = body.mode if body.mode in SELECTION_MODES else "polygon"  # #47：审计 mode，非法回落
     scopes = request_scopes(request)

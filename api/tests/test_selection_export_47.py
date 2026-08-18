@@ -120,6 +120,40 @@ def test_polygon_type_point_raises_400():
     assert exc.value.status_code == 400
 
 
+def test_polygon_missing_coordinates_raises_400():
+    """type=Polygon 但缺 coordinates → HTTP 400。
+
+    缺陷锁定：当前 handler 只校验 polygon.type == "Polygon"，
+    {"type": "Polygon"}（无 coordinates）会穿过校验到达
+    ST_GeomFromGeoJSON 产生 DB 错误（500）。正确行为：handler 层 400。
+    """
+    with pytest.raises(HTTPException) as exc:
+        _call(polygon={"type": "Polygon"})
+    assert exc.value.status_code == 400
+
+
+def test_polygon_coordinates_none_raises_400():
+    """type=Polygon 但 coordinates=None → HTTP 400。
+
+    pydantic dict[str, Any] 不会拦 None 值；None coordinates 同样是无效
+    GeoJSON，不能喂给 ST_GeomFromGeoJSON。
+    """
+    with pytest.raises(HTTPException) as exc:
+        _call(polygon={"type": "Polygon", "coordinates": None})
+    assert exc.value.status_code == 400
+
+
+def test_polygon_coordinates_empty_raises_400():
+    """type=Polygon 但 coordinates=[]（空环）→ HTTP 400。
+
+    空 coordinates 不构成任何 LinearRing，是无效 Polygon，应在 handler 层
+    拒绝而非下沉到 PostGIS 报错。
+    """
+    with pytest.raises(HTTPException) as exc:
+        _call(polygon={"type": "Polygon", "coordinates": []})
+    assert exc.value.status_code == 400
+
+
 @pytest.mark.parametrize("bad_poly", [["a", "b"], "not-a-dict", 123])
 def test_polygon_not_dict_rejected_by_pydantic(bad_poly):
     """polygon 不是 dict（list/str/int）→ Pydantic 拒绝（路由层即 422）。
