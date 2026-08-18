@@ -10,15 +10,24 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from audit import write_audit
+from auth.permissions import require_perm
+from auth.scopes import (
+    can_see_lessor,
+    can_see_road,
+    request_scopes,
+    site_scope_pairs,
+    site_scope_where,
+)
 from db import pool
 from exporters.kmz import build_kml, pack_kmz
 
-router = APIRouter()
+# #50 Phase 12：全端点 export 功能权限门控（admin 恒过）
+router = APIRouter(dependencies=[Depends(require_perm("export"))])
 
 
 # ---------- SQL 模板 ----------
@@ -77,6 +86,46 @@ async def _fetch_rows(where: str, params: tuple) -> dict[str, list[dict[str, Any
     }
 
 
+def _scope_filter_needed(scopes: list[str]) -> bool:
+    """全量可见（site 无限制 + road + lessor）→ False，走原 _fetch_rows 路径。"""
+    return (
+        site_scope_pairs(scopes) is not None
+        or not can_see_road(scopes)
+        or not can_see_lessor(scopes)
+    )
+
+
+async def _fetch_rows_scoped(
+    where: str, params: tuple, scopes: list[str]
+) -> dict[str, list[dict[str, Any]]]:
+    """#50 Phase 12：数据权限过滤版取数。
+
+    site 追加 scope WHERE（参数接在已有 params 之后）；road/lessor 不可见 → 空列表。
+    """
+    frag, sparams = site_scope_where(scopes, start_idx=len(params) + 1)
+    if where:
+        site_where = f"{where} AND ({frag})" if frag else where
+    else:
+        site_where = f"WHERE {frag}" if frag else ""
+    async with pool().acquire() as conn:
+        sites = await conn.fetch(SITE_SQL.format(where=site_where), *params, *sparams)
+        roads = (
+            await conn.fetch(ROAD_SQL.format(where=where), *params)
+            if can_see_road(scopes)
+            else []
+        )
+        lessors = (
+            await conn.fetch(LESSOR_SQL.format(where=where), *params)
+            if can_see_lessor(scopes)
+            else []
+        )
+    return {
+        "site": [dict(r) for r in sites],
+        "road": [dict(r) for r in roads],
+        "lessor": [dict(r) for r in lessors],
+    }
+
+
 def _build_kmz_meta(
     label: str, data: dict[str, list[dict[str, Any]]], np_radius_m: int = DEFAULT_NP_RADIUS_M
 ) -> tuple[str, bytes, dict[str, int]]:
@@ -108,7 +157,11 @@ def _kmz_response(fname: str, kmz_bytes: bytes) -> Response:
 @router.get("/all")
 async def export_all(request: Request, np_radius_m: int = DEFAULT_NP_RADIUS_M):
     np_radius_m = _sanitize_np_radius(np_radius_m)
-    data = await _fetch_rows("", ())
+    scopes = request_scopes(request)
+    if _scope_filter_needed(scopes):
+        data = await _fetch_rows_scoped("", (), scopes)
+    else:
+        data = await _fetch_rows("", ())
     fname, kmz_bytes, counts = _build_kmz_meta("full", data, np_radius_m)
     await write_audit(
         action="export_full",
@@ -138,7 +191,11 @@ async def export_selection(body: SelectionBody, request: Request):
         raise HTTPException(status_code=400, detail="polygon 必须是 GeoJSON Polygon 对象")
     np_radius_m = _sanitize_np_radius(body.np_radius_m)
     mode = body.mode if body.mode in SELECTION_MODES else "polygon"  # #47：审计 mode，非法回落
-    data = await _fetch_rows(CONTAINS_CLAUSE, (json.dumps(poly),))
+    scopes = request_scopes(request)
+    if _scope_filter_needed(scopes):
+        data = await _fetch_rows_scoped(CONTAINS_CLAUSE, (json.dumps(poly),), scopes)
+    else:
+        data = await _fetch_rows(CONTAINS_CLAUSE, (json.dumps(poly),))
     fname, kmz_bytes, counts = _build_kmz_meta("region", data, np_radius_m)
     # Spec 雷 33：导出字段只记类型/文件名/数据计数 + 选区模式（#47），不记选区 WKT 几何
     await write_audit(
@@ -164,15 +221,24 @@ class SelectionIdsBody(BaseModel):
 
 @router.post("/selection_ids")
 async def export_selection_ids(body: SelectionIdsBody, request: Request):
-    """勾选导出：仅导出选中 site 子集（road/lessor 不参与），scope=region。"""
+    """勾选导出：仅导出选中 site 子集（road/lessor 不参与），scope=region。
+
+    #50 Phase 12：越权主键跳过——scope WHERE 直接并入查询（全量 scope 走原 SQL）。
+    """
     if not body.keys:
         raise HTTPException(status_code=400, detail="keys 不能为空")
     np_radius_m = _sanitize_np_radius(body.np_radius_m)
     site_ids = [k.site_id for k in body.keys]
     options = [k.option for k in body.keys]
 
+    scopes = request_scopes(request)
     async with pool().acquire() as conn:
-        rows = await conn.fetch(SITE_BY_KEYS_SQL, site_ids, options)
+        if site_scope_pairs(scopes) is not None:
+            frag, sparams = site_scope_where(scopes, start_idx=3)
+            sql = f"{SITE_BY_KEYS_SQL} AND ({frag})"
+            rows = await conn.fetch(sql, site_ids, options, *sparams)
+        else:
+            rows = await conn.fetch(SITE_BY_KEYS_SQL, site_ids, options)
     data: dict[str, list[dict[str, Any]]] = {
         "site": [dict(r) for r in rows],
         "road": [],

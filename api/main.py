@@ -12,6 +12,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from starlette.formparsers import MultiPartParser
 
+from admin import router as admin_router
 from audit_middleware import SessionCookieMiddleware
 from auth.middleware import AuthMiddleware
 from auth.router import router as auth_router
@@ -146,6 +147,7 @@ async def health():
 
 app.include_router(sites.router, prefix="/api/sites", tags=["sites"])
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
 app.include_router(roads.router, prefix="/api/roads", tags=["roads"])
 app.include_router(lessors.router, prefix="/api/lessors", tags=["lessors"])
 app.include_router(imports.router, prefix="/api/import", tags=["import"])

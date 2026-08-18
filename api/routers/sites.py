@@ -3,10 +3,17 @@ import logging
 import math
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from audit import write_audit
+from auth.permissions import require_perm
+from auth.scopes import (
+    request_scopes,
+    site_row_visible,
+    site_scope_pairs,
+    site_scope_where,
+)
 from db import pool
 
 router = APIRouter()
@@ -66,9 +73,12 @@ def _row_to_feature(r) -> dict:
 
 
 @router.get("")
-async def list_sites():
+async def list_sites(request: Request):
+    # #50 Phase 12：数据权限过滤——scope 换算 operator/category WHERE（admin/全量 → 无 WHERE）
+    frag, params = site_scope_where(request_scopes(request))
+    where = f"WHERE {frag}" if frag else ""
     async with pool().acquire() as conn:
-        rows = await conn.fetch(f"SELECT {_SITE_COLS} FROM site")
+        rows = await conn.fetch(f"SELECT {_SITE_COLS} FROM site {where}", *params)
     return {"type": "FeatureCollection", "features": [_row_to_feature(r) for r in rows]}
 
 
@@ -119,13 +129,14 @@ class SitePatchBody(BaseModel):
     patch: dict[str, Any]
 
 
-@router.patch("")
+@router.patch("", dependencies=[Depends(require_perm("edit_delete"))])
 async def update_site(body: SitePatchBody, request: Request):
     """编辑单条 site 业务属性（key 在 body，不走 path）。
 
     - 可改：project / site_status / lati / longi（坐标变更同步重算 geom）。
     - 拒改：盖戳三列 operator/category/type 与主键 site_id/option → 400。
     - 坐标非法（nan/inf/越界）→ 400；未知字段 → 400；主键不存在 → 404。
+    - #50：edit_delete 功能权限（Depends）+ 目标行必须在可见 scope 内（否则 403）。
     """
     raw = body.patch
 
@@ -182,6 +193,27 @@ async def update_site(body: SitePatchBody, request: Request):
     opt_idx = idx
     args.append(body.option)
     idx += 1
+
+    # #50 Phase 12：行级 scope 校验——目标行不可见 → 403（全量 scope 零额外查询，
+    # 保持原单条 UPDATE 路径不变）
+    scopes = request_scopes(request)
+    if site_scope_pairs(scopes) is not None:
+        async with pool().acquire() as conn:
+            target = await conn.fetchrow(
+                'SELECT operator, category FROM site'
+                ' WHERE site_id = $1 AND "option" = $2',
+                body.site_id,
+                body.option,
+            )
+        if target is None:
+            raise HTTPException(
+                status_code=404, detail=f"site {body.site_id}/{body.option} 不存在"
+            )
+        if not site_row_visible(scopes, target["operator"], target["category"]):
+            raise HTTPException(
+                status_code=403,
+                detail=f"site {body.site_id}/{body.option} 不在数据权限范围内",
+            )
 
     sql = (
         f"UPDATE site SET {', '.join(set_parts)} "
@@ -252,14 +284,56 @@ WHERE undo_id < (
 """
 
 
-@router.post("/delete")
+@router.post("/delete", dependencies=[Depends(require_perm("edit_delete"))])
 async def delete_sites(body: DeleteBody, request: Request):
-    """批量删除 site：单条 CTE 原子删除 + 捕获被删行（DELETE RETURNING），供后续撤销。"""
+    """批量删除 site：单条 CTE 原子删除 + 捕获被删行（DELETE RETURNING），供后续撤销。
+
+    #50 Phase 12：edit_delete 功能权限（Depends）+ 行级 scope 校验——越权行跳过
+    并在响应/审计报 skipped 数（不静默成功）。全量 scope 走原路径（零额外查询）。
+    """
     if not body.keys:
         raise HTTPException(status_code=400, detail="keys 不能为空")
 
     site_ids = [k.site_id for k in body.keys]
     options = [k.option for k in body.keys]
+
+    # #50：行级 scope 过滤（仅非全量 scope 时启用）
+    scopes = request_scopes(request)
+    scoped = site_scope_pairs(scopes) is not None
+    skipped = 0
+    if scoped:
+        async with pool().acquire() as conn:
+            rows = await conn.fetch(
+                'SELECT site_id, "option", operator, category FROM site'
+                ' WHERE (site_id, "option") IN'
+                ' (SELECT * FROM unnest($1::text[], $2::text[]))',
+                site_ids,
+                options,
+            )
+        allowed = {
+            (r["site_id"], r["option"])
+            for r in rows
+            if site_row_visible(scopes, r["operator"], r["category"])
+        }
+        skipped = len(rows) - len(allowed)
+        kept = [
+            (sid, opt) for sid, opt in zip(site_ids, options) if (sid, opt) in allowed
+        ]
+        site_ids = [k[0] for k in kept]
+        options = [k[1] for k in kept]
+        if not kept:
+            # 全部越权（或不存在）→ 不删，审计 + 报 skipped，不静默成功
+            await write_audit(
+                action="delete_site",
+                details={
+                    "deleted": 0,
+                    "undo_id": None,
+                    "requested": len(body.keys),
+                    "skipped": skipped,
+                },
+                request=request,
+            )
+            return {"deleted": 0, "undo_id": None, "skipped": skipped}
 
     async with pool().acquire() as conn:
         async with conn.transaction():
@@ -269,11 +343,14 @@ async def delete_sites(body: DeleteBody, request: Request):
         deleted = row["deleted"]
 
         # 修复1：审计 + 返回必须在 evict 之前完成；evict 失败仅 warning，绝不连累已提交的删除
-        await write_audit(
-            action="delete_site",
-            details={"deleted": deleted, "undo_id": undo_id, "requested": len(body.keys)},
-            request=request,
-        )
+        details: dict[str, Any] = {
+            "deleted": deleted,
+            "undo_id": undo_id,
+            "requested": len(body.keys),
+        }
+        if scoped:
+            details["skipped"] = skipped
+        await write_audit(action="delete_site", details=details, request=request)
 
         # 环形保留最近 N 批（事务外，cleanup 失败不影响删除结果/审计/返回）
         try:
@@ -281,13 +358,16 @@ async def delete_sites(body: DeleteBody, request: Request):
         except Exception as e:  # noqa: BLE001 — cleanup 失败无害，留多余历史，绝不抛
             logger.warning(f"site_delete_undo evict failed (harmless): {e!r}")
 
-    return {"deleted": deleted, "undo_id": undo_id}
+    resp: dict[str, Any] = {"deleted": deleted, "undo_id": undo_id}
+    if scoped:
+        resp["skipped"] = skipped
+    return resp
 
 
 # ---------- 交付3：删除历史 + 撤销删除 ----------
 
 
-@router.get("/delete-history")
+@router.get("/delete-history", dependencies=[Depends(require_perm("edit_delete"))])
 async def delete_history():
     """列最近删除批次（每批一行摘要），按时间倒序，供「删除历史」面板用。"""
     async with pool().acquire() as conn:
@@ -321,9 +401,17 @@ async def delete_history():
     return out
 
 
-@router.post("/undo-delete/{undo_id}")
+@router.post("/undo-delete/{undo_id}", dependencies=[Depends(require_perm("edit_delete"))])
 async def undo_delete(undo_id: int, request: Request):
-    """撤销某批删除：把该批未撤销行插回 site（ON CONFLICT DO NOTHING），标记 undone。"""
+    """撤销某批删除：把该批未撤销行插回 site（ON CONFLICT DO NOTHING），标记 undone。
+
+    #50 Phase 12：行级 scope 校验——越权行不插回、不标 undone（留给有权限者后续撤销），
+    响应报 skipped 数（不静默成功）。全量 scope 走原路径。
+    """
+    # scope 片段参数从 $2 起（$1 = undo_id）
+    frag, sparams = site_scope_where(request_scopes(request), start_idx=2)
+    scope_and = f" AND ({frag})" if frag else ""
+
     async with pool().acquire() as conn:
         async with conn.transaction():
             requested = await conn.fetchval(
@@ -332,25 +420,38 @@ async def undo_delete(undo_id: int, request: Request):
             )
             if not requested:
                 raise HTTPException(status_code=404, detail=f"删除批次 {undo_id} 不存在")
+            skipped = 0
+            if frag:
+                skipped = await conn.fetchval(
+                    "SELECT count(*) FROM site_delete_undo"
+                    f" WHERE undo_id = $1 AND undone = false AND NOT ({frag})",
+                    undo_id,
+                    *sparams,
+                )
             status = await conn.execute(
                 f"""
                 INSERT INTO site ({_SITE_MIRROR_COLS})
                 SELECT {_SITE_MIRROR_COLS}
                 FROM site_delete_undo
-                WHERE undo_id = $1 AND undone = false
+                WHERE undo_id = $1 AND undone = false{scope_and}
                 ON CONFLICT (site_id, "option") DO NOTHING
                 """,
                 undo_id,
+                *sparams,
             )
             await conn.execute(
-                "UPDATE site_delete_undo SET undone = true WHERE undo_id = $1",
+                "UPDATE site_delete_undo SET undone = true"
+                f" WHERE undo_id = $1{scope_and}",
                 undo_id,
+                *sparams,
             )
     restored = int(status.split()[-1]) if status else 0
 
-    await write_audit(
-        action="undo_delete_site",
-        details={"undo_id": undo_id, "restored": restored},
-        request=request,
-    )
-    return {"restored": restored, "requested": int(requested)}
+    details: dict[str, Any] = {"undo_id": undo_id, "restored": restored}
+    if frag:
+        details["skipped"] = skipped
+    await write_audit(action="undo_delete_site", details=details, request=request)
+    resp: dict[str, Any] = {"restored": restored, "requested": int(requested)}
+    if frag:
+        resp["skipped"] = skipped
+    return resp

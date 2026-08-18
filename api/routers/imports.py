@@ -22,12 +22,14 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 import session_store
 from audit import write_audit
+from auth.permissions import require_perm
+from auth.scopes import import_target_visible, request_scopes
 from cleaning import (
     _country_dist_in_db,
     classify_points,
@@ -41,7 +43,8 @@ from parsers.kml import LessorRow, ParseResult, SiteRow, parse_kml
 from parsers.kmz import parse_kmz
 from parsers.xlsx import ParseError, parse_xlsx
 
-router = APIRouter()
+# #50 Phase 12：全端点 import 功能权限门控（admin 恒过）
+router = APIRouter(dependencies=[Depends(require_perm("import"))])
 
 
 # ---------- 文件类型分发 ----------
@@ -139,6 +142,7 @@ def _normalize_jsonb(row: dict[str, Any]) -> dict[str, Any]:
 @router.post("")
 async def import_file(
     file: UploadFile,
+    request: Request,
     operator: str | None = Form(None),
     category: str | None = Form(None),
     type_: str | None = Form(None, alias="type"),
@@ -150,9 +154,16 @@ async def import_file(
     - target_kind（site/road/lessor）= 图层强类型，几何护栏只保留该类要素，其余跳过并报告；
       为 None 时退回 F1 全局导入行为（不护栏、不盖戳），保向后兼容（KMZ 自反测试走此路）。
     - operator/category/type = 图层盖戳值，commit 时强制写入 site 三列，源文件同名属性一律忽略。
+    - #50：盖戳目标图层必须落在可见数据权限 scope 内，否则 403。
     """
     if target_kind is not None and target_kind not in ("site", "road", "lessor"):
         raise HTTPException(status_code=400, detail=f"非法 target_kind：{target_kind}")
+    if not import_target_visible(
+        request_scopes(request), target_kind, operator, category
+    ):
+        raise HTTPException(
+            status_code=403, detail="forbidden: 目标图层不在数据权限范围内"
+        )
     kind = _detect(file.filename or "")
     if kind == "unknown":
         raise HTTPException(

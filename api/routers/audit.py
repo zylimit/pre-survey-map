@@ -11,15 +11,17 @@ import json
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from audit import write_audit
+from auth.permissions import require_admin
 from db import pool
 
-router = APIRouter()
+# #50 Phase 12：审计日志端点收编管理界面 → admin-only
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 HEADER_FILL = PatternFill(start_color="FFEFEFEF", end_color="FFEFEFEF", fill_type="solid")
 HEADER_FONT = Font(bold=True)

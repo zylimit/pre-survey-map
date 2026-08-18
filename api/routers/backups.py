@@ -6,14 +6,16 @@ POST /api/backups/{id}/restore → 还原（body 带密码，校验 mangosv5；�
 备份的创建由 backup_scheduler 后台定时任务负责，这里只读+还原。
 """
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from audit import write_audit
+from auth.permissions import require_admin
 from db import pool
 from restore_point_helper import create_restore_point, restore_from_snapshot
 
-router = APIRouter()
+# #50 Phase 12：备份恢复端点收编管理界面 → admin-only
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 # 同 F19 审计入口，写死后端校验（前端校验可绕过，必须后端把关）
 RESTORE_PASSWORD = "mangosv5"

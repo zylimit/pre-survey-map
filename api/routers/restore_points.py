@@ -6,15 +6,17 @@ POST   /api/restore-points/{id}/rollback → 覆盖式回滚（事务内先建 p
 DELETE /api/restore-points/{id}        → 删除（CASCADE 清快照）
 """
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
 from audit import write_audit
+from auth.permissions import require_perm
 from db import pool
 from restore_point_helper import create_restore_point, restore_from_snapshot
 
-router = APIRouter()
+# #50 Phase 12：全端点 danger 功能权限门控（admin 恒过）
+router = APIRouter(dependencies=[Depends(require_perm("danger"))])
 
 
 def _row_to_dict(row) -> dict:

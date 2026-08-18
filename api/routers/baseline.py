@@ -7,9 +7,10 @@
 V1 不做权限控制，前端弹确认 modal 防误点。
 """
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
 from audit import write_audit
+from auth.permissions import require_perm
 from db import pool
 from restore_point_helper import create_restore_point
 
@@ -38,7 +39,8 @@ async def get_baseline_state():
     }
 
 
-@router.delete("/baseline")
+# #50 Phase 12：清除基线属高危操作 → danger 功能权限门控（GET baseline-state 不门控）
+@router.delete("/baseline", dependencies=[Depends(require_perm("danger"))])
 async def clear_baseline(request: Request):
     """F14：清空 site / road / lessor + baseline_state（换基线唯一通道）。countries 不动。"""
     rp_id: int | None = None
