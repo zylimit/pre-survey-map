@@ -156,6 +156,7 @@ export default function App() {
         sites={s.sites}
         roads={s.roads}
         lessors={s.lessors}
+        areas={s.areas}
         selectedId={selectedId}
         hiddenIds={s.hiddenIds}
         onSetKindVisible={s.setKindVisible}
@@ -177,6 +178,7 @@ export default function App() {
         sites={s.sites}
         roads={s.roads}
         lessors={s.lessors}
+        areas={s.areas}
         selectedId={selectedId}
         flyTarget={s.flyTarget}
         drawMode={s.drawMode}
@@ -222,6 +224,7 @@ export default function App() {
           sites={s.sites}
           roads={s.roads}
           lessors={s.lessors}
+          areas={s.areas}
           selectedId={selectedId}
           onPick={s.flyTo}
           onClose={s.closeLayerFeatures}

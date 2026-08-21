@@ -59,6 +59,18 @@ export function lessorVisible(ctx: ScopeCtx): boolean {
 }
 
 /**
+ * #51 F23：AREA 面图层可见（operator 维度，与后端 area_scope_operators 同口径）：
+ * 全量 / "site" / "site:<op>"（继承涵盖）/ "site:<op>:AREA" 授予；
+ * 类别级节点（site:<op>:SURVEY 等）不授予 area。
+ */
+export function areaVisible(ctx: ScopeCtx, op: string): boolean {
+  if (fullAccess(ctx) || ctx.scopes.includes("site") || ctx.scopes.includes(`site:${op}`)) {
+    return true;
+  }
+  return ctx.scopes.includes(`site:${op}:AREA`);
+}
+
+/**
  * site 要素可见（MapView 双保险，与后端 site_scope_where 同口径）：
  * "site" / "site:<op>" 命中不看 category（NULL 类别也放行）；
  * 类别级 scope 要求 operator + category 双等。
@@ -77,6 +89,7 @@ export function siteFeatureVisible(ctx: ScopeCtx, f: Feature): boolean {
 export function targetVisible(ctx: ScopeCtx, target: ViewLayerTarget): boolean {
   if (target.kind === "road") return roadVisible(ctx);
   if (target.kind === "lessor") return lessorVisible(ctx);
+  if (target.kind === "area") return areaVisible(ctx, target.operator ?? "");
   return categoryVisible(ctx, target.operator ?? "", target.category ?? "");
 }
 
@@ -89,5 +102,13 @@ export function filterByScope(
   if (fullAccess(ctx)) return fc;
   if (kind === "road") return roadVisible(ctx) ? fc : { ...fc, features: [] };
   if (kind === "lessor") return lessorVisible(ctx) ? fc : { ...fc, features: [] };
+  // #51：area 按 feature 的 operator 逐个判定（site:<op>:AREA 只授予单运营商）
+  if (kind === "area") {
+    return {
+      ...fc,
+      features: fc.features.filter(f =>
+        areaVisible(ctx, String((f.properties ?? {}).operator ?? ""))),
+    };
+  }
   return { ...fc, features: fc.features.filter(f => siteFeatureVisible(ctx, f)) };
 }

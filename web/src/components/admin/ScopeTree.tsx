@@ -2,11 +2,13 @@
  * #50 Phase 14 · 角色数据权限勾选树（Spec F22「权限模型」节）
  *
  * 层级复刻 LayerTree 骨架（不含 type/status 叶子层）：
- *   SITE → Globe / Smart / Dito → EXISTING / PLANNED / SURVEY
+ *   SITE → Globe / Smart / Dito → EXISTING / PLANNED / SURVEY / AREA（#51）
  *   Road（平级叶子）/ Lessor（平级叶子）
  *
  * scope_node 取值与后端 api/auth/scopes.py 单一真源对齐：
- *   "site" / "site:Globe" / "site:Globe:SURVEY" / "road" / "lessor"
+ *   "site" / "site:Globe" / "site:Globe:SURVEY" / "site:Globe:AREA" / "road" / "lessor"
+ *   #51：AREA 挂运营商下（site:<op>:AREA），类别级节点不授予 area；
+ *   site / site:<op> 继承语义自动涵盖 AREA（已有角色无需改配置）。
  *
  * 存储优化（子级继承）：勾父不存全部子——保存时压缩（子全勾 → 只存父）；
  * 回显时展开（父在 → 子全勾显示）。三态 checkbox：部分子勾 → 父半选。
@@ -28,6 +30,7 @@ export function expandScopes(scopes: string[]): Set<string> {
   const addOp = (op: string) => {
     out.add(`site:${op}`);
     for (const c of CATEGORIES) out.add(`site:${op}:${c.node}`);
+    out.add(`site:${op}:AREA`);  // #51：op 继承涵盖 AREA
   };
   for (const s of scopes) {
     if (s === "site") {
@@ -37,8 +40,11 @@ export function expandScopes(scopes: string[]): Set<string> {
       out.add(s);
     } else {
       out.add(s);
-      // "site:<op>" → 补三个类别子节点
-      if (s.split(":").length === 2) for (const c of CATEGORIES) out.add(`${s}:${c.node}`);
+      // "site:<op>" → 补三个类别子节点 + AREA
+      if (s.split(":").length === 2) {
+        for (const c of CATEGORIES) out.add(`${s}:${c.node}`);
+        out.add(`${s}:AREA`);
+      }
     }
   }
   return out;
@@ -47,8 +53,9 @@ export function expandScopes(scopes: string[]): Set<string> {
 /** 完整勾选集 → 压缩存储（某节点后代全勾 → 只存该节点） */
 export function compressScopes(sel: Set<string>): string[] {
   const out: string[] = [];
+  // #51：op 全勾 = 三类别 + AREA 都在（AREA 是 op 的第四个子节点）
   const fullOps = OPERATORS.filter(op =>
-    CATEGORIES.every(c => sel.has(`site:${op}:${c.node}`)),
+    CATEGORIES.every(c => sel.has(`site:${op}:${c.node}`)) && sel.has(`site:${op}:AREA`),
   );
   if (fullOps.length === OPERATORS.length) {
     out.push("site");
@@ -59,6 +66,7 @@ export function compressScopes(sel: Set<string>): string[] {
       for (const c of CATEGORIES) {
         if (sel.has(`site:${op}:${c.node}`)) out.push(`site:${op}:${c.node}`);
       }
+      if (sel.has(`site:${op}:AREA`)) out.push(`site:${op}:AREA`);
     }
   }
   if (sel.has("road")) out.push("road");
@@ -66,13 +74,16 @@ export function compressScopes(sel: Set<string>): string[] {
   return out;
 }
 
-/** node 的全部后代叶子（叶子返回自身）。site → 9 个类别叶；op → 3 个类别叶 */
+/** node 的全部后代叶子（叶子返回自身）。site → 9 类别叶 + 3 AREA 叶；op → 3 类别叶 + AREA 叶 */
 function leavesOf(node: string): string[] {
   if (node === "site") {
-    return OPERATORS.flatMap(op => CATEGORIES.map(c => `site:${op}:${c.node}`));
+    return OPERATORS.flatMap(op => [
+      ...CATEGORIES.map(c => `site:${op}:${c.node}`),
+      `site:${op}:AREA`,
+    ]);
   }
   if (node.startsWith("site:") && node.split(":").length === 2) {
-    return CATEGORIES.map(c => `${node}:${c.node}`);
+    return [...CATEGORIES.map(c => `${node}:${c.node}`), `${node}:AREA`];
   }
   return [node];
 }
@@ -158,6 +169,8 @@ export default function ScopeTree({ value, onChange, disabled }: Props) {
               {renderNode(`site:${op}:${c.node}`, tFn(c.labelKey), 2, c.node)}
             </div>
           ))}
+          {/* #51：AREA 权限节点（与类别并列，site:<op>:AREA） */}
+          {renderNode(`site:${op}:AREA`, tFn("lt.tree.area"), 2, "AREA")}
         </div>
       ))}
       {renderNode("road", tFn("lt.tree.road"), 0, "ROAD")}

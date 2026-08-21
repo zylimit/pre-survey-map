@@ -85,10 +85,11 @@ export type DrawMode = "polygon" | "rectangle" | "circle" | null;
 export type SelectionMode = "polygon" | "rect" | "circle";
 
 // F20 Phase 4：「查看图层要素」浮动列表框的目标图层标识
-// 与 Phase 3 树计数同源——site 按 operator/category/type 三列过滤，road/lessor 整层。
+// 与 Phase 3 树计数同源——site 按 operator/category/type 三列过滤，road/lessor 整层；
+// #51：area 按 operator 过滤（面图层挂在运营商下）。
 export interface ViewLayerTarget {
-  kind: "site" | "road" | "lessor";
-  operator: string | null;  // site only
+  kind: "site" | "road" | "lessor" | "area";
+  operator: string | null;  // site / area
   category: string | null;  // site only
   type: string | null;      // site only
   status?: string;          // #40：site 样式节点 [查看] 时按 status 收窄（positive/.../other）
@@ -162,6 +163,7 @@ export function useAppState() {
   const [sites, setSites] = useState<FeatureCollection>(EMPTY);
   const [roads, setRoads] = useState<FeatureCollection>(EMPTY);
   const [lessors, setLessors] = useState<FeatureCollection>(EMPTY);
+  const [areas, setAreas] = useState<FeatureCollection>(EMPTY);  // #51：AREA 面图层
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [phase, setPhase] = useState<Phase>("idle");
   const [importSession, setImportSession] = useState<ImportSession | null>(null);
@@ -209,6 +211,7 @@ export function useAppState() {
     setSites(EMPTY);
     setRoads(EMPTY);
     setLessors(EMPTY);
+    setAreas(EMPTY);
     setSelected(null);
     setSearchResults(null);
     setImportSession(null);
@@ -296,11 +299,11 @@ export function useAppState() {
   // 找不到（被删/不存在）→ setSelected(null)，避免属性面板显示旧值或已删项。
   // 收敛进 refresh 内部 = 编辑/删除/撤销/导入/清基线/回滚/还原/手动刷新全路径自动覆盖。
   const rebindSelected = useCallback(
-    (cols: { sites: FeatureCollection; roads: FeatureCollection; lessors: FeatureCollection }) => {
+    (cols: { sites: FeatureCollection; roads: FeatureCollection; lessors: FeatureCollection; areas: FeatureCollection }) => {
       setSelected(prev => {
         if (!prev) return prev;
         const id = String(prev.id);
-        const all = [...cols.sites.features, ...cols.roads.features, ...cols.lessors.features];
+        const all = [...cols.sites.features, ...cols.roads.features, ...cols.lessors.features, ...cols.areas.features];
         return all.find(f => String(f.id) === id) ?? null;
       });
     },
@@ -310,12 +313,13 @@ export function useAppState() {
   const refresh = useCallback(async () => {
     setPhase("loading");
     try {
-      const { sites, roads, lessors } = await fetchAll();
+      const { sites, roads, lessors, areas } = await fetchAll();
       setSites(sites);
       setRoads(roads);
       setLessors(lessors);
-      rebindSelected({ sites, roads, lessors });
-      return { sites, roads, lessors };
+      setAreas(areas);
+      rebindSelected({ sites, roads, lessors, areas });
+      return { sites, roads, lessors, areas };
     } finally {
       setPhase("idle");
     }
@@ -795,6 +799,7 @@ export function useAppState() {
     sites,
     roads,
     lessors,
+    areas,
     logs,
     phase,
     importSession,

@@ -980,6 +980,8 @@ async def conflicts_xlsx(sid: str, request: Request):
             "counts": {
                 "total": len(conflicts),
                 "site": sum(1 for c in conflicts if c.get("kind") == "site"),
+                # #51 Phase 18 残留：road 冲突已纳入检测（F20），审计 counts 补 road 维度
+                "road": sum(1 for c in conflicts if c.get("kind") == "road"),
                 "lessor": sum(1 for c in conflicts if c.get("kind") == "lessor"),
                 "area": sum(1 for c in conflicts if c.get("kind") == "area"),
             },

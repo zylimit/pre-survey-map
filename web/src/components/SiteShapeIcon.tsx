@@ -25,6 +25,14 @@ export default function SiteShapeIcon({ stamp, size = 14 }: { stamp: LayerStamp;
       </svg>
     );
   }
+  // #51 area = 面（三角，区别于 lessor 矩形）
+  if (stamp.target_kind === "area") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
+        <polygon points="8,2.5 14,13.5 2,13.5" fill="currentColor" opacity="0.85" strokeLinejoin="round" />
+      </svg>
+    );
+  }
   // site = 按 type 形状（实心 fill / 空心 stroke）
   const { shape, filled } = siteShape(stamp.type ?? null);
   const paint = filled

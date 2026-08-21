@@ -13,7 +13,8 @@ interface Props {
   busy?: boolean;   // #39：提交中 → 禁用确认/取消/返回、不可关、显示「正在写入…」
 }
 
-function summarize(row: Record<string, unknown>, kind: "site" | "lessor", noCoord: string): string {
+// #51：kind 扩 road/area（后端冲突检测已含），最小渲染——road 显 Property；area 显运营商+polygon_id
+function summarize(row: Record<string, unknown>, kind: ConflictRow["kind"], noCoord: string, operator?: string): string {
   if (kind === "site") {
     const parts = [
       row.site_status ? String(row.site_status) : "—",
@@ -21,6 +22,18 @@ function summarize(row: Record<string, unknown>, kind: "site" | "lessor", noCoor
       row.project ? String(row.project) : "",
     ].filter(Boolean);
     return parts.join(" · ");
+  }
+  if (kind === "road") {
+    return row.property ? String(row.property) : "—";
+  }
+  if (kind === "area") {
+    // M1 修复：polygon_id 在 extras 内；incoming 行无 operator（盖戳在写入时施加），由 key（area:<operator>:<name>）解析传入
+    const extras = (row.extras ?? {}) as Record<string, unknown>;
+    const parts = [
+      (operator ?? row.operator) ? String(operator ?? row.operator) : "",
+      extras.polygon_id ? String(extras.polygon_id) : "",
+    ].filter(Boolean);
+    return parts.length ? parts.join(" · ") : "—";
   }
   return [
     row.lessor_category ? String(row.lessor_category) : "—",
@@ -94,7 +107,7 @@ export default function ConflictDialog({ conflicts, initial, onConfirm, onCancel
                     <td>{c.kind}</td>
                     <td>{c.name}</td>
                     <td>{summarize(c.existing, c.kind, noCoord)}</td>
-                    <td>{summarize(c.incoming, c.kind, noCoord)}</td>
+                    <td>{summarize(c.incoming, c.kind, noCoord, c.kind === "area" ? c.key.split(":")[1] : undefined)}</td>
                     <td>{c.source_file}</td>
                     <td>
                       <button

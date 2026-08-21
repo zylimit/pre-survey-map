@@ -111,7 +111,8 @@ export type CleaningIssue = "swap_latlong" | "missing_decimal" | "in_sea" | "not
 
 export interface ConflictRow {
   key: string;
-  kind: "site" | "lessor";
+  // #51：后端冲突检测已含 road（F20）/ area（#51）两类，类型补齐
+  kind: "site" | "road" | "lessor" | "area";
   name: string;
   existing: Record<string, unknown>;
   incoming: Record<string, unknown>;
@@ -120,7 +121,8 @@ export interface ConflictRow {
 
 export interface CleaningRow {
   row_id: string;
-  kind: "site" | "road" | "lessor";
+  // #51：area 面走清洗（质心海里/基准国判定），kind 补 area
+  kind: "site" | "road" | "lessor" | "area";
   name: string;
   file_name: string;
   issue: CleaningIssue;
@@ -201,12 +203,12 @@ export interface CommitResponse {
   } | null;
 }
 
-// F20 Phase 3：图层盖戳入参（V1.x #24）
+// F20 Phase 3：图层盖戳入参（V1.x #24）；#51：target_kind 扩 area（AREA 面图层，盖戳 operator 必填）
 export interface LayerStamp {
   operator?: string | null;
   category?: string | null;
   type?: string | null;
-  target_kind: "site" | "road" | "lessor";
+  target_kind: "site" | "road" | "lessor" | "area";
 }
 
 // 单文件上传（Spec F1 #12）；stamp 为 F20 图层导入时传入的盖戳+护栏参数
@@ -320,15 +322,17 @@ export async function fetchAll(): Promise<{
   sites: FeatureCollection;
   roads: FeatureCollection;
   lessors: FeatureCollection;
+  areas: FeatureCollection;
 }> {
   const rs = await Promise.all([
     apiFetch("/api/sites"),
     apiFetch("/api/roads"),
     apiFetch("/api/lessors"),
+    apiFetch("/api/areas"),  // #51 Phase 18：AREA 面图层只读列表（scope 过滤在后端）
   ]);
   for (const r of rs) if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const [sites, roads, lessors] = await Promise.all(rs.map(r => r.json()));
-  return { sites, roads, lessors };
+  const [sites, roads, lessors, areas] = await Promise.all(rs.map(r => r.json()));
+  return { sites, roads, lessors, areas };
 }
 
 // ---------- F17 恢复点 ----------

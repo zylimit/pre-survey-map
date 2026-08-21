@@ -124,6 +124,13 @@ const LESSOR_COLS: Col[] = [
   { key: "lessor_category", labelKey: "lfl.col.lessor_category", w: 130, get: f => str(f.properties?.lessor_category) },
   { key: "relationship",    labelKey: "lfl.col.relationship",    w: 120, get: f => str(f.properties?.relationship), status: true },
 ];
+// #51：area 只读列表（name 去重键 + extras 主要字段；本期不做增删改）
+const AREA_COLS: Col[] = [
+  { key: "name",        labelKey: "lfl.col.name",        w: 220, get: f => str(f.properties?.name) },
+  { key: "polygon_id",  labelKey: "lfl.col.polygon_id",  w: 130, get: f => str(f.properties?.polygon_id) },
+  { key: "geozone_pr",  labelKey: "lfl.col.geozone_pr",  w: 130, get: f => str(f.properties?.geozone_pr) },
+  { key: "new_polygo",  labelKey: "lfl.col.new_polygo",  w: 130, get: f => str(f.properties?.new_polygo) },
+];
 
 interface Props {
   target: ViewLayerTarget;
@@ -131,6 +138,7 @@ interface Props {
   sites: FeatureCollection;
   roads: FeatureCollection;
   lessors: FeatureCollection;
+  areas: FeatureCollection;   // #51：AREA 面图层只读列表数据源
   selectedId: string | number | null;
   onPick: (f: Feature) => void;   // = s.flyTo（飞到 + 选中 + 属性面板）
   onClose: () => void;
@@ -154,7 +162,10 @@ const featKey = (f: Feature): SiteKey => ({
 // ─── #48 Phase 8 列宽可拖调 ──────────────────────────────────────────────────
 const MIN_COL_W = 48;  // 最小列宽守卫
 function colsForKind(kind: ViewLayerTarget["kind"]): Col[] {
-  return kind === "site" ? SITE_COLS : kind === "road" ? ROAD_COLS : LESSOR_COLS;
+  return kind === "site" ? SITE_COLS
+    : kind === "road" ? ROAD_COLS
+    : kind === "area" ? AREA_COLS
+    : LESSOR_COLS;
 }
 // localStorage key：按 kind+列key（如 presurvey.lfl.col.site.lati）。未拖列不写。
 const colLSKey = (kind: string, colKey: string) => `presurvey.lfl.col.${kind}.${colKey}`;
@@ -171,7 +182,7 @@ function readManualWidths(kind: string, cols: Col[]): Record<string, number> {
 }
 
 export default function LayerFeatureList({
-  target, anchor, sites, roads, lessors,
+  target, anchor, sites, roads, lessors, areas,
   selectedId, onPick, onClose,
   onUpdateSite, onDeleteSites, onExportSites,
   scopes, isAdmin, canExport, canEditDelete,
@@ -224,6 +235,11 @@ export default function LayerFeatureList({
   const layerFeatures = useMemo<Feature[]>(() => {
     if (target.kind === "road") return roads.features;
     if (target.kind === "lessor") return lessors.features;
+    // #51：area 按 operator 过滤（与树 areaMap 计数同源）
+    if (target.kind === "area") {
+      const op = target.operator ?? "";
+      return areas.features.filter(f => String((f.properties ?? {}).operator ?? "") === op);
+    }
     const op = target.operator ?? "";
     const cat = target.category ?? "";
     const tp = target.type ?? "";
@@ -236,7 +252,7 @@ export default function LayerFeatureList({
       if (!target.status) return true;
       return statusBucket(p.site_status as string | null | undefined) === target.status;
     });
-  }, [target, sites, roads, lessors]);
+  }, [target, sites, roads, lessors, areas]);
 
   // ─── 本层筛选（仅本层内按显示名 nameOf 收窄，与 F16/树过滤同口径）────────────
   const filtered = useMemo<Feature[]>(() => {
@@ -498,6 +514,8 @@ export default function LayerFeatureList({
     if (target.kind === "road") return tFn("lfl.kind.road");
     if (target.kind === "lessor") return tFn("lfl.kind.lessor");
     const opLabel = tFn(`lt.tree.op.${target.operator}` as Parameters<typeof tFn>[0]);
+    // #51：area 标题 = 运营商 / Area（无类别/站型层级）
+    if (target.kind === "area") return `${opLabel} / ${tFn("lfl.kind.area")}`;
     const catKey = target.category === "存量" ? "lt.tree.cat.legacy"
       : target.category === "规划" ? "lt.tree.cat.planned"
       : "lt.tree.cat.survey";

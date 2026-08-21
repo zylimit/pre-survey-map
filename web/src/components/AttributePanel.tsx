@@ -14,6 +14,7 @@ const CORE_FIELDS: Record<string, string[]> = {
   site:   ["site_id", "option", "project", "site_status", "lati", "longi", "source_file"],
   road:   ["id", "property", "source_file"],
   lessor: ["fid", "lessor_name", "lessor_category", "relationship", "source_file"],
+  area:   ["id", "name", "operator"],  // #51：其余源属性（polygon_id 等）自动落 extras 区
 };
 
 const CORE_LABELS: Record<string, string> = {
@@ -29,6 +30,8 @@ const CORE_LABELS: Record<string, string> = {
   lessor_name:      "Lessor Name",
   lessor_category:  "Lessor Category",
   relationship:     "Relationship",
+  name:             "Name",
+  operator:         "Operator",
 };
 
 function isCoordSwapOrOutOfRange(lati: unknown, longi: unknown): boolean {
@@ -61,6 +64,7 @@ export default function AttributePanel({ feature, onClose, onResize, onResizeEnd
     if (p.kind === "site") return `Site: ${p.site_id ?? "?"}${p.option ? " / " + p.option : ""}`;
     if (p.kind === "road") return `Road: ${p.property ?? "#" + p.id}`;
     if (p.kind === "lessor") return `Lessor: ${p.lessor_name ?? p.fid}`;
+    if (p.kind === "area") return `Area: ${p.name ?? "#" + p.id}`;  // #51
     return tFn("ap.feature");
   };
 

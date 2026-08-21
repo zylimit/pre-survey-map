@@ -25,7 +25,7 @@ import { ChevronRight, ChevronDown, Folder, FolderOpen, Download, Eye } from "lu
 import { useT } from "../i18n";
 import { STATUS_COLOR, statusBucket } from "../utils";
 import {
-  categoryVisible, lessorVisible, operatorVisible, roadVisible, siteRootVisible,
+  areaVisible, categoryVisible, lessorVisible, operatorVisible, roadVisible, siteRootVisible,
   type ScopeCtx,
 } from "../scopes";
 import ResizeHandle from "./ResizeHandle";
@@ -60,6 +60,7 @@ interface Props {
   sites: FeatureCollection;
   roads: FeatureCollection;
   lessors: FeatureCollection;
+  areas: FeatureCollection;  // #51：AREA 面图层（运营商下）
   selectedId: string | number | null;
   hiddenIds: Set<string>;
   onSetKindVisible: (ids: string[], visible: boolean) => void;
@@ -77,7 +78,7 @@ interface Props {
 // ─── 组件 ────────────────────────────────────────────────────────────────────
 
 function LayerTree({
-  sites, roads, lessors,
+  sites, roads, lessors, areas,
   selectedId, hiddenIds,
   onSetKindVisible, onImportLayer, onViewLayer, phase,
   onResize, onResizeEnd,
@@ -104,7 +105,7 @@ function LayerTree({
 
   // ─── O(n) 建立 key→featureId[] 映射 ────────────────────────────────────────
 
-  const { siteMap, allRoadIds, lessorMap } = useMemo(() => {
+  const { siteMap, allRoadIds, lessorMap, areaMap } = useMemo(() => {
     const siteMap = new Map<string, string[]>();
 
     const push = (key: string, id: string) => {
@@ -141,8 +142,18 @@ function LayerTree({
       pushL(`lessor/${rel}`, id);
     }
 
-    return { siteMap, allRoadIds, lessorMap };
-  }, [sites, roads, lessors]);
+    // #51：AREA 面按运营商分桶（key = `area/<op>`，文件夹与该面图层共用同一组 id）
+    const areaMap = new Map<string, string[]>();
+    for (const f of areas.features) {
+      const id = String(f.id);
+      const op = String((f.properties ?? {}).operator ?? "");
+      const key = `area/${op}`;
+      if (!areaMap.has(key)) areaMap.set(key, []);
+      areaMap.get(key)!.push(id);
+    }
+
+    return { siteMap, allRoadIds, lessorMap, areaMap };
+  }, [sites, roads, lessors, areas]);
 
   // ─── tristate ───────────────────────────────────────────────────────────────
 
@@ -217,8 +228,17 @@ function LayerTree({
       return;
     }
 
+    // #51：area 面 → 反向定位运营商下 AREA 图层（展开 site/op/AREA 文件夹三级）
+    const area = areas.features.find(f => String(f.id) === sel);
+    if (area) {
+      const op = String((area.properties ?? {}).operator ?? "");
+      setHighlightedKey(`area/${op}/AREA`);
+      setExpanded(prev => ({ ...prev, site: true, [op]: true, [`area/${op}`]: true }));
+      return;
+    }
+
     setHighlightedKey(null);
-  }, [selectedId, sites, roads, lessors]);
+  }, [selectedId, sites, roads, lessors, areas]);
 
   // ─── 渲染辅助：checkbox（支持三态 indeterminate）─────────────────────────────
 
@@ -250,7 +270,9 @@ function LayerTree({
       ? (siteMap.get("site") ?? [])
       : nodeKey.startsWith("lessor")
         ? (lessorMap.get(nodeKey) ?? [])
-        : (siteMap.get(nodeKey) ?? []);
+        : nodeKey.startsWith("area/")
+          ? (areaMap.get(nodeKey) ?? [])
+          : (siteMap.get(nodeKey) ?? []);
     const open = isOpen(nodeKey);
     return (
       <h3
@@ -452,7 +474,27 @@ function LayerTree({
               {/* 📁 Operator */}
               <FolderRow nodeKey={opKey} label={opLabel} depth={1} />
 
-              {isOpen(opKey) && CATEGORIES.map(cat => {
+              {isOpen(opKey) && (
+                <>
+                {/* ══ #51 F23：📁 AREA → 🔺 AREA 面图层（与类别并列，无样式子层）。
+                    权限：areaVisible（site / site:<op> / site:<op>:AREA 授予）══ */}
+                {areaVisible(scopeCtx, op) && (
+                  <div>
+                    <FolderRow nodeKey={`area/${op}`} label={tFn("lt.tree.area")} depth={2} />
+                    {isOpen(`area/${op}`) && (
+                      <LayerRow
+                        nodeKey={`area/${op}/AREA`}
+                        label={tFn("lt.tree.area")}
+                        depth={3}
+                        stamp={{ operator: op, target_kind: "area" }}
+                        ids={areaMap.get(`area/${op}`) ?? []}
+                        highlighted={hl === `area/${op}/AREA`}
+                        hasChildren={false}
+                      />
+                    )}
+                  </div>
+                )}
+                {CATEGORIES.map(cat => {
                 // #50 Phase 15：无权限类别子树整棵不渲染（图层/样式随子树消失）
                 if (!categoryVisible(scopeCtx, op, cat)) return null;
                 const catKey = `${op}/${cat}`;
@@ -528,12 +570,14 @@ function LayerTree({
                               })()}
                             </>
                           )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+                         </div>
+                       );
+                     })}
+                   </div>
+                 );
+               })}
+                </>
+              )}
             </div>
           );
         })}

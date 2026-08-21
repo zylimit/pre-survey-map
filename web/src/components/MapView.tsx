@@ -22,7 +22,7 @@ import { Feature, FeatureCollection, GeoJSONPolygon } from "../api";
 import { DrawMode } from "../state";
 import { useT } from "../i18n";
 import {
-  siteStatusColor, siteShape, lessorLineColor,
+  siteStatusColor, siteShape, lessorLineColor, areaColor,
   metersToProjRadius, withAlpha, STATUS_COLOR, LAYER_COLOR,
   type ShapeKind,
 } from "../utils";
@@ -39,6 +39,7 @@ interface Props {
   sites: FeatureCollection;
   roads: FeatureCollection;
   lessors: FeatureCollection;
+  areas: FeatureCollection;   // #51：AREA 面图层（运营商分色，渲染在点/线层之下）
   selectedId: string | number | null;
   flyTarget: { feature: Feature; epoch: number } | null;
   drawMode: DrawMode;
@@ -157,8 +158,19 @@ function lessorStyle(feature: FeatureLike, selected: boolean): Style {
   });
 }
 
+// #51 F23：AREA 面——按运营商分色（AREA_COLOR 单一真源），~35% 透明填充 + 同色 1px 描边；
+// 选中盖高亮蓝加粗（与 lessor 同处理——Globe 蓝与选中蓝同值，靠描边宽度区分）
+function areaStyle(feature: FeatureLike, selected: boolean): Style {
+  const op = feature.get("operator") as string | undefined;
+  const color = areaColor(op);
+  return new Style({
+    stroke: new Stroke({ color: selected ? COLOR.selected : color, width: selected ? 3 : 1 }),
+    fill: new Fill({ color: withAlpha(color, 0.35) }),
+  });
+}
+
 function MapView({
-  sites, roads, lessors, selectedId, flyTarget,
+  sites, roads, lessors, areas, selectedId, flyTarget,
   drawMode, selectionPolygon, hiddenIds, fitAllEpoch, layoutEpoch, npRadiusM,
   onDropDisabled, onSelectFeature, onSelectionDrawn, onFitAll,
   scopes, isAdmin,
@@ -169,6 +181,8 @@ function MapView({
   const visSites = useMemo(() => filterByScope(scopeCtx, "site", sites), [scopeCtx, sites]);
   const visRoads = useMemo(() => filterByScope(scopeCtx, "road", roads), [scopeCtx, roads]);
   const visLessors = useMemo(() => filterByScope(scopeCtx, "lessor", lessors), [scopeCtx, lessors]);
+  // #51：area 按 feature operator 逐个判定（site:<op>:AREA 只授予单运营商）
+  const visAreas = useMemo(() => filterByScope(scopeCtx, "area", areas), [scopeCtx, areas]);
   const basemapLabel: Record<BasemapKey, string> = {
     positron: "Positron",
     osm: "OSM",
@@ -181,6 +195,7 @@ function MapView({
   const sitesSrc = useRef(new VectorSource());
   const roadsSrc = useRef(new VectorSource());
   const lessorsSrc = useRef(new VectorSource());
+  const areasSrc = useRef(new VectorSource());
   const selectionSrc = useRef(new VectorSource());
   const selectedIdRef = useRef<string | number | null>(null);
   const hiddenIdsRef = useRef<Set<string>>(new Set());
@@ -189,6 +204,7 @@ function MapView({
   const sitesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const roadsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const lessorsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const areasLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const basemapsRef = useRef<{ positron: TileLayer<XYZ>; osm: TileLayer<XYZ>; esri: TileLayer<XYZ>; google: TileLayer<XYZ> } | null>(null);
   const drawRef = useRef<Draw | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -201,6 +217,14 @@ function MapView({
     // 读 CSS 变量到 COLOR 缓存
     initColors();
 
+    // #51：AREA 面层最先挂 → 渲染在点/线层之下（OL 按 layers 数组序绘制），不遮挡站点
+    const areasLayer = new VectorLayer({
+      source: areasSrc.current,
+      style: (f) => {
+        if (hiddenIdsRef.current.has(String(f.getId()))) return undefined;
+        return areaStyle(f, f.getId() === selectedIdRef.current);
+      },
+    });
     const lessorsLayer = new VectorLayer({
       source: lessorsSrc.current,
       style: (f) => {
@@ -225,6 +249,7 @@ function MapView({
     sitesLayerRef.current = sitesLayer;
     roadsLayerRef.current = roadsLayer;
     lessorsLayerRef.current = lessorsLayer;
+    areasLayerRef.current = areasLayer;
 
     const selectionLayer = new VectorLayer({
       source: selectionSrc.current,
@@ -277,7 +302,7 @@ function MapView({
       target: ref.current,
       layers: [
         positronLayer, osmLayer, esriLayer, googleLayer,
-        lessorsLayer, roadsLayer, sitesLayer,
+        areasLayer, lessorsLayer, roadsLayer, sitesLayer,
         selectionLayer,
       ],
       view: new View({ center: fromLonLat([121.0, 14.6]), zoom: 6 }),
@@ -323,9 +348,10 @@ function MapView({
     loadInto(sitesSrc.current, visSites);
     loadInto(roadsSrc.current, visRoads);
     loadInto(lessorsSrc.current, visLessors);
+    loadInto(areasSrc.current, visAreas);
 
     if (!mapRef.current) return;
-    const merged = safeMergedExtent([sitesSrc.current, roadsSrc.current, lessorsSrc.current]);
+    const merged = safeMergedExtent([sitesSrc.current, roadsSrc.current, lessorsSrc.current, areasSrc.current]);
     if (!isEmpty(merged)) {
       mapRef.current.getView().fit(merged, {
         padding: [40, 40, 40, 40],
@@ -333,7 +359,7 @@ function MapView({
         duration: 400,
       });
     }
-  }, [visSites, visRoads, visLessors]);
+  }, [visSites, visRoads, visLessors, visAreas]);
 
   // 选中状态变化 → 重画当前样式
   useEffect(() => {
@@ -341,6 +367,7 @@ function MapView({
     sitesLayerRef.current?.changed();
     roadsLayerRef.current?.changed();
     lessorsLayerRef.current?.changed();
+    areasLayerRef.current?.changed();
   }, [selectedId]);
 
   // 隐藏 ids 变化 → 重画（让 style 函数重新判定）
@@ -349,6 +376,7 @@ function MapView({
     sitesLayerRef.current?.changed();
     roadsLayerRef.current?.changed();
     lessorsLayerRef.current?.changed();
+    areasLayerRef.current?.changed();
   }, [hiddenIds]);
 
   // #45 NP 半径变化 → 更新 ref + 强制 site 图层 restyle（geometry 函数重算圈半径）
@@ -377,7 +405,7 @@ function MapView({
   // 定位按钮：fit bounds 到全部数据
   useEffect(() => {
     if (fitAllEpoch === 0 || !mapRef.current) return;
-    const merged = safeMergedExtent([sitesSrc.current, roadsSrc.current, lessorsSrc.current]);
+    const merged = safeMergedExtent([sitesSrc.current, roadsSrc.current, lessorsSrc.current, areasSrc.current]);
     if (!isEmpty(merged)) {
       mapRef.current.getView().fit(merged, {
         padding: [40, 40, 40, 40],
@@ -441,7 +469,8 @@ function MapView({
     const feat =
       sitesSrc.current.getFeatureById(id) ||
       roadsSrc.current.getFeatureById(id) ||
-      lessorsSrc.current.getFeatureById(id);
+      lessorsSrc.current.getFeatureById(id) ||
+      areasSrc.current.getFeatureById(id);
     if (!feat) return;
     const geom = feat.getGeometry();
     if (!geom) return;
