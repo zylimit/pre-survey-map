@@ -1,5 +1,5 @@
 # Project: Pre-Survey Map
-_Last updated: 2026-08-18_
+_Last updated: 2026-08-20_
 
 > 项目记忆文件。维护规则见 `.claude/CLAUDE.md [项目记忆规则]`，由 progress-recorder agent 增量维护。
 > 指令：`/record` 增量合并 · `/archive` 快照归档（条目 >100 时）· `/recap` 回顾当前状态。
@@ -18,6 +18,7 @@ _Last updated: 2026-08-18_
 - #49 约束：site_delete_undo 表环形队列保留最近 200 批；delete 接口去掉建恢复点（改为写 undo 表）；evict 容错 try/except（不连累主删除事务）（2026-06-04）
 
 ## Decisions（按时间追加，历史不可改）
+- 2026-08-18: #51 AREA 运营商区域面图层拍板——新表 area（第四类实体：name 去重键[同运营商内]+operator 盖戳+polygon+extras）；全链路同 site 待遇（F13 清洗面以质心判定/冲突向导/F17 快照/KMZ 自反契约扩第四类 schema #area/几何护栏只收面）；按运营商分色（Globe 蓝/Smart 绿/Dito 红 半透明）；权限 scope 值域扩 site:<op>:AREA、继承自动涵盖已有角色零配置变更
 - 2026-08-18: #50 用户与角色权限拍板——登录页（账号+密码，bcrypt，auth_session DB token 7天滑动可吊销，非JWT）；功能权限4开关（import/export/edit_delete/danger）+ 数据权限=图层树任意文件夹节点子级继承、查看=编辑同权、无权限完全隐藏（后端SQL过滤）；仅内置 admin 角色（全权限不可删），其余角色 admin 界面手建；F19审计3×ESC / F21备份3×B 隐藏入口废除收编进 [⚙管理] Modal；并发不管后写赢；审计 15→20 类（+login/login_failed/logout/user_manage/role_manage）
 - 2026-06-04: `.claude` 抽出为独立私有配置库 sitemaster-config，纯备份/版本管理，与主仓各自演进
 - 2026-06-04: progress-recorder 采用「瘦 agent + 厚 skill」架构；progress.md 统一为八区块模板
@@ -29,6 +30,7 @@ _Last updated: 2026-08-18_
 - 2026-05-29: 主基准区域「先入为主」固化策略确立
 
 ## TODO（权威待办清单）
+- [P1][OPEN][#40] #51 实现待办：area 表+快照 / 树骨架加 AREA / 导入盖戳+清洗+冲突 / F17 快照链路 / KMZ 导出自反 / 权限三处映射表 / 按运营商分色渲染 / 回归测试。**前置依赖：等用户提供 Smart 区域划分样例 KMZ**（Context：api/ web/ deploy/db/）
 - [P1][OPEN][#3] `.claude` 架构改进 #2：流程三处重复 → 单一事实源（剩四步走/设计优先级）（配置库事项，不阻塞本仓；Context：sitemaster-config）
 - [P1][OPEN][#4] `.claude` 架构改进 #4：纸面纪律可机械校验项下沉为 hook；建议给 mark-review-needed hook 加路径过滤（只对 api/ web/ 下改动标记 review，避免 /tmp 下临时脚本误触发）（配置库事项，不阻塞本仓；Context：sitemaster-config）
 - [P2][OPEN][#5] `.claude` 架构改进 #5：CLAUDE.md 瘦身 + Sub-Agent 模型分级（配置库事项，不阻塞本仓；Context：sitemaster-config）
@@ -37,6 +39,7 @@ _Last updated: 2026-08-18_
 - [P1][DOING][#7] `.claude` 框架架构改进（本仓已迁移 .opencode；#3/#4/#5 属 sitemaster-config 配置库事项，与本仓代码无关，不阻塞本仓）（Context：sitemaster-config）
 
 ## Done（最近完成放前面）
+- 2026-08-18: [#39] #51 需求文档层完成：Product-Spec.md（F23 行 + 「AREA 区域面图层（F23 · V1.x #51）」节）+ Product-Spec-CHANGELOG.md #51 条目；代码未实现，等样例 KMZ + 开发排期（evidence：Product-Spec.md / Product-Spec-CHANGELOG.md）
 - 2026-08-18: [#38] backlog 全清（#36/#26/#2/#35/#6 五连 DONE）——#36 deploy reset 清单补 RBAC 4 表+site_delete_undo（review 顺手抓出同类遗漏）+README 修订；#26 前端拖拽 document listeners unmount cleanup（三 handler 配平）+rebindSelected 收敛进 refresh（3 处显式调用→0，结构性免疫）；#2 ruff==0.16.3 引入+零风险修复 10 条（存量 118 条列清单不修：UP045×82 大头）；#35 api/ 平铺→feature 包大重构（11 包：core/geo/audit/backups/restore/baseline/imports/sites/roads/lessors/exports，routers/ 消除，纯搬迁零逻辑改动，reviewer 六路攻击击不破+亲跑 151 passed）；#6 V2 评估落 Spec（双工作区搁置/多人冲突不做/单要素删除关闭/邮件派工=最有价值候选/工作空间+点聚合+模糊去重等真实信号）（evidence：commits 09cf8c3 + 17e1c47 + c9c71c9）
 - 2026-08-18: [#37] P0 测试债清零 + 一处缺陷 red-locks 修复——tester 独立补 #47 圆形框选回归测试 17 条（fromCircle 64 段夹具保真/GEOS 严格包含语义含边界排除/全链路+审计不记几何+scope 受限路径；新增 shapely==2.0.6 依赖做不连库的空间谓词代理）（evidence：commit 2a7c942）；tester 顺带发现 export_selection polygon 缺 coordinates 下沉 DB 500 缺陷 → 红测试 3 条锁定 → implementer 修绿（应用层 400 校验）（evidence：commit 674666d）；全量 151 passed/1 skipped；已推远端
 - 2026-08-18: [#34] #50 RBAC 六 Phase 全流程完成入库——Phase 10 数据层 4 表（e726262）/ Phase 11 认证 api/auth 包 login+logout+me+change-password+401 中间件+滑动 token+5 次锁定（315c39a）/ Phase 12 admin 包 users/roles CRUD+permissions/scopes 门控全落点（f83316f）/ Phase 13 前端登录页+apiFetch token 管线+401 拦截+启动闸门+强制改密（51663a1）/ Phase 14 AdminModal 四 tab+ScopeTree 三态权限树（5e118d9）/ Phase 15 前端 scopes.ts 全链路门控+3×ESC/3×B/mangosv5 连根拔除+审计补 5 事件+username 列（91e8656）+ V4 部署接线/文档（cd5ef35）；每 Phase 走 implementer→code-reviewer→修复闭环；tester 独立全量回归 131 passed/1 skipped（test_auth_50 16 + test_admin_50 29 + test_scope_filter_50 38 新增，既有零回归）；deployer 重打镜像 + V4 迁移实测幂等（内网 v1.0.6 直升路径验证）；主 Agent 独立验收冒烟全过（admin login 200+must_change_password / 建 Globe PM 角色+用户 / 非 admin 调 admin 接口 403 / 无 danger 调清基线 403 / 审计 login 带 username / web 产物含 token 管线 / 无 token /api/sites 401）（evidence：commit e726262..cd5ef35 + 本机 Docker 部署 2026-08-18）

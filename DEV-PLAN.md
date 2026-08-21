@@ -443,6 +443,100 @@
 
 ---
 
+# V1.x #51 增量 — AREA 运营商区域面图层（第四类实体）
+
+> 每个运营商目录下新增 AREA 文件夹 + 面图层，承载区域划分 KMZ。全链路同 site 待遇。详见 Product-Spec.md「AREA 区域面图层（F23 · V1.x #51）」节 + CHANGELOG #51。
+>
+> **样例契约（data/NCR_BCA.kmz 实解）**：158 个 Placemark；几何 = MultiGeometry 包 Polygon；**无 Schema/SchemaData**，属性走 `<ExtendedData><Data name>`（Name / polygon_id / geozone_pr / new_polygo）；内嵌样式导入忽略。
+>
+> **依赖顺序**：Phase 16（数据层）→ 17（后端全链路）→ 18（前端）→ 19（回归收尾）。
+>
+> **不许破坏的契约**：全局去重键（area = operator+name）；KMZ 自反一致性（扩第四类 schema #area）；F17 回滚不丢列（含 area_snapshot）；事务边界；#50 权限过滤全链路。
+
+## Phase 16: 数据层 — area 表 + area_snapshot + V5 迁移
+
+**交付内容**：
+- 新表 `area`：`id BIGSERIAL PRIMARY KEY` / `name TEXT NOT NULL` / `operator TEXT NOT NULL`（盖戳 Globe/Smart/Dito）/ `geom GEOMETRY(Polygon, 4326)`（MultiPolygon 源取最大面或展开，实现时定并注释）/ `extras JSONB DEFAULT '{}'` / `created_at TIMESTAMPTZ DEFAULT now()`；`UNIQUE(operator, name)`（去重键 DB 级兜底）
+- 新表 `area_snapshot`：镜像 area 列 + `restore_point_id`（对照 site_snapshot 现有结构照抄模式）
+- `deploy/migrations/V5__add_area.sql` + `deploy/db/init.sql` 同步（全幂等）
+- F17 快照链路三处同步：`restore/helper.py` 建点 + `restore/router.py` 回滚 都纳入 area/area_snapshot（**回滚不丢列教训：照 site 模式逐列显式**）
+- `_cloud_reset_db` TRUNCATE 清单加 area（**重复犯错模式警示：新表必进 reset 清单**）
+
+**关键文件**：
+- `deploy/db/init.sql`、`deploy/migrations/V5__add_area.sql`（新建）
+- `api/restore/helper.py`、`api/restore/router.py`
+- `deploy/deploy.sh`（reset 清单）
+
+**验收标准**：
+- 空库启动 `\d area` / `\d area_snapshot` 结构齐全；V5 重复执行零 ERROR
+- 端到端回滚：area 有数据 → 建恢复点 → 改数据 → 回滚 → area 完整恢复
+- reset 清单含 area（grep 验证）
+
+## Phase 17: 后端全链路 — 解析/导入/清洗/冲突/导出/权限
+
+**交付内容**：
+- **解析器**（`api/parsers/kml.py` 或新 `area` 分支）：解 MultiGeometry 壳取 Polygon；`ExtendedData><Data name="Name"` → name；polygon_id/geozone_pr 等进 extras；无 SchemaData 不报错（AREA 按导入入口盖戳）
+- **导入**（`api/imports/router.py`）：目标图层 kind=area 时收 operator 盖戳；**几何护栏只收面**（点/线跳过+输出报告）；走 F13 清洗（面以 `ST_Centroid` 质心做海里/基准国判定）+ F4 冲突（同 operator+name → 覆盖/忽略/取消导 Excel）
+- **读取**（新建 `api/areas/{__init__.py, router.py}` 包）：`GET /api/areas` → FeatureCollection（scope 过滤：operator ∈ 可见运营商集合）；参照 roads/lessors 包结构
+- **导出**（`api/exports/router.py`）：整库/选区导出含 area（schema `#area`，样式按运营商分色：Globe #3b82f6 / Smart #22c55e / Dito #ef4444 半透明）；自反契约——重导入 100% 命中冲突；选区导出 area 用 ST_Contains（质心或整面，与清洗判定口径一致并注释）
+- **权限**（`api/auth/scopes.py`）：映射表加 `AREA`；`site:<op>:AREA` 值域合法化；area 表按可见 operator 集合过滤；imports 盖戳目标校验含 area
+- **审计**：import/export 的 counts 加 area 维度
+
+**关键文件**：
+- `api/parsers/kml.py`（MultiGeometry + Data name 解析）
+- `api/areas/__init__.py` / `api/areas/router.py`（新建）
+- `api/imports/router.py`、`api/imports/cleaning.py`（面清洗）
+- `api/exports/router.py`（area 导出 + #area schema + 分色样式）
+- `api/auth/scopes.py`（AREA 映射 + 过滤）
+- `api/main.py`（挂 areas router）
+
+**验收标准**：
+- curl 导入 NCR_BCA.kmz 到 Smart/AREA → 158 面入库、operator=Smart 盖戳、Name→name、polygon_id 在 extras
+- 重复导入同文件 → 158 条全命中冲突（自反契约）
+- 导出 KMZ 含 #area schema + 分色样式；重导入 100% 冲突
+- Globe PM（scope=site:Globe）GET /api/areas 只含 Globe 行；无 site:Smart 权限导入 Smart/AREA → 403
+- 面要素清洗：质心在海里的面被标 [丢弃]
+- pytest 全量绿（151 基线 + 新增）
+
+## Phase 18: 前端 — 树 AREA 节点 + 分色渲染 + 权限树
+
+**交付内容**：
+- **LayerTree.tsx**：每个运营商下加 📁 AREA → 🔺 AREA 面图层（[导入图层] [查看图层要素]），与 EXISTING/PLANNED/SURVEY 并列；无样式子层
+- **MapView.tsx**：area 面渲染（按运营商分色半透明填充 + 同色描边）；**z-index 在点/线层之下**；复选框显隐接通
+- **scopes.ts**：`areaVisible` 判定（operator 维度）；`site:<op>:AREA` 节点可见性
+- **ScopeTree.tsx**：权限勾选树每个运营商下加 AREA 节点
+- **LayerFeatureList.tsx**：area 只读列表（列：name / polygon_id / geozone_pr 等 extras 主要字段），本期不做增删改
+- **api.ts**：fetchAreas 调用；state.ts：areas state + refresh 纳入
+- **i18n**：AREA 相关文案双语
+- 属性面板：点选 area 面显示属性（name/extras）
+
+**关键文件**：
+- `web/src/components/LayerTree.tsx`、`MapView.tsx`、`LayerFeatureList.tsx`、`admin/ScopeTree.tsx`
+- `web/src/scopes.ts`、`api.ts`、`state.ts`、`i18n.ts`、`styles.css`
+
+**验收标准**：
+- 树出现 AREA 节点（三运营商各一）；导入 KMZ 后面渲染在地图上、分色正确、不遮挡站点
+- Globe PM 登录只见 Globe 的 AREA；ScopeTree 能勾/回显 site:Globe:AREA
+- AREA 列表框只读可用（筛选/点击定位）
+- tsc 零错误 + build 通过；中英切换正确
+
+## Phase 19: 回归测试 + 收尾
+
+**交付内容**：
+- `api/tests/test_area_51.py`：解析（MultiGeometry 解壳/Name 提取/extras）、盖戳、护栏拒点线、NAME 冲突、scope 过滤、导出自反（含 #area schema）、清洗质心判定
+- 既有测试全量重跑绿
+- 四步走验证 + 部署重打 + live 冒烟（真实导入 NCR_BCA.kmz）
+
+**关键文件**：
+- `api/tests/test_area_51.py`（新建）
+- 部署：本机 docker 重打 + V5 迁移实测
+
+**验收标准**：
+- 151 + 新增全绿
+- 本机部署后 live 导入 Smart/AREA 真实 KMZ 成功 + 树/地图/权限表现正确
+
+---
+
 ## 技术栈（沿用现有，唯一新增 bcrypt）
 
 | 层级 | 技术 | 版本 | 说明 |

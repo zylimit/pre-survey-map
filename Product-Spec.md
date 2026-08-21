@@ -45,6 +45,7 @@
 | F19 | 审计日志（V1.x #23）| 记录关键操作 **15 类**（open / import / export_full / export_region / export_conflicts / restore_point_create_auto / restore_point_create_manual / restore_point_delete / restore_point_rollback / restore_point_undo_last_import / clear_baseline / **audit_log_export** / **edit_site（#48）** / **delete_site（#48）** / **undo_delete_site（#49）**）；**身份识别 = IP + User-Agent + Session ID**（V1 不做登录、不做域账号 — 浏览器限制）；**隐藏入口：连续按 3 次 `Esc`** → 弹密码框 → 输入 `mangosv5` → Modal 表格（倒序时间 + 操作类型筛选 + 分页 50/页 + **导出 Excel**）；密码不限错误次数；**UI 只读**（无删除/编辑），**右上角 [💾 导出 Excel]** 按当前筛选结果导出；后端不开 `DELETE`/`PATCH` 端点；**永久保留**；详见「审计日志（F19）」节 |
 | F21 | 定时自动备份（V1.x #42）| 后台**每 12h 自动全库备份**（复用 F17 snapshot 机制，`reason=auto_backup`，独立于恢复点）；**保留 30 天**滚动清理；~~隐藏恢复入口：连按 3 次 `B`~~ **【V1.x #50 收编】备份恢复入口移入「⚙ 管理」界面（仅 admin 可见）**，3×B 隐藏入口废除；还原前自建 pre_rollback 恢复点 |
 | F22 | 用户与角色权限（V1.x #50）| **推翻 V1「不做账号鉴权」边界**。登录页（账号+密码）→ 用户归属角色 → 角色 = 功能权限（导入/导出/编辑删除/高危操作）× 数据权限（图层树任意文件夹节点，子级继承，查看=编辑同权）；无权限文件夹**完全隐藏**（树/地图/列表框/搜索/导出全链路）；系统内置 admin 角色（全权限，不可删）；审计/备份恢复收编进「⚙ 管理」界面；详见「用户与角色权限（F22 · V1.x #50）」节 |
+| F23 | AREA 运营商区域面图层（V1.x #51）| 每个运营商目录下新增「AREA」文件夹 + AREA 面图层（与 EXISTING/PLANNED/SURVEY 并列），承载运营商区域划分 KMZ（面要素）。**第四类实体 `area` 表**（polygon + operator 盖戳 + extras）；**全链路同 site 待遇**：F13 清洗向导（含海里/非基准国判定）、按 NAME 去重走冲突向导、进 F17 快照/回滚、KMZ 导出自反契约扩第四类；**按运营商分色**半透明面；权限节点树同步扩 AREA（`site:<op>:AREA`，继承语义自动涵盖已有角色）；详见「AREA 区域面图层（F23 · V1.x #51）」节 |
 
 ---
 
@@ -719,6 +720,66 @@ EXISTS (SELECT 1 FROM countries WHERE ST_DWithin(point.geom, countries.geom, 0.0
 - **Google Earth**：勘测员客户端，本平台输出 KMZ 由此打开
 - **腾讯云**：部署环境
 - **邮件**：派工通道（**V1 不集成发件**，工程师手动发）
+
+---
+
+### AREA 区域面图层（F23 · V1.x #51）
+
+**动机**：各运营商有自己的区域划分（region/area 边界面），需要导入平台作为背景参照层。样例 = Smart 区域划分 KMZ（面要素，带 NAME 如 `RIZAL_ANTIPOLO_SAN_JUAN_GOLD_AND_RENDENTIAL_ESTATE`）。不同运营商区域划分不同 → AREA 挂在**每个运营商目录下**而非全局。
+
+#### 树结构（F20 骨架扩展）
+
+```
+SITE
+├── GLOBE
+│   ├── 📁 AREA          ← 新增，与 EXISTING/PLANNED/SURVEY 并列
+│   │   └── 🔺 AREA（面图层：[导入图层] [查看图层要素]）
+│   ├── 📁 EXISTING ...
+│   ├── 📁 PLANNED ...
+│   └── 📁 SURVEY ...
+├── SMART（同构）
+└── DITO（同构）
+```
+
+AREA 无类别子层、无状态样式分桶——文件夹下直接挂一个 🔺 AREA 面图层。
+
+#### 数据模型（第四类实体）
+
+- **新表 `area`**：`id BIGSERIAL` / `name TEXT`（去重键）/ `operator TEXT`（盖戳：Globe/Smart/Dito）/ `geom GEOMETRY(Polygon,4326)` / `extras JSONB` / `created_at`；`area_snapshot` 同步（F17 回滚不丢列教训）。
+- **盖戳**：导入时 `operator` 强制写目标图层运营商，源属性忽略（同 F20 盖戳模型）。
+- **去重键 = `name`**（同运营商内；不同运营商同名不算冲突——冲突判定带 operator 维度）。
+
+#### 全链路同 site 待遇（用户拍板）
+
+- **F13 清洗向导**：面要素同样走清洗（在海里/不在基准国判定——对面要素以其代表点/质心判定）；坐标写反等规则对面同样生效。
+- **冲突向导**：同运营商同 NAME → 覆盖/忽略/取消导冲突 Excel，三路径同 F4。
+- **F17 快照/回滚**：`area` 纳入恢复点快照组（site/road/lessor/baseline_state → 加 area）。
+- **KMZ 导出自反契约扩第四类**：导出含 AREA（schema `#area`），重导入 100% 命中冲突；导出样式按运营商分色。
+- **几何护栏**：AREA 图层只收面要素，点/线跳过 + 输出报告（同 F20 护栏）。
+
+#### 渲染样式（按运营商分色）
+
+| 运营商 | 填充色（半透明 ~35%） | 描边 |
+|--------|----------------------|------|
+| Globe | `#3b82f6` 蓝 | 同色实线 1px |
+| Smart | `#22c55e` 绿 | 同上 |
+| Dito | `#ef4444` 红 | 同上 |
+
+面图层渲染在点/线图层**之下**（不遮挡站点）。颜色值为初版默认，可调。
+
+#### 权限（#50 体系扩展）
+
+- scope_node 值域扩 `site:<op>:AREA`；`site:<op>` 继承语义自动涵盖 AREA（**已有角色无需改配置**）。
+- 前后端两份映射表同步加 `AREA` 节点（`api/auth/scopes.py` + `web/src/scopes.ts` + `web/src/components/admin/ScopeTree.tsx`）。
+- AREA 表过滤：按 operator 走可见运营商集合。
+
+#### 审计
+
+- 导入/导出复用 `import` / `export_full` / `export_region`（counts 加 area 维度）。
+
+#### 待补充
+
+- **SITE 点图层展示字段扩充**：等 wenzhao 提供字段清单后单独立项，不在本期。
 
 ### 用户与角色权限（F22 · V1.x #50）
 
