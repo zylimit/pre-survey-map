@@ -304,17 +304,18 @@
 
 ### 数据库设计
 
-PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 1 张**：
+PostgreSQL 16 + PostGIS，**业务表 4 张（#51 起含 area）+ 状态表 1 张 + 地理数据表 1 张**：
 
 | 表 | 主键 | 核心强类型列 | 扩展字段 | 几何字段 |
 |----|------|------------|---------|---------|
 | `site` | `(site_id, option)` 联合 | PROJECT / SITE STATUS / SITE ID / OPTION / LATI / LONGI / **operator / category / type**（V1.x #24 · F20 新增三列，导入时由图层盖戳）| `extras JSONB`（Excel 50 列扩展统一存此） | `geom POINT SRID 4326` |
 | `road` | 自增 `id` | Property（V1.x #24 起为去重键）| — | `geom LINESTRING SRID 4326` |
 | `lessor` | `fid` | Lessor Name / Lessor Category / Relationship（V1.x #24 起仅 Unfriendly/Normal 两态）| — | `geom POLYGON SRID 4326` |
+| **`area`**（V1.x #51 · F23 新增）| 自增 `id`，`UNIQUE(operator, name)` | name（去重键）/ operator（导入盖戳 Globe/Smart/Dito） | `extras JSONB`（polygon_id / geozone_pr 等源属性） | `geom POLYGON SRID 4326`（GIST 索引）|
 | **`baseline_state`**（V1.x #15 新增）| `id INT CHECK (id = 1)` 单行约束 | `iso_a2` / `name_zh` / `coverage_pct` / `points_used` / `established_at` | — | — |
 | `countries`（地理数据，docker init 时加载）| 来自 Natural Earth | `iso_a2` / `iso_a3` / `name` / `name_zh` | — | `geom MULTIPOLYGON SRID 4326`（GIST 索引）|
-| **`restore_point`**（V1.x #20 · F17 新增）| 自增 `id` | `reason`（pre_import/pre_clear/pre_rollback/manual/~~pre_feature_delete #48~~ **#49 弃用，删除改轻量 site_delete_undo**）/ `note` / `created_at` / `site_count` / `road_count` / `lessor_count` / `baseline_iso_a2`（摘要列，列表直接展示免反查）| — | — |
-| **`site_snapshot` / `road_snapshot` / `lessor_snapshot` / `baseline_state_snapshot`**（V1.x #20 · F17 新增）| 各自镜像源表列 + `restore_point_id`（外键 ON DELETE CASCADE）| 源表全列副本 | 同源表 | 同源表 |
+| **`restore_point`**（V1.x #20 · F17 新增）| 自增 `id` | `reason`（pre_import/pre_clear/pre_rollback/manual/~~pre_feature_delete #48~~ **#49 弃用，删除改轻量 site_delete_undo**）/ `note` / `created_at` / `site_count` / `road_count` / `lessor_count` / `area_count`（#51 起）/ `baseline_iso_a2`（摘要列，列表直接展示免反查）| — | — |
+| **`site_snapshot` / `road_snapshot` / `lessor_snapshot` / `area_snapshot`（#51 起）/ `baseline_state_snapshot`**（V1.x #20 · F17 新增）| 各自镜像源表列 + `restore_point_id`（外键 ON DELETE CASCADE）| 源表全列副本 | 同源表 | 同源表 |
 | **`audit_log`**（V1.x #23 · F19 新增）| 自增 `id BIGSERIAL` | `ts` / `session_id` / `ip` / `user_agent` / `action`（11 类枚举）/ `result`（success/failed）/ `error_msg` | `details JSONB`（按 action 不同字段不同）| — |
 
 **字段集策略（两层）**：
@@ -572,7 +573,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
 
 **动机**：`清除基线`（F14）不可逆、坏导入会污染累积数据，菲律宾现场出错没退路。F17 是这两类不可逆操作的**安全网**。设计参考专业软件的两层做法——**操作级撤销 + 命名恢复点/快照**（不上 Esri 版本控制/PITR 那种重型方案，本工具数据小、内部单点用）。
 
-**"基线"的完整定义**（一个恢复点要快照的内容）：`site` + `road` + `lessor` 三张业务表 **+ `baseline_state`**（主基准固化态）。四者一起才是一个可回滚的完整基线。
+**"基线"的完整定义**（一个恢复点要快照的内容）：`site` + `road` + `lessor` + `area`（#51 起）业务表 **+ `baseline_state`**（主基准固化态）。四者一起才是一个可回滚的完整基线。
 
 **自动建点触发（三处，都在对应写操作之前、同一事务内）**：
 - **导入 commit 前** → reason=`pre_import`（"撤销上一次导入" = 回滚到最近的 pre_import 点）
@@ -658,7 +659,7 @@ PostgreSQL 16 + PostGIS，**业务表 3 张 + 状态表 1 张 + 地理数据表 
     ↓
 已确立 (baseline_state 有 1 行)
     │ 后续 commit：什么也不做，baseline_state 不变
-    │ F14 清除基线：TRUNCATE baseline_state + site + road + lessor
+    │ F14 清除基线：TRUNCATE baseline_state + site + road + lessor + area
     ↓
 未确立 (回到初始)
 ```
@@ -754,6 +755,7 @@ AREA 无类别子层、无状态样式分桶——文件夹下直接挂一个 �
 - **F13 清洗向导**：面要素同样走清洗（在海里/不在基准国判定——对面要素以其代表点/质心判定）；坐标写反等规则对面同样生效。
 - **冲突向导**：同运营商同 NAME → 覆盖/忽略/取消导冲突 Excel，三路径同 F4。
 - **F17 快照/回滚**：`area` 纳入恢复点快照组（site/road/lessor/baseline_state → 加 area）。
+- **F14 清除基线**：TRUNCATE 含 area（清空全部业务数据语义，area 不残留）。
 - **KMZ 导出自反契约扩第四类**：导出含 AREA（schema `#area`），重导入 100% 命中冲突；导出样式按运营商分色。
 - **几何护栏**：AREA 图层只收面要素，点/线跳过 + 输出报告（同 F20 护栏）。
 
@@ -876,7 +878,7 @@ AREA 无类别子层、无状态样式分桶——文件夹下直接挂一个 �
 | `restore_point_delete` | 删除恢复点 | `restore_point_id` / `reason_at_create` / `counts_at_create` |
 | `restore_point_rollback` | 回滚到某点 | `restore_point_id` / `new_restore_point_id`（回滚本身建的点）/ `counts_before` / `counts_after` |
 | `restore_point_undo_last_import` | F17 快捷撤销上次导入 | 等价 `restore_point_rollback`，但 `details.shortcut: true` |
-| `clear_baseline` | F14 清除基线 | `counts_before: {site, road, lessor, baseline_state}` / `restore_point_id`（关联自动建的点）|
+| `clear_baseline` | F14 清除基线 | `counts_before: {site, road, lessor, area, baseline_state}`（#51 起含 area） / `restore_point_id`（关联自动建的点）|
 | `audit_log_export` | 审计日志 Modal [💾 导出 Excel] 点击后导出完成 | `filters: {action, from, to}` / `exported_rows: N` / `file_name: "audit_log_YYYYMMDD_HHMMSS.xlsx"` |
 
 **明确不记录的（噪音）**：切换底图 / 切换语言 / 框选 / 缩放 / 点击树节点 / 属性面板查看。

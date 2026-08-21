@@ -31,7 +31,7 @@ async def create_restore_point(
         note,
     )
 
-    # 2. 快照四张表
+    # 2. 快照五张表
     await conn.execute(
         """
         INSERT INTO site_snapshot
@@ -65,6 +65,16 @@ async def create_restore_point(
         """,
         rp_id,
     )
+    # #51：area 纳入快照组（全链路同 site 待遇；逐列显式，回滚不丢列）
+    await conn.execute(
+        """
+        INSERT INTO area_snapshot
+            (restore_point_id, id, name, operator, geom, extras, created_at)
+        SELECT $1, id, name, operator, geom, extras, created_at
+        FROM area
+        """,
+        rp_id,
+    )
     await conn.execute(
         """
         INSERT INTO baseline_state_snapshot
@@ -82,6 +92,7 @@ async def create_restore_point(
             site_count      = (SELECT count(*) FROM site),
             road_count      = (SELECT count(*) FROM road),
             lessor_count    = (SELECT count(*) FROM lessor),
+            area_count      = (SELECT count(*) FROM area),
             baseline_iso_a2 = (SELECT iso_a2 FROM baseline_state WHERE id = 1)
         WHERE id = $1
         """,
@@ -115,7 +126,7 @@ async def create_restore_point(
 async def restore_from_snapshot(conn, rp_id: int) -> None:
     """F17 覆盖式回滚核心（#42 复用）：TRUNCATE 主表 + 从 rp_id 快照重灌。
     调用方需已在事务内，通常先建 pre_rollback 点（protect_id=rp_id）。"""
-    await conn.execute("TRUNCATE TABLE site, road, lessor")
+    await conn.execute("TRUNCATE TABLE site, road, lessor, area")
     await conn.execute("DELETE FROM baseline_state")
     await conn.execute(
         """
@@ -148,6 +159,16 @@ async def restore_from_snapshot(conn, rp_id: int) -> None:
         SELECT fid, lessor_name, lessor_category, relationship,
                extras, source_file, created_at, updated_at, geom
         FROM lessor_snapshot
+        WHERE restore_point_id = $1
+        """,
+        rp_id,
+    )
+    # #51：area 从快照重灌（逐列显式，回滚不丢列）
+    await conn.execute(
+        """
+        INSERT INTO area (id, name, operator, geom, extras, created_at)
+        SELECT id, name, operator, geom, extras, created_at
+        FROM area_snapshot
         WHERE restore_point_id = $1
         """,
         rp_id,

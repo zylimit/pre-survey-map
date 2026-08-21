@@ -59,6 +59,21 @@ CREATE TABLE IF NOT EXISTS lessor (
 CREATE INDEX IF NOT EXISTS lessor_geom_idx ON lessor USING GIST (geom);
 CREATE INDEX IF NOT EXISTS lessor_relationship_idx ON lessor (relationship);
 
+-- Area: 面要素（运营商区域划分，F23 · V1.x #51 第四类实体），自增主键
+-- 去重键 = (operator, name) DB 兜底；operator 导入时盖戳（同 F20 盖戳模型）
+-- geom 只收 Polygon；MultiPolygon 源由解析层取最大面/展开（实现时定）
+CREATE TABLE IF NOT EXISTS area (
+    id          BIGSERIAL   PRIMARY KEY,
+    name        TEXT        NOT NULL,
+    operator    TEXT        NOT NULL,
+    geom        GEOMETRY(Polygon, 4326),
+    extras      JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (operator, name)
+);
+
+CREATE INDEX IF NOT EXISTS area_geom_idx ON area USING GIST (geom);
+
 -- Countries: Natural Earth ne_10m_admin_0_countries（Spec V1.x #12 底层地理数据）
 -- 用于在海里 / 不在主基准 两类清洗判定 + 主基准区域计算
 -- 数据由 api 启动时从 /app/geo_data/ne_10m_admin_0_countries.geojson 一次性加载
@@ -101,6 +116,7 @@ CREATE TABLE IF NOT EXISTS restore_point (
     site_count      INT,
     road_count      INT,
     lessor_count    INT,
+    area_count      INT,
     baseline_iso_a2 TEXT
 );
 
@@ -112,6 +128,9 @@ CREATE TABLE IF NOT EXISTS restore_point (
 ALTER TABLE restore_point DROP CONSTRAINT IF EXISTS restore_point_reason_check;
 ALTER TABLE restore_point ADD CONSTRAINT restore_point_reason_check
     CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual','auto_backup','pre_migrate','pre_feature_delete'));
+
+-- #51：restore_point 摘要列加 area 计数（已部署库 IF NOT EXISTS 不重跑 → 幂等 ALTER）
+ALTER TABLE restore_point ADD COLUMN IF NOT EXISTS area_count INT;
 
 -- site_snapshot: 镜像 site 全列 + restore_point_id
 CREATE TABLE IF NOT EXISTS site_snapshot (
@@ -163,6 +182,18 @@ CREATE TABLE IF NOT EXISTS lessor_snapshot (
     geom             GEOMETRY(Polygon, 4326)
 );
 CREATE INDEX IF NOT EXISTS lessor_snapshot_rp_idx ON lessor_snapshot (restore_point_id);
+
+-- area_snapshot: 镜像 area 全列 + restore_point_id（F23 · V1.x #51）
+CREATE TABLE IF NOT EXISTS area_snapshot (
+    restore_point_id BIGINT      NOT NULL REFERENCES restore_point(id) ON DELETE CASCADE,
+    id               BIGINT,
+    name             TEXT        NOT NULL,
+    operator         TEXT        NOT NULL,
+    geom             GEOMETRY(Polygon, 4326),
+    extras           JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    created_at       TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS area_snapshot_rp_idx ON area_snapshot (restore_point_id);
 
 -- baseline_state_snapshot: 镜像 baseline_state 全列 + restore_point_id
 CREATE TABLE IF NOT EXISTS baseline_state_snapshot (

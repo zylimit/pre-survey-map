@@ -1,7 +1,7 @@
 """F14 清除基线 + F15 全局基线状态栏（Spec V1.x #12 / #15）。
 
-- DELETE /api/baseline     清空 site / road / lessor / baseline_state 四张表
-  （countries 永远保留）
+- DELETE /api/baseline     清空 site / road / lessor / area / baseline_state 五张表
+  （#51 area 纳入；countries 永远保留）
 - GET    /api/baseline-state  全局基线状态栏数据源（~1ms 单行 SELECT）
 
 V1 不做权限控制，前端弹确认 modal 防误点。
@@ -42,7 +42,7 @@ async def get_baseline_state():
 # #50 Phase 12：清除基线属高危操作 → danger 功能权限门控（GET baseline-state 不门控）
 @router.delete("/baseline", dependencies=[Depends(require_perm("danger"))])
 async def clear_baseline(request: Request):
-    """F14：清空 site / road / lessor + baseline_state（换基线唯一通道）。countries 不动。"""
+    """F14：清空 site / road / lessor / area + baseline_state（换基线唯一通道）。countries 不动。"""
     rp_id: int | None = None
     async with pool().acquire() as conn:
         async with conn.transaction():
@@ -53,9 +53,11 @@ async def clear_baseline(request: Request):
             road_n = await conn.fetchval("SELECT count(*) FROM road")
             lessor_n = await conn.fetchval("SELECT count(*) FROM lessor")
             baseline_n = await conn.fetchval("SELECT count(*) FROM baseline_state")
+            area_n = await conn.fetchval("SELECT count(*) FROM area")
             # Spec #15 雷 26：truncate 范围扩展到 4 张表，含 baseline_state
+            # #51：第四类实体 area 全链路同 site 待遇——清除基线连 area 一起清（清空全部业务数据语义）
             await conn.execute(
-                'TRUNCATE TABLE site, road, lessor, baseline_state RESTART IDENTITY CASCADE'
+                'TRUNCATE TABLE site, road, lessor, area, baseline_state RESTART IDENTITY CASCADE'
             )
     # F19 审计：clear_baseline + 关联 restore_point_create_auto（pre_clear）
     await write_audit(
@@ -63,7 +65,7 @@ async def clear_baseline(request: Request):
         details={
             "counts_before": {
                 "site": site_n, "road": road_n,
-                "lessor": lessor_n, "baseline_state": baseline_n,
+                "lessor": lessor_n, "area": area_n, "baseline_state": baseline_n,
             },
             "restore_point_id": rp_id,
         },
@@ -80,6 +82,7 @@ async def clear_baseline(request: Request):
             "site": site_n,
             "road": road_n,
             "lessor": lessor_n,
+            "area": area_n,
             "baseline_state": baseline_n,
         }
     }

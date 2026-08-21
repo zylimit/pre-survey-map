@@ -71,10 +71,13 @@ _ensure_migrations_table() {
 }
 
 # ---------- 迁移前恢复点（复刻 F17 create_restore_point，纯 SQL · 单事务）----------
-# DEPLOY-DESIGN §5.3a：reason='pre_migrate'，建 restore_point 行 + 快照四张表。
+# DEPLOY-DESIGN §5.3a：reason='pre_migrate'，建 restore_point 行 + 快照主表。
 # 列与现 *_snapshot 表结构对齐（见 deploy/db/init.sql / api/restore_point_helper.py）。
 # ⚠️ restore_point.reason 的 CHECK 约束需含 'pre_migrate'，否则 INSERT 被拒——
 #    本函数在建点【前】幂等放宽该约束（加入 pre_migrate），不破坏既有取值集合。
+# ⚠️ area 段按表存在性动态包含：#51(V5) 起 area 必须进快照——漏了则 pre_migrate 点
+#    area_snapshot 零行，回滚到该点 area 被 TRUNCATE 后重灌 0 行 = 静默丢数据；
+#    但 V5 前环境（area/area_snapshot 尚不存在）须跳过 area 段，否则建点直接失败（向后兼容）。
 # 整段在一个事务里：建点失败则什么都不留，绝不在"无恢复点"状态下继续迁移。
 # 成功后把新 rp_id 写入全局 PRE_MIGRATE_RP_ID。
 # _baseline_tables_present —— restore_point + 四张主表是否都已存在（区分"全新空库初始化"）。
@@ -97,11 +100,77 @@ _create_pre_migrate_restore_point() {
     _psql_q "ALTER TABLE restore_point ADD CONSTRAINT restore_point_reason_check
              CHECK (reason IN ('pre_import','pre_clear','pre_rollback','manual','auto_backup','pre_migrate','pre_feature_delete'));" >/dev/null
 
-    # 2) 单事务：建点 + 快照四表（一条 CTE）→ \gset 取 id → 回填摘要（第二条语句）→ 回显 id。
+    # 2) 探测 area 表组是否存在（#51/V5 引入）。存在 → 快照必须含 area 段（否则回滚静默丢
+    #    area 数据）；不存在 → V5 前环境，跳过 area 段（向后兼容，建点不因缺表失败）。
+    local area_present
+    area_present=$(_psql_q "SELECT (to_regclass('public.area') IS NOT NULL
+                                AND to_regclass('public.area_snapshot') IS NOT NULL)::text;")
+    [ "$area_present" = "true" ] || \
+        warn "area/area_snapshot 表不存在（V5 前环境）—— pre_migrate 快照跳过 area 段（向后兼容）。"
+
+    # 3) 单事务：建点 + 快照主表（一条 CTE）→ \gset 取 id → 回填摘要（第二条语句）→ 回显 id。
     #    psql --single-transaction 把整段 -f 输入包进同一 BEGIN/COMMIT：任一语句失败整体回滚。
     #    ⚠️ 摘要回填【必须】单独成句：CTE 内 UPDATE 看不到同语句另一 CTE 刚 INSERT 的 rp 行
     #       （每个子语句见的是语句开始前的快照），会更新 0 行 → 计数列 NULL。拆成第二句即可见。
     local rp_id
+    if [ "$area_present" = "true" ]; then
+    rp_id=$(docker exec -i "$DB_CTN" psql -U "$DB_USER" -d "$DB_NAME" \
+                --single-transaction -v ON_ERROR_STOP=1 -tAq -f - <<'SQL'
+WITH rp AS (
+    INSERT INTO restore_point (reason, note)
+    VALUES ('pre_migrate', 'auto restore point before schema migration')
+    RETURNING id
+), s_site AS (
+    INSERT INTO site_snapshot
+        (restore_point_id, site_id, "option", project, site_status,
+         operator, category, type, lati, longi, extras, source_file,
+         created_at, updated_at, geom)
+    SELECT (SELECT id FROM rp), site_id, "option", project, site_status,
+           operator, category, type, lati, longi, extras, source_file,
+           created_at, updated_at, geom
+    FROM site
+    RETURNING 1
+), s_road AS (
+    INSERT INTO road_snapshot
+        (restore_point_id, id, property, extras, source_file, created_at, geom)
+    SELECT (SELECT id FROM rp), id, property, extras, source_file, created_at, geom
+    FROM road
+    RETURNING 1
+), s_lessor AS (
+    INSERT INTO lessor_snapshot
+        (restore_point_id, fid, lessor_name, lessor_category, relationship,
+         extras, source_file, created_at, updated_at, geom)
+    SELECT (SELECT id FROM rp), fid, lessor_name, lessor_category, relationship,
+           extras, source_file, created_at, updated_at, geom
+    FROM lessor
+    RETURNING 1
+), s_area AS (
+    -- #51：area 纳入快照（逐列显式对齐 api/restore/helper.py，回滚不丢列）
+    INSERT INTO area_snapshot
+        (restore_point_id, id, name, operator, geom, extras, created_at)
+    SELECT (SELECT id FROM rp), id, name, operator, geom, extras, created_at
+    FROM area
+    RETURNING 1
+), s_base AS (
+    INSERT INTO baseline_state_snapshot
+        (restore_point_id, id, iso_a2, name_zh, coverage_pct, points_used, established_at)
+    SELECT (SELECT id FROM rp), id, iso_a2, name_zh, coverage_pct, points_used, established_at
+    FROM baseline_state
+    RETURNING 1
+)
+SELECT id AS rp_id FROM rp \gset
+UPDATE restore_point SET
+    site_count      = (SELECT count(*) FROM site),
+    road_count      = (SELECT count(*) FROM road),
+    lessor_count    = (SELECT count(*) FROM lessor),
+    area_count      = (SELECT count(*) FROM area),
+    baseline_iso_a2 = (SELECT iso_a2 FROM baseline_state WHERE id = 1)
+WHERE id = :rp_id;
+SELECT :rp_id;
+SQL
+)
+    else
+    # V5 前环境变体：无 area 段、无 area_count 回填（area_count 列保持 NULL，同 V5 前存量点）。
     rp_id=$(docker exec -i "$DB_CTN" psql -U "$DB_USER" -d "$DB_NAME" \
                 --single-transaction -v ON_ERROR_STOP=1 -tAq -f - <<'SQL'
 WITH rp AS (
@@ -149,13 +218,18 @@ WHERE id = :rp_id;
 SELECT :rp_id;
 SQL
 )
+    fi
     # 注：CTE 里 INSERT...SELECT 都在同一语句 → 单事务原子；任一失败 psql 回滚、无 rp_id 输出。
     rp_id="$(printf '%s' "$rp_id" | tr -d '[:space:]')"
     case "$rp_id" in
         ''|*[!0-9]*) die "建恢复点失败（未拿到 rp_id）—— 拒绝在无恢复点状态下迁移。" ;;
     esac
     PRE_MIGRATE_RP_ID="$rp_id"
-    ok "恢复点已建：rp_id=${PRE_MIGRATE_RP_ID}（site/road/lessor/baseline_state 已快照）"
+    if [ "$area_present" = "true" ]; then
+        ok "恢复点已建：rp_id=${PRE_MIGRATE_RP_ID}（site/road/lessor/area/baseline_state 已快照）"
+    else
+        ok "恢复点已建：rp_id=${PRE_MIGRATE_RP_ID}（site/road/lessor/baseline_state 已快照；area 段按 V5 前环境跳过）"
+    fi
 }
 
 # ---------- 扫描待应用迁移 ----------

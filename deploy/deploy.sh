@@ -330,10 +330,13 @@ cmd_migrate() {
 #
 # 路线：compose（区别于 onprem 的 docker-run，由 cloud.conf ORCHESTRATOR 决定）：
 #   1) rsync Mac 工作区 → 腾讯云 REMOTE_DIR（排除 node_modules/dist/.vite/.git/*.tar）
-#   2) ssh 远端：docker compose build <按 scope> + docker compose up -d <按 scope>
+#   2) ssh 远端：docker compose build <按 scope>
 #   3) --migrate-db → 复用 P2 run_migrations（compose 路线下用 docker exec DB_CTN psql）
-#   4) --reset-db   → 测试库允许（PROD=false/ALLOW_RESET=true），但须 confirm（非交互拒）
-#   5) 验证：远端 curl web 端口(WEB_PORT)返回 200
+#      ⚠️ 必须【先于】compose up 起新 api（与 onprem :259-260 顺序对齐）——
+#      否则「未迁移库 + 新 api 代码」并存（如 #51 api 读写 area_count），写路径整体瘫痪。
+#   4) ssh 远端：docker compose up -d <按 scope>（库已迁移完毕，新 api 起来即兼容）
+#   5) --reset-db   → 测试库允许（PROD=false/ALLOW_RESET=true），但须 confirm（非交互拒）
+#   6) 验证：远端 curl web 端口(WEB_PORT)返回 200
 # 🔴 只碰腾讯云测试环境（SSH_ALIAS=coder）；不碰内网生产、不走 onprem 逻辑。
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -379,7 +382,7 @@ cmd_cloud() {
     fi
 
     # —— 1) rsync 工作区代码到腾讯云 ——
-    step "1/4 rsync 工作区 → ${SSH_ALIAS}:${REMOTE_DIR}（排除 node_modules/dist/.vite/.git/*.tar）"
+    step "1/5 rsync 工作区 → ${SSH_ALIAS}:${REMOTE_DIR}（排除 node_modules/dist/.vite/.git/*.tar）"
     rsync -az --delete \
         --exclude 'node_modules/' --exclude 'dist/' --exclude '.vite/' \
         --exclude '.git/' --exclude '*.tar' \
@@ -387,24 +390,28 @@ cmd_cloud() {
         || die "rsync 失败（检查 ssh ${SSH_ALIAS} 连通性）"
     ok "代码已同步到远端。"
 
-    # —— 2) 远端 docker compose build + up（按 scope）——
-    step "2/4 远端 docker compose build：[$svcs]"
+    # —— 2) 远端 docker compose build（按 scope；先 build 不 up）——
+    step "2/5 远端 docker compose build：[$svcs]"
     _cloud_compose "build $svcs" || die "远端 compose build 失败：[$svcs]"
+
+    # —— 3) --migrate-db【先于 up 起新 api】（复用 P2 run_migrations；docker exec DB_CTN psql）——
+    # 顺序与 onprem :259-260 对齐：先迁移库、后起新镜像。反过来的话「未迁移库 + 新 api」
+    # 并存（如 #51 _row_to_dict 读 area_count、建点 UPDATE area_count），写路径整体瘫痪。
+    if [ "$ARG_MIGRATE_DB" = "true" ]; then
+        step "3/5 --migrate-db：执行版本化迁移（迁移前必建恢复点；远端 db 容器；先于 compose up）"
+        _cloud_run_migrations_remote
+    else
+        info "3/5 默认不碰 db（C5）。如需迁移加 --migrate-db。"
+    fi
+
+    # —— 4) 远端 docker compose up -d（库已迁移完毕，新 api 起来即兼容）——
     # --no-deps：只起本 scope 的服务，不级联重建 depends_on 链（scope=web 不碰 api/db）。
-    step "2/4 远端 docker compose up -d --no-deps：[$svcs]"
+    step "4/5 远端 docker compose up -d --no-deps：[$svcs]"
     _cloud_compose "up -d --no-deps $svcs" || die "远端 compose up 失败：[$svcs]"
     ok "远端服务已重建并启动：[$svcs]"
 
-    # —— 3) --migrate-db（复用 P2 run_migrations；docker exec DB_CTN psql）——
-    if [ "$ARG_MIGRATE_DB" = "true" ]; then
-        step "3/4 --migrate-db：执行版本化迁移（迁移前必建恢复点；远端 db 容器）"
-        _cloud_run_migrations_remote
-    else
-        info "3/4 默认不碰 db（C5）。如需迁移加 --migrate-db。"
-    fi
-
-    # —— 4) 验证：远端 curl web 端口 = 200 ——
-    step "4/4 验证：远端 curl http://localhost:${WEB_PORT}"
+    # —— 5) 验证：远端 curl web 端口 = 200 ——
+    step "5/5 验证：远端 curl http://localhost:${WEB_PORT}"
     local code
     code=$(_cloud_ssh "curl -s -o /dev/null -w '%{http_code}' http://localhost:${WEB_PORT}" 2>/dev/null || echo "000")
     info "远端 curl http://localhost:${WEB_PORT}  ->  HTTP $code"
@@ -439,6 +446,8 @@ _cloud_run_migrations_remote() {
 #   重建 admin 角色 + admin 用户（初始密码 admin123，首登强制改密）；重启 api 或等下次启动即恢复登录。
 #   取舍：audit_log 不在清单是 by-design——审计留痕不应随 reset 抹掉；
 #   而 #49 的 site_delete_undo 必须清（无 FK，残留会让用户对已清空的库 undo 复活 reset 前删除的旧 site）。
+#   ⚠️ 重复犯错模式警示：新表必进 reset 清单（#51 area/area_snapshot 已加入）——
+#   漏加会让 reset 后残留旧数据污染测试。
 _cloud_reset_db() {
     step "🔴 reset：TRUNCATE 测试库业务数据（仅 ${DB_CTN}:${DB_NAME}，保留表结构）"
     require_cmd ssh
@@ -450,9 +459,9 @@ _cloud_reset_db() {
           FOR t IN
             SELECT tablename FROM pg_tables
             WHERE schemaname='public'
-              AND tablename IN ('site','road','lessor','baseline_state',
+              AND tablename IN ('site','road','lessor','area','baseline_state',
                                 'site_snapshot','road_snapshot','lessor_snapshot',
-                                'baseline_state_snapshot','restore_point','schema_migrations',
+                                'area_snapshot','baseline_state_snapshot','restore_point','schema_migrations',
                                 'app_user','app_role','app_role_scope','auth_session',
                                 'site_delete_undo')
           LOOP
