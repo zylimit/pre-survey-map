@@ -1,7 +1,10 @@
-"""KML parser. 把 KML 字节流解成 site / road / lessor 三类列表。
+"""KML parser. 把 KML 字节流解成 site / road / lessor / area 四类列表。
 
 数据约定：每个 Placemark 用 ExtendedData/SchemaData[@schemaUrl] 标识类型；
 缺 schemaUrl 的 Placemark 按几何类型兜底（Point→site / LineString→road / Polygon→lessor）。
+#51：schemaUrl="#area"（本平台导出）或无 schema 的外来面要素（如 NCR_BCA，
+ExtendedData 走 <Data name> 而非 SchemaData）额外产出 area 候选——area 归属由
+导入入口 target_kind 决定，不靠源 schema；解析层只负责候选产出。
 """
 
 from dataclasses import dataclass, field
@@ -42,10 +45,18 @@ class LessorRow:
 
 
 @dataclass
+class AreaRow:
+    name: str
+    extras: dict = field(default_factory=dict)
+    wkt: Optional[str] = None  # POLYGON(...)
+
+
+@dataclass
 class ParseResult:
     sites: list[SiteRow] = field(default_factory=list)
     roads: list[RoadRow] = field(default_factory=list)
     lessors: list[LessorRow] = field(default_factory=list)
+    areas: list[AreaRow] = field(default_factory=list)
 
 
 def _text(el: etree._Element, xpath: str) -> Optional[str]:
@@ -98,21 +109,47 @@ def _line_wkt(pm: etree._Element) -> Optional[str]:
 
 
 def _polygon_wkt(pm: etree._Element) -> Optional[str]:
-    coords = _text(
-        pm, ".//k:Polygon/k:outerBoundaryIs/k:LinearRing/k:coordinates/text()"
+    # .// 匹配天然解 MultiGeometry 壳（Polygon 嵌在 MultiGeometry 里也命中）。
+    # #51 review MEDIUM-1：MultiGeometry 含多个 Polygon 时取**外环鞋带面积最大者**
+    # （原取第一个，首面未必是主面）。鞋带公式在经纬度平面上做相对比较足够准——
+    # 同一 Placemark 内多面相邻，投影畸变同向，不影响大小排序。
+    rings = pm.xpath(
+        ".//k:Polygon/k:outerBoundaryIs/k:LinearRing/k:coordinates", namespaces=NS
     )
-    if not coords:
+    best_pts: Optional[list[str]] = None
+    best_area = -1.0
+    for el in rings:
+        coords = (el.text or "").strip()
+        if not coords:
+            continue
+        pts: list[str] = []
+        xy: list[tuple[float, float]] = []
+        for tok in coords.split():
+            parts = tok.split(",")
+            if len(parts) >= 2:
+                pts.append(f"{parts[0].strip()} {parts[1].strip()}")
+                try:
+                    xy.append((float(parts[0]), float(parts[1])))
+                except ValueError:
+                    xy.append((0.0, 0.0))  # 面积计算用兜底值；WKT 保留原始字符串
+        if len(pts) < 4:
+            continue
+        if pts[0] != pts[-1]:
+            pts.append(pts[0])
+            xy.append(xy[0])
+        # 鞋带公式（平面近似，仅用于同 Placemark 内多面比大小）
+        area = abs(
+            sum(
+                xy[i][0] * xy[i + 1][1] - xy[i + 1][0] * xy[i][1]
+                for i in range(len(xy) - 1)
+            )
+        ) / 2
+        if area > best_area:
+            best_area = area
+            best_pts = pts
+    if best_pts is None:
         return None
-    pts = []
-    for tok in coords.split():
-        parts = tok.split(",")
-        if len(parts) >= 2:
-            pts.append(f"{parts[0].strip()} {parts[1].strip()}")
-    if len(pts) < 4:
-        return None
-    if pts[0] != pts[-1]:
-        pts.append(pts[0])
-    return f"POLYGON(({', '.join(pts)}))"
+    return f"POLYGON(({', '.join(best_pts)}))"
 
 
 def _to_float(v: Optional[str]) -> Optional[float]:
@@ -132,6 +169,40 @@ _SITE_CORE = {
 }
 _ROAD_CORE = {"Property"}
 _LESSOR_CORE = {"fid", "Lessor Name", "Lessor Category", "Lessor Cagegory", "Relationship"}
+# #51：area 保留字段（去重键 name + 盖戳列 operator 不进 extras；源大小写写法都排除）
+_AREA_CORE = {"name", "Name", "operator", "OPERATOR"}
+
+
+def _data_fields(pm: etree._Element) -> dict[str, str]:
+    """ExtendedData 下 <Data name="..."><value>v</value></Data> → dict。
+
+    无 SchemaData 的外来文件（如 NCR_BCA.kmz）走这条；空 value 跳过（同 extras 过滤口径）。
+    """
+    out: dict[str, str] = {}
+    for el in pm.findall(".//k:ExtendedData/k:Data", NS):
+        name = el.get("name")
+        if not name:
+            continue
+        val = el.find("k:value", NS)
+        text = val.text if val is not None else None
+        if isinstance(text, str) and text.strip():
+            out[name] = text.strip()
+    return out
+
+
+def _area_row(name: str, fields: dict[str, str], pm: etree._Element) -> Optional[AreaRow]:
+    """构造 area 候选行。name 为空（去重键缺失）或无面几何 → None（跳过）。"""
+    name = (name or "").strip()
+    if not name:
+        return None
+    wkt = _polygon_wkt(pm)
+    if not wkt:
+        return None
+    return AreaRow(
+        name=name,
+        extras={k: v for k, v in fields.items() if v != "" and k not in _AREA_CORE},
+        wkt=wkt,
+    )
 
 
 _RING_FOLDER_IDS = {"np-radius-rings"}
@@ -179,7 +250,7 @@ def parse_kml(data: bytes) -> ParseResult:
 
         kind = None
         if schema_url:
-            kind = schema_url.lstrip("#").lower()  # site / road / lessor
+            kind = schema_url.lstrip("#").lower()  # site / road / lessor / area
         else:
             # 兜底：按几何类型判断
             if pm.find(".//k:Point", NS) is not None:
@@ -188,6 +259,14 @@ def parse_kml(data: bytes) -> ParseResult:
                 kind = "road"
             elif pm.find(".//k:Polygon", NS) is not None:
                 kind = "lessor"
+                # #51：无 schema 的外来面要素（如 NCR_BCA）同时产出 area 候选——
+                # <Data name="Name"> → name，其余 Data 进 extras。lessor 分支
+                # 仍需 fid（来自 SchemaData），无 schema 文件不会产生 lessor 行，
+                # 两份产出无重叠；归属由导入入口 target_kind 决定。
+                data = _data_fields(pm)
+                area = _area_row(data.get("Name"), data, pm)
+                if area is not None:
+                    result.areas.append(area)
 
         if kind == "site":
             wkt = _point_wkt(pm)
@@ -238,5 +317,11 @@ def parse_kml(data: bytes) -> ParseResult:
                     wkt=wkt,
                 )
             )
+        elif kind == "area":
+            # #51：本平台导出的 area（schemaUrl="#area"）走 SimpleData——
+            # 自反契约：重导入 name 精确回环，100% 命中冲突
+            area = _area_row(simple.get("name") or simple.get("Name"), simple, pm)
+            if area is not None:
+                result.areas.append(area)
 
     return result

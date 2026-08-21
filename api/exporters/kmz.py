@@ -25,10 +25,14 @@ LESSOR_RESERVED = {
     "fid", "Lessor Name", "Lessor Category", "Lessor Cagegory", "Relationship",
 }
 ROAD_RESERVED = {"Property"}
+# #51：area 保留字段（去重键 name + 盖戳列 operator 不进 extras；源大小写写法都排除，
+# 与 parsers/kml.py _AREA_CORE 口径一致——自反契约：导出的 #area 重导入 extras 不回灌）
+AREA_RESERVED = {"name", "Name", "operator", "OPERATOR"}
 
 SITE_CORE_FIELDS = ["PROJECT", "SITE ID", "OPTION", "SITE STATUS", "LATI", "LONGI"]
 LESSOR_CORE_FIELDS = ["fid", "Lessor Name", "Lessor Category", "Relationship"]
 ROAD_CORE_FIELDS = ["Property"]
+AREA_CORE_FIELDS = ["name", "operator"]
 
 # Style ID 选择规则
 SITE_STATUS_STYLE = {
@@ -133,9 +137,37 @@ STYLES_KML = """\
 <Style id="poly-np-ring">
   <LineStyle><color>FFF755A8</color><width>2</width></LineStyle>
   <PolyStyle><color>8CF755A8</color><fill>1</fill><outline>1</outline></PolyStyle>
+</Style>
+<Style id="poly-area-globe">
+  <LineStyle><color>FFF6823B</color><width>2</width></LineStyle>
+  <PolyStyle><color>59F6823B</color><fill>1</fill><outline>1</outline></PolyStyle>
+</Style>
+<Style id="poly-area-smart">
+  <LineStyle><color>FF5EC522</color><width>2</width></LineStyle>
+  <PolyStyle><color>595EC522</color><fill>1</fill><outline>1</outline></PolyStyle>
+</Style>
+<Style id="poly-area-dito">
+  <LineStyle><color>FF4444EF</color><width>2</width></LineStyle>
+  <PolyStyle><color>594444EF</color><fill>1</fill><outline>1</outline></PolyStyle>
+</Style>
+<Style id="poly-area-other">
+  <LineStyle><color>FFAFA39C</color><width>2</width></LineStyle>
+  <PolyStyle><color>59AFA39C</color><fill>1</fill><outline>1</outline></PolyStyle>
 </Style>"""
 # poly-np-ring（#46）：紫 #a855f7 半透明填充 + 紫描边。KML 颜色为 ABGR：
 # RR=a8 GG=55 BB=f7 → 填充 8C(alpha≈55%) F7 55 A8；描边 FF F7 55 A8。
+# poly-area-*（#51）：按运营商分色，填充 alpha≈35%（0x59）。KML 颜色 aabbggrr 字节序：
+#   Globe #3b82f6 → RR=3b GG=82 BB=f6 → 填充 59 F6 82 3B
+#   Smart #22c55e → RR=22 GG=c5 BB=5e → 填充 59 5E C5 22
+#   Dito  #ef4444 → RR=ef GG=44 BB=44 → 填充 59 44 44 EF
+#   其他运营商兜底灰 #9ca3af → 填充 59 AF A3 9C
+
+# #51：area 运营商 → (style_id, folder 名)。未匹配走 poly-area-other / Other。
+AREA_OPERATOR_STYLE = {
+    "globe": ("poly-area-globe", "Globe"),
+    "smart": ("poly-area-smart", "Smart"),
+    "dito": ("poly-area-dito", "Dito"),
+}
 
 
 # ---------- Placemark 构造 ----------
@@ -170,6 +202,14 @@ def _lessor_value(row: dict[str, Any], field: str) -> str:
 
 def _road_value(row: dict[str, Any], field: str) -> str:
     col_map = {"Property": row.get("property")}
+    if field in col_map:
+        return esc(col_map[field])
+    return esc(_parse_extras(row.get("extras")).get(field, ""))
+
+
+def _area_value(row: dict[str, Any], field: str) -> str:
+    # #51：name / operator 走强类型列（自反契约：重导入 name 精确回环）
+    col_map = {"name": row.get("name"), "operator": row.get("operator")}
     if field in col_map:
         return esc(col_map[field])
     return esc(_parse_extras(row.get("extras")).get(field, ""))
@@ -214,6 +254,12 @@ def _site_bucket(status: Any) -> tuple[str, str]:
 def _lessor_bucket(rel: Any) -> tuple[str, str]:
     r = (rel or "").strip().lower()
     return LESSOR_REL_STYLE.get(r, ("poly-red", "Unfriendly"))
+
+
+def _area_bucket(operator: Any) -> tuple[str, str]:
+    # #51：按运营商分色分桶；未知运营商兜底 Other
+    o = (operator or "").strip().lower()
+    return AREA_OPERATOR_STYLE.get(o, ("poly-area-other", "Other"))
 
 
 # ---------- Schema 字段集（核心 + extras 并集，去掉 reserved 重叠） ----------
@@ -292,8 +338,13 @@ def build_kml(
     road_rows: list[dict[str, Any]],
     lessor_rows: list[dict[str, Any]],
     np_radius_m: int = 200,
+    area_rows: list[dict[str, Any]] | None = None,
 ) -> str:
-    """组装完整 KML 文档（字符串）。每行的 'geom_kml' 字段必须由调用方填好。"""
+    """组装完整 KML 文档（字符串）。每行的 'geom_kml' 字段必须由调用方填好。
+
+    #51：area_rows 可选（None/空 → 不产出 Area Library / #area schema，向后兼容）。
+    """
+    area_rows = area_rows or []
     site_extras = _collect_extras_keys(site_rows, SITE_RESERVED)
     site_fields = SITE_CORE_FIELDS + site_extras
 
@@ -303,6 +354,9 @@ def build_kml(
     lessor_extras = _collect_extras_keys(lessor_rows, LESSOR_RESERVED)
     lessor_fields = LESSOR_CORE_FIELDS + lessor_extras
 
+    area_extras = _collect_extras_keys(area_rows, AREA_RESERVED)
+    area_fields = AREA_CORE_FIELDS + area_extras
+
     out = [
         '<?xml version="1.0" encoding="utf-8"?>',
         '<kml xmlns="http://www.opengis.net/kml/2.2">',
@@ -310,8 +364,10 @@ def build_kml(
         _schema("site", site_fields),
         _schema("road", road_fields),
         _schema("lessor", lessor_fields),
-        STYLES_KML,
     ]
+    if area_rows:
+        out.append(_schema("area", area_fields))
+    out.append(STYLES_KML)
 
     # ---- Site Library ----
     site_buckets: dict[str, list[str]] = {"Positive": [], "Negative": [], "Unknown": []}
@@ -363,6 +419,26 @@ def build_kml(
         out.extend(lessor_buckets[bucket])
         out.append("  </Folder>")
     out.append("</Folder>")
+
+    # ---- Area Library（#51，按运营商分色分桶）----
+    if area_rows:
+        area_buckets: dict[str, list[str]] = {"Globe": [], "Smart": [], "Dito": [], "Other": []}
+        for i, r in enumerate(area_rows, 1):
+            if not r.get("geom_kml"):
+                continue
+            style_id, bucket = _area_bucket(r.get("operator"))
+            pid = f"area.{esc(bucket)}.{i}"
+            area_buckets[bucket].append(
+                _placemark(pid, style_id, "area", area_fields, _area_value, r, r["geom_kml"])
+            )
+        out.append("<Folder><name>Area Library</name>")
+        for bucket in ("Globe", "Smart", "Dito", "Other"):
+            if not area_buckets[bucket]:
+                continue
+            out.append(f"  <Folder><name>{bucket}</name>")
+            out.extend(area_buckets[bucket])
+            out.append("  </Folder>")
+        out.append("</Folder>")
 
     # ---- NP 范围圈（#46，独立顶层 Folder）----
     # 凡 type ∈ {Macro NP, Micro NP} 且已作为点导出（geom_kml 存在）的站点，按半径画圈。

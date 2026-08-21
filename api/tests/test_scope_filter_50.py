@@ -258,10 +258,14 @@ def test_export_all_scoped_filters_and_skips_types(monkeypatch, captured):
     resp = asyncio.run(export_all(_FakeRequest(user=_user(["site:Globe"]))))
 
     assert resp.status_code == 200
-    assert len(conn.fetches) == 1  # road/lessor 不可见 → 不查
+    # #51：site:Globe 同时授予该运营商 AREA → site + area 两条查询；road/lessor 不可见 → 不查
+    assert len(conn.fetches) == 2
     sql, args = conn.fetches[0]
     assert "FROM site" in sql and "operator = $1" in sql
     assert args == ("Globe",)
+    area_sql, area_args = conn.fetches[1]
+    assert "FROM area" in area_sql and "operator = ANY($1::text[])" in area_sql
+    assert area_args == (["Globe"],)
     assert cap["kmz"]["data"]["road"] == [] and cap["kmz"]["data"]["lessor"] == []
 
 

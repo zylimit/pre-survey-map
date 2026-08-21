@@ -32,6 +32,7 @@ from auth.permissions import require_perm
 from auth.scopes import import_target_visible, request_scopes
 from .cleaning import (
     _country_dist_in_db,
+    classify_geoms,
     classify_points,
     compute_baseline_region,
     detect_swap_or_missing_decimal,
@@ -39,7 +40,7 @@ from .cleaning import (
 from core.db import pool
 from exporters.conflicts_xlsx import build_conflicts_xlsx
 from restore.helper import create_restore_point
-from parsers.kml import LessorRow, ParseResult, SiteRow, parse_kml
+from parsers.kml import AreaRow, LessorRow, ParseResult, SiteRow, parse_kml
 from parsers.kmz import parse_kmz
 from parsers.xlsx import ParseError, parse_xlsx
 
@@ -85,6 +86,11 @@ def _road_key(property: str | None) -> str:
 
 def _lessor_key(fid: str) -> str:
     return (fid or "").strip().lower()
+
+
+def _area_key(name: str) -> str:
+    """#51 F23：area 去重键 = name（trim+lower）；运营商维度由盖戳固定，不入 key。"""
+    return (name or "").strip().lower()
 
 
 # ---------- F20 状态值规范化（导入器层面，V1.x #25）----------
@@ -156,7 +162,7 @@ async def import_file(
     - operator/category/type = 图层盖戳值，commit 时强制写入 site 三列，源文件同名属性一律忽略。
     - #50：盖戳目标图层必须落在可见数据权限 scope 内，否则 403。
     """
-    if target_kind is not None and target_kind not in ("site", "road", "lessor"):
+    if target_kind is not None and target_kind not in ("site", "road", "lessor", "area"):
         raise HTTPException(status_code=400, detail=f"非法 target_kind：{target_kind}")
     if not import_target_visible(
         request_scopes(request), target_kind, operator, category
@@ -175,11 +181,14 @@ async def import_file(
     site_pool: dict[str, dict[str, Any]] = {}
     lessor_pool: dict[str, dict[str, Any]] = {}
     road_pool: list[dict[str, Any]] = []
+    area_pool: dict[str, dict[str, Any]] = {}  # #51：仅 target_kind=area 时填充
     # 同文件内重复统计（Spec Q2：banner 第 2 行展示）
     site_dups_groups = 0
     site_dups_discarded = 0
     lessor_dups_groups = 0
     lessor_dups_discarded = 0
+    area_dups_groups = 0
+    area_dups_discarded = 0
     parsed_count = 0
 
     try:
@@ -187,27 +196,39 @@ async def import_file(
         parsed = _parse(kind, data)
 
         # === 几何护栏（F20 V1.x #24，前置）===
-        # 图层强类型：Site 层只收点 / Road 层只收线 / Lessor 层只收面。
+        # 图层强类型：Site 层只收点 / Road 层只收线 / Lessor 层只收面 / Area 层只收面（#51）。
         # 几何类型不匹配的要素跳过 + 报告，不阻断其余导入。target_kind=None → 不护栏（F1 全局导入）。
-        geometry_skipped = {"site": 0, "road": 0, "lessor": 0}
+        geometry_skipped = {"site": 0, "road": 0, "lessor": 0, "area": 0}
         if target_kind == "site":
             geometry_skipped["road"] = len(parsed.roads)
             geometry_skipped["lessor"] = len(parsed.lessors)
-            parsed.roads, parsed.lessors = [], []
+            geometry_skipped["area"] = len(parsed.areas)
+            parsed.roads, parsed.lessors, parsed.areas = [], [], []
         elif target_kind == "road":
             geometry_skipped["site"] = len(parsed.sites)
             geometry_skipped["lessor"] = len(parsed.lessors)
-            parsed.sites, parsed.lessors = [], []
+            geometry_skipped["area"] = len(parsed.areas)
+            parsed.sites, parsed.lessors, parsed.areas = [], [], []
         elif target_kind == "lessor":
             geometry_skipped["site"] = len(parsed.sites)
             geometry_skipped["road"] = len(parsed.roads)
-            parsed.sites, parsed.roads = [], []
+            geometry_skipped["area"] = len(parsed.areas)
+            parsed.sites, parsed.roads, parsed.areas = [], [], []
+        elif target_kind == "area":
+            geometry_skipped["site"] = len(parsed.sites)
+            geometry_skipped["road"] = len(parsed.roads)
+            geometry_skipped["lessor"] = len(parsed.lessors)
+            parsed.sites, parsed.roads, parsed.lessors = [], [], []
 
-        parsed_count = len(parsed.sites) + len(parsed.roads) + len(parsed.lessors)
+        parsed_count = (
+            len(parsed.sites) + len(parsed.roads)
+            + len(parsed.lessors) + len(parsed.areas)
+        )
         file_report["parsed"] = {
             "site": len(parsed.sites),
             "road": len(parsed.roads),
             "lessor": len(parsed.lessors),
+            "area": len(parsed.areas),
         }
 
         # 同文件内重复折叠：同 key 后者覆盖前者（组数/丢弃数在下方按 seen 计数算）
@@ -235,6 +256,19 @@ async def import_file(
             k = _lessor_key(le.fid)
             seen[k] = seen.get(k, 0) + 1
         lessor_dups_groups = sum(1 for v in seen.values() if v > 1)
+
+        # #51：area 只在 target_kind=area 时入池（F1 全局导入/其他图层不碰，保向后兼容）。
+        # 盖戳 operator 在 commit 时强制写入，源属性忽略（同 F20 盖戳模型）。
+        if target_kind == "area":
+            for a in parsed.areas:
+                k = _area_key(a.name)
+                area_pool[k] = {**asdict(a), "source_file": file.filename or ""}
+            area_dups_discarded = len(parsed.areas) - len(area_pool)
+            seen = {}
+            for a in parsed.areas:
+                k = _area_key(a.name)
+                seen[k] = seen.get(k, 0) + 1
+            area_dups_groups = sum(1 for v in seen.values() if v > 1)
 
     except ParseError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -291,6 +325,12 @@ async def import_file(
     _t0 = time.perf_counter()
     baseline = None
     baseline_iso = None
+    # #51：area 面要素以其 ST_Centroid 质心做同一套海里/基准国判定（F13 同 site 待遇）
+    geo_areas: list[dict[str, Any]] = [
+        {"row_id": _row_id("area", k), "wkt": row["wkt"]}
+        for k, row in area_pool.items()
+        if row.get("wkt")
+    ]
     try:
         async with pool().acquire() as conn:
             # 先算主基准（基线 ≥ 1 用基线，否则用本文件 geo_points）
@@ -299,16 +339,18 @@ async def import_file(
 
             # 对 geo_points 做地理分类
             classified = await classify_points(conn, geo_points, baseline_iso)
+            # #51：面要素质心分类（与选区导出 ST_Contains(选区, 质心) 口径一致）
+            classified_areas = await classify_geoms(conn, geo_areas, baseline_iso)
     except Exception as e:
         traceback.print_exc()
         print(
             f"[import] geo classify FAILED after {time.perf_counter() - _t0:.1f}s "
-            f"points={len(geo_points)} baseline_iso={baseline_iso}",
+            f"points={len(geo_points)} areas={len(geo_areas)} baseline_iso={baseline_iso}",
             flush=True,
         )
         raise HTTPException(
             status_code=500,
-            detail=f"地理清洗失败（{len(geo_points)} 点）：{type(e).__name__}: {e}",
+            detail=f"地理清洗失败（{len(geo_points)} 点 / {len(geo_areas)} 面）：{type(e).__name__}: {e}",
         )
     print(
         f"[import] geo classify OK in {time.perf_counter() - _t0:.1f}s "
@@ -359,8 +401,45 @@ async def import_file(
                 "country_name_en": cls.get("country_name_en"),
             })
 
+    # #51：area 面清洗结果 → cleanings（面以质心判定；无坐标写反/漏小数点规则——
+    # 那是点列算术规则，面要素无 lati/longi 列）
+    for g in geo_areas:
+        cls = classified_areas.get(g["row_id"])
+        if cls is None:
+            continue
+        rid = g["row_id"]
+        row = area_pool.get(rid.split(":", 1)[1])
+        if row is None:
+            continue
+        if cls["in_sea"]:
+            cleanings.append({
+                "row_id": rid,
+                "kind": "area",
+                "name": row["name"],
+                "file_name": row["source_file"],
+                "issue": "in_sea",
+                "current_coord": None,
+                "fixed_coord_preview": None,
+                "default_action": "discard",
+                "country_iso_a2": None,
+            })
+        elif cls["not_in_baseline"]:
+            cleanings.append({
+                "row_id": rid,
+                "kind": "area",
+                "name": row["name"],
+                "file_name": row["source_file"],
+                "issue": "not_in_baseline",
+                "current_coord": None,
+                "fixed_coord_preview": None,
+                "default_action": "discard",
+                "country_iso_a2": cls["country_iso_a2"],
+                "country_name_zh": cls["country_name_zh"],
+                "country_name_en": cls.get("country_name_en"),
+            })
+
     # 几何护栏报告（F20）：跳过的非本类要素，供前端底部输出窗口展示
-    _guard_label = {"site": "非点要素", "road": "非线要素", "lessor": "非面要素"}
+    _guard_label = {"site": "非点要素", "road": "非线要素", "lessor": "非面要素", "area": "非面要素"}
     total_skipped = sum(geometry_skipped.values())
     geometry_guard = {
         "target_kind": target_kind,
@@ -379,11 +458,14 @@ async def import_file(
             "site_discarded": site_dups_discarded,
             "lessor_groups": lessor_dups_groups,
             "lessor_discarded": lessor_dups_discarded,
+            "area_groups": area_dups_groups,
+            "area_discarded": area_dups_discarded,
         },
         "after_dedup": {
             "site": len(site_pool),
             "road": len(road_pool),
             "lessor": len(lessor_pool),
+            "area": len(area_pool),
         },
         "geometry_guard": geometry_guard,
         "cleanings_count": len(cleanings),
@@ -405,6 +487,7 @@ async def import_file(
             "site_pool": site_pool,
             "lessor_pool": lessor_pool,
             "road_pool": road_pool,
+            "area_pool": area_pool,
             "cleanings": cleanings,
             "baseline_region": baseline,
             # F20 盖戳上下文：commit 时取用，强制写 site 三列
@@ -453,11 +536,23 @@ async def proceed_to_conflicts(sid: str, body: ProceedBody):
 
     decisions = {d.row_id: d.action for d in body.decisions}
     site_pool: dict[str, dict[str, Any]] = dict(s["site_pool"])  # 拷贝，应用清洗后回写
+    area_pool: dict[str, dict[str, Any]] = dict(s.get("area_pool") or {})  # #51 同拷贝语义
     cleanings: list[dict[str, Any]] = s["cleanings"]
 
     # 应用清洗决策
     cleaning_stats = {"auto_fixed": 0, "kept": 0, "discarded": 0}
     for c in cleanings:
+        if c["kind"] == "area":
+            # #51：area 只参与 in_sea / not_in_baseline（质心判定），无 auto_fix 路径
+            rid = c["row_id"]
+            action = decisions.get(rid, c["default_action"])
+            key = rid.split(":", 1)[1]
+            if action == "discard":
+                area_pool.pop(key, None)
+                cleaning_stats["discarded"] += 1
+            else:
+                cleaning_stats["kept"] += 1
+            continue
         if c["kind"] != "site":
             continue
         rid = c["row_id"]
@@ -502,6 +597,16 @@ async def proceed_to_conflicts(sid: str, body: ProceedBody):
             "SELECT fid, lessor_name, lessor_category, relationship, extras, "
             "source_file FROM lessor"
         )
+        # #51：area 冲突判定带 operator 维度（去重键 = operator+name）——
+        # 只查盖戳运营商的既有面；不同运营商同名不算冲突
+        existing_areas = (
+            await conn.fetch(
+                "SELECT id, name, operator, extras FROM area WHERE operator = $1",
+                s.get("stamp_operator"),
+            )
+            if area_pool
+            else []
+        )
 
     existing_site_idx = {
         _site_key(r["site_id"], r["option"]): dict(r) for r in existing_sites
@@ -515,12 +620,16 @@ async def proceed_to_conflicts(sid: str, body: ProceedBody):
     existing_lessor_idx = {
         _lessor_key(r["fid"]): dict(r) for r in existing_lessors
     }
+    existing_area_idx = {
+        _area_key(r["name"]): dict(r) for r in existing_areas
+    }
 
     conflicts: list[dict[str, Any]] = []
     non_conflicts: dict[str, list[dict[str, Any]]] = {
         "site": [],
         "road": [],
         "lessor": [],
+        "area": [],
     }
 
     for key, row in site_pool.items():
@@ -570,9 +679,26 @@ async def proceed_to_conflicts(sid: str, body: ProceedBody):
                 "source_file": row["source_file"],
             })
 
+    # #51：area 冲突三路径（覆盖/忽略/取消导 Excel）同 F4；key 带盖戳运营商便于前端区分
+    for key, row in area_pool.items():
+        existing = existing_area_idx.get(key)
+        if existing is None:
+            non_conflicts["area"].append(row)
+        else:
+            existing = _normalize_jsonb(existing)
+            conflicts.append({
+                "key": f"area:{s.get('stamp_operator')}:{row['name']}",
+                "kind": "area",
+                "name": row["name"],
+                "existing": existing,
+                "incoming": row,
+                "source_file": row["source_file"],
+            })
+
     # 写回 session（清洗后的 pool + 计算出的 non_conflicts + conflicts）
     session_store.update(sid, {
         "site_pool_cleaned": site_pool,
+        "area_pool_cleaned": area_pool,
         "non_conflicts": non_conflicts,
         "conflicts": conflicts,
         "cleaning_decisions": decisions,
@@ -591,6 +717,10 @@ async def proceed_to_conflicts(sid: str, body: ProceedBody):
         "lessor": {
             "non_conflict": len(non_conflicts["lessor"]),
             "conflict": sum(1 for c in conflicts if c["kind"] == "lessor"),
+        },
+        "area": {
+            "non_conflict": len(non_conflicts["area"]),
+            "conflict": sum(1 for c in conflicts if c["kind"] == "area"),
         },
     }
 
@@ -668,6 +798,7 @@ async def commit_import(sid: str, body: CommitBody, request: Request):
         "site": {"inserted": 0, "updated": 0, "ignored": 0},
         "road": {"inserted": 0, "updated": 0, "ignored": 0},
         "lessor": {"inserted": 0, "updated": 0, "ignored": 0},
+        "area": {"inserted": 0, "updated": 0, "ignored": 0},
     }
     rp_id: int | None = None
 
@@ -676,7 +807,11 @@ async def commit_import(sid: str, body: CommitBody, request: Request):
     non_site = s["non_conflicts"]["site"]
     non_road = s["non_conflicts"]["road"]
     non_lessor = s["non_conflicts"]["lessor"]
-    _total = len(non_site) + len(non_road) + len(non_lessor) + len(s["conflicts"])
+    non_area = s["non_conflicts"].get("area", [])
+    _total = (
+        len(non_site) + len(non_road) + len(non_lessor) + len(non_area)
+        + len(s["conflicts"])
+    )
     _done = 0
     _EVERY = 500
     session_store.set_progress(sid, 0, _total, "committing")
@@ -706,6 +841,12 @@ async def commit_import(sid: str, body: CommitBody, request: Request):
                     _done += 1
                     if _done % _EVERY == 0:
                         session_store.set_progress(sid, _done, _total, "committing")
+                for r in non_area:
+                    await _insert_area(conn, r, stamp)
+                    stats["area"]["inserted"] += 1
+                    _done += 1
+                    if _done % _EVERY == 0:
+                        session_store.set_progress(sid, _done, _total, "committing")
 
                 for c in s["conflicts"]:
                     action = decisions.get(c["key"], "ignore")
@@ -719,6 +860,9 @@ async def commit_import(sid: str, body: CommitBody, request: Request):
                         elif c["kind"] == "lessor":
                             await _update_lessor(conn, c["existing"], c["incoming"])
                             stats["lessor"]["updated"] += 1
+                        elif c["kind"] == "area":
+                            await _update_area(conn, c["existing"], c["incoming"], stamp)
+                            stats["area"]["updated"] += 1
                     else:
                         stats[c["kind"]]["ignored"] += 1
                     _done += 1
@@ -766,7 +910,7 @@ async def commit_import(sid: str, body: CommitBody, request: Request):
         action="import",
         details={
             "file_name": s.get("file_name"),
-            "parsed_count": sum(stats[k]["inserted"] + stats[k]["updated"] + stats[k]["ignored"] for k in ("site", "road", "lessor")),
+            "parsed_count": sum(stats[k]["inserted"] + stats[k]["updated"] + stats[k]["ignored"] for k in ("site", "road", "lessor", "area")),
             "cleaning_stats": s.get("cleaning_stats", {}),
             "stats": stats,
             "restore_point_id": rp_id,
@@ -837,6 +981,7 @@ async def conflicts_xlsx(sid: str, request: Request):
                 "total": len(conflicts),
                 "site": sum(1 for c in conflicts if c.get("kind") == "site"),
                 "lessor": sum(1 for c in conflicts if c.get("kind") == "lessor"),
+                "area": sum(1 for c in conflicts if c.get("kind") == "area"),
             },
             "bytes": len(data),
         },
@@ -968,4 +1113,40 @@ async def _update_lessor(conn, existing: dict[str, Any], row: dict[str, Any]) ->
         row.get("source_file"),
         row.get("wkt"),
         existing["fid"],
+    )
+
+
+# #51 F23：area 去重键 = (operator, name)，DB 级 UNIQUE 兜底；盖戳 operator 强制写
+async def _insert_area(conn, row: dict[str, Any], stamp: dict[str, Any] | None = None) -> None:
+    stamp = stamp or {}
+    await conn.execute(
+        """
+        INSERT INTO area (name, operator, extras, geom)
+        VALUES ($1, $2, $3::jsonb,
+                CASE WHEN $4::text IS NULL THEN NULL
+                     ELSE ST_GeomFromText($4, 4326) END)
+        ON CONFLICT (operator, name) DO NOTHING
+        """,
+        row["name"], stamp.get("operator"),
+        json.dumps(row.get("extras") or {}),
+        row.get("wkt"),
+    )
+
+
+async def _update_area(conn, existing: dict[str, Any], row: dict[str, Any],
+                       stamp: dict[str, Any] | None = None) -> None:
+    # 覆盖路径：更新 geom + extras（冲突三路径之「覆盖」语义），盖戳运营商不变
+    stamp = stamp or {}
+    await conn.execute(
+        """
+        UPDATE area SET
+            name = $1, operator = $2, extras = $3::jsonb,
+            geom = CASE WHEN $4::text IS NULL THEN NULL
+                        ELSE ST_GeomFromText($4, 4326) END
+        WHERE operator = $5 AND name = $6
+        """,
+        row["name"], stamp.get("operator") or existing["operator"],
+        json.dumps(row.get("extras") or {}),
+        row.get("wkt"),
+        existing["operator"], existing["name"],
     )

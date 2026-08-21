@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from audit.service import write_audit
 from auth.permissions import require_perm
 from auth.scopes import (
+    area_scope_operators,
     can_see_lessor,
     can_see_road,
     request_scopes,
@@ -53,8 +54,18 @@ FROM lessor
 {where}
 """
 
+# #51 F23：area 面导出（area 表无 source_file 列，与 site/road/lessor 不同）
+AREA_SQL = """
+SELECT id, name, operator, extras,
+       CASE WHEN geom IS NULL THEN NULL ELSE ST_AsKML(geom, 15) END AS geom_kml
+FROM area
+{where}
+"""
+
 # 选区过滤：ST_Contains(选区, geom) 严格包含（点在边界上不算）
 CONTAINS_CLAUSE = "WHERE geom IS NOT NULL AND ST_Contains(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), geom)"
+# #51：area 选区口径 = ST_Contains(选区, ST_Centroid(geom))，与清洗质心判定一致
+AREA_CONTAINS_CLAUSE = "WHERE geom IS NOT NULL AND ST_Contains(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), ST_Centroid(geom))"
 
 # #46：NP 范围圈半径白名单（米），与前端 NP_RADIUS_OPTIONS 一致。非白名单值回落默认 200。
 NP_RADIUS_OPTIONS = (50, 100, 150, 200, 250)
@@ -74,24 +85,32 @@ WHERE (site_id, "option") IN (SELECT * FROM unnest($1::text[], $2::text[]))
 """
 
 
+def _area_where(where: str) -> str:
+    """#51：area 选区过滤用质心口径（AREA_CONTAINS_CLAUSE），整库导出原样（空串）。"""
+    return AREA_CONTAINS_CLAUSE if where == CONTAINS_CLAUSE else where
+
+
 async def _fetch_rows(where: str, params: tuple) -> dict[str, list[dict[str, Any]]]:
     async with pool().acquire() as conn:
         sites = await conn.fetch(SITE_SQL.format(where=where), *params)
         roads = await conn.fetch(ROAD_SQL.format(where=where), *params)
         lessors = await conn.fetch(LESSOR_SQL.format(where=where), *params)
+        areas = await conn.fetch(AREA_SQL.format(where=_area_where(where)), *params)
     return {
         "site": [dict(r) for r in sites],
         "road": [dict(r) for r in roads],
         "lessor": [dict(r) for r in lessors],
+        "area": [dict(r) for r in areas],
     }
 
 
 def _scope_filter_needed(scopes: list[str]) -> bool:
-    """全量可见（site 无限制 + road + lessor）→ False，走原 _fetch_rows 路径。"""
+    """全量可见（site 无限制 + road + lessor + area 无限制）→ False，走原 _fetch_rows 路径。"""
     return (
         site_scope_pairs(scopes) is not None
         or not can_see_road(scopes)
         or not can_see_lessor(scopes)
+        or area_scope_operators(scopes) is not None
     )
 
 
@@ -101,12 +120,22 @@ async def _fetch_rows_scoped(
     """#50 Phase 12：数据权限过滤版取数。
 
     site 追加 scope WHERE（参数接在已有 params 之后）；road/lessor 不可见 → 空列表。
+    #51：area 按可见运营商集合过滤（area_scope_operators 口径；空集 → 空列表）。
     """
     frag, sparams = site_scope_where(scopes, start_idx=len(params) + 1)
     if where:
         site_where = f"{where} AND ({frag})" if frag else where
     else:
         site_where = f"WHERE {frag}" if frag else ""
+
+    # area：可见运营商集合 → operator = ANY($n) 追加在选区/整库 where 之后
+    ops = area_scope_operators(scopes)
+    area_where = _area_where(where)
+    if ops is not None:
+        op_idx = len(params) + 1
+        clause = f"operator = ANY(${op_idx}::text[])"
+        area_where = f"{area_where} AND {clause}" if area_where else f"WHERE {clause}"
+
     async with pool().acquire() as conn:
         sites = await conn.fetch(SITE_SQL.format(where=site_where), *params, *sparams)
         roads = (
@@ -119,23 +148,37 @@ async def _fetch_rows_scoped(
             if can_see_lessor(scopes)
             else []
         )
+        areas = (
+            await conn.fetch(
+                AREA_SQL.format(where=area_where),
+                *params,
+                *([sorted(ops)] if ops is not None else []),
+            )
+            if ops is None or ops
+            else []
+        )
     return {
         "site": [dict(r) for r in sites],
         "road": [dict(r) for r in roads],
         "lessor": [dict(r) for r in lessors],
+        "area": [dict(r) for r in areas],
     }
 
 
 def _build_kmz_meta(
     label: str, data: dict[str, list[dict[str, Any]]], np_radius_m: int = DEFAULT_NP_RADIUS_M
 ) -> tuple[str, bytes, dict[str, int]]:
-    kml = build_kml(data["site"], data["road"], data["lessor"], np_radius_m=np_radius_m)
+    kml = build_kml(
+        data["site"], data["road"], data["lessor"],
+        np_radius_m=np_radius_m, area_rows=data.get("area") or [],
+    )
     kmz_bytes = pack_kmz(kml)
     fname = f"export_{label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.kmz"
     counts = {
         "site": len(data["site"]),
         "road": len(data["road"]),
         "lessor": len(data["lessor"]),
+        "area": len(data.get("area") or []),
     }
     return fname, kmz_bytes, counts
 
@@ -251,6 +294,7 @@ async def export_selection_ids(body: SelectionIdsBody, request: Request):
         "site": [dict(r) for r in rows],
         "road": [],
         "lessor": [],
+        "area": [],  # #51：勾选导出仅 site 子集，area 不参与（与 road/lessor 同口径）
     }
 
     fname, kmz_bytes, counts = _build_kmz_meta("region", data, np_radius_m)

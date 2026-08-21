@@ -15,6 +15,7 @@
 **决策（AskUserQuestion 两轮拍板）**：
 - **数据模型 = 新表 `area`（第四类实体）**（否掉复用 lessor——lessor 是租户语义，混入会污染导出/自反契约）。
 - **全链路同 site 待遇**：F13 清洗向导（面以质心做海里/基准国判定）+ NAME 去重冲突向导（同运营商内，带 operator 维度）+ F17 快照回滚 + KMZ 导出自反契约扩第四类（schema `#area`）+ 几何护栏只收面 + F14 清除基线 TRUNCATE 含 area（清空全部业务数据语义，不残留）。
+  - #51 review 裁决修订：「坐标写反/漏小数点」清洗规则**不适用于面**——面无 lati/longi 列，写反检测是点列算术规则；异常坐标面由 ST_Centroid 质心判定兜底。
 - **去重键 = NAME**（否掉源文件 ID 字段）。
 - **渲染 = 按运营商分色**：Globe 蓝 #3b82f6 / Smart 绿 #22c55e / Dito 红 #ef4444，半透明 ~35% 填充 + 同色 1px 描边；面渲染在点/线层之下。
 - **权限**：scope_node 值域扩 `site:<op>:AREA`，`site:<op>` 继承自动涵盖——已有角色零配置变更；三处映射表同步（api/auth/scopes.py + web/src/scopes.ts + ScopeTree.tsx）。

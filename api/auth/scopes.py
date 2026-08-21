@@ -17,6 +17,8 @@ OPERATOR_NODES = ("Globe", "Smart", "Dito")
 CATEGORY_NODE_TO_DB = {"EXISTING": "存量", "PLANNED": "规划", "SURVEY": "勘测"}
 CATEGORY_DB_TO_NODE = {v: k for k, v in CATEGORY_NODE_TO_DB.items()}
 SCOPE_ROOTS = ("site", "road", "lessor")
+# #51 F23：AREA 面图层权限节点 site:<op>:AREA（挂在运营商下，无类别库值映射）
+AREA_NODE = "AREA"
 
 
 def visible_scopes(user: dict[str, Any]) -> list[str]:
@@ -51,7 +53,7 @@ def validate_scope_node(node: Any) -> bool:
         return (
             parts[0] == "site"
             and parts[1] in OPERATOR_NODES
-            and parts[2] in CATEGORY_NODE_TO_DB
+            and (parts[2] in CATEGORY_NODE_TO_DB or parts[2] == AREA_NODE)
         )
     return False
 
@@ -115,6 +117,30 @@ def can_see_lessor(scopes: list[str]) -> bool:
     return FULL in scopes or "lessor" in scopes
 
 
+def area_scope_operators(scopes: list[str]) -> Optional[set[str]]:
+    """#51 F23：可见 area 的运营商集合。
+
+    返回 None = 全量可见（"*" 或 "site" 根）；否则运营商集合（可为空集 = 全不可见）。
+    授予口径：site:<op>（运营商节点，继承语义涵盖其下 AREA）或 site:<op>:AREA
+    都使该 operator 的 area 可见；类别级节点（site:<op>:SURVEY 等）不授予 area。
+    """
+    if FULL in scopes or "site" in scopes:
+        return None
+    ops: set[str] = set()
+    for s in scopes:
+        parts = s.split(":")
+        if len(parts) == 2 and parts[0] == "site" and parts[1] in OPERATOR_NODES:
+            ops.add(parts[1])
+        elif (
+            len(parts) == 3
+            and parts[0] == "site"
+            and parts[1] in OPERATOR_NODES
+            and parts[2] == AREA_NODE
+        ):
+            ops.add(parts[1])
+    return ops
+
+
 def site_row_visible(
     scopes: list[str], operator: Optional[str], category: Optional[str]
 ) -> bool:
@@ -144,6 +170,12 @@ def import_target_visible(
         return can_see_road(scopes)
     if target_kind == "lessor":
         return can_see_lessor(scopes)
+    if target_kind == "area":
+        # #51：site:<op> 或 site:<op>:AREA 可导入该运营商 AREA；盖戳 operator 必填
+        if not operator:
+            return False
+        ops = area_scope_operators(scopes)
+        return ops is None or operator in ops
     if not operator or not category:
         return False
     return site_row_visible(scopes, operator, category)

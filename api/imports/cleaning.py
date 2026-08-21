@@ -108,6 +108,63 @@ async def classify_points(conn, points: list[dict[str, Any]],
     return out
 
 
+async def classify_geoms(conn, geoms: list[dict[str, Any]],
+                          baseline_iso_a2: Optional[str]) -> dict[str, dict[str, Any]]:
+    """#51：面要素（area）地理清洗——以 ST_Centroid 质心做海里/基准国判定。
+
+    口径与选区导出（ST_Contains(选区, ST_Centroid(geom))）一致。
+    geoms: [{"row_id": ..., "wkt": "POLYGON(...)"}]
+    返回结构与 classify_points 相同。
+    """
+    if not geoms:
+        return {}
+
+    row_ids = [g["row_id"] for g in geoms]
+    wkts = [g["wkt"] for g in geoms]
+
+    # 与 classify_points 同一套 KNN LATERAL，仅把点位换成 ST_Centroid(面)
+    rows = await conn.fetch(
+        f"""
+        WITH gs AS (
+            SELECT unnest($1::text[]) AS row_id,
+                   unnest($2::text[]) AS wkt
+        ),
+        centroids AS (
+            SELECT row_id, ST_Centroid(ST_GeomFromText(wkt, 4326)) AS g FROM gs
+        )
+        SELECT p.row_id, c.iso_a2 AS country_iso_a2, c.name_zh AS country_name_zh, c.name_en AS country_name_en
+        FROM centroids p
+        LEFT JOIN LATERAL (
+            SELECT c.iso_a2, c.name_zh, c.name_en
+            FROM countries c
+            WHERE ST_DWithin(p.g, c.geom, {BUFFER_DEG})
+            ORDER BY c.geom <-> p.g
+            LIMIT 1
+        ) c ON true
+        """,
+        row_ids, wkts,
+    )
+
+    out: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        rid = r["row_id"]
+        country = r["country_iso_a2"]
+        in_sea = country is None
+        not_in_baseline = (
+            (not in_sea)
+            and baseline_iso_a2 is not None
+            and country != baseline_iso_a2
+        )
+        out[rid] = {
+            "country_iso_a2": country,
+            "country_name_zh": r["country_name_zh"],
+            "country_name_en": r["country_name_en"],
+            "in_sea": in_sea,
+            "not_in_baseline": not_in_baseline,
+        }
+    return out
+
+
 # ---------- 主基准区域计算 ----------
 
 
