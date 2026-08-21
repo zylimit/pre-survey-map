@@ -1,5 +1,5 @@
 # Project: Pre-Survey Map
-_Last updated: 2026-08-20_
+_Last updated: 2026-08-21_
 
 > 项目记忆文件。维护规则见 `.claude/CLAUDE.md [项目记忆规则]`，由 progress-recorder agent 增量维护。
 > 指令：`/record` 增量合并 · `/archive` 快照归档（条目 >100 时）· `/recap` 回顾当前状态。
@@ -30,7 +30,6 @@ _Last updated: 2026-08-20_
 - 2026-05-29: 主基准区域「先入为主」固化策略确立
 
 ## TODO（权威待办清单）
-- [P1][OPEN][#40] #51 实现待办：area 表+快照 / 树骨架加 AREA / 导入盖戳+清洗+冲突 / F17 快照链路 / KMZ 导出自反 / 权限三处映射表 / 按运营商分色渲染 / 回归测试。**前置依赖：等用户提供 Smart 区域划分样例 KMZ**（Context：api/ web/ deploy/db/）
 - [P1][OPEN][#3] `.claude` 架构改进 #2：流程三处重复 → 单一事实源（剩四步走/设计优先级）（配置库事项，不阻塞本仓；Context：sitemaster-config）
 - [P1][OPEN][#4] `.claude` 架构改进 #4：纸面纪律可机械校验项下沉为 hook；建议给 mark-review-needed hook 加路径过滤（只对 api/ web/ 下改动标记 review，避免 /tmp 下临时脚本误触发）（配置库事项，不阻塞本仓；Context：sitemaster-config）
 - [P2][OPEN][#5] `.claude` 架构改进 #5：CLAUDE.md 瘦身 + Sub-Agent 模型分级（配置库事项，不阻塞本仓；Context：sitemaster-config）
@@ -39,6 +38,7 @@ _Last updated: 2026-08-20_
 - [P1][DOING][#7] `.claude` 框架架构改进（本仓已迁移 .opencode；#3/#4/#5 属 sitemaster-config 配置库事项，与本仓代码无关，不阻塞本仓）（Context：sitemaster-config）
 
 ## Done（最近完成放前面）
+- 2026-08-21: [#41] #51 AREA 运营商区域面图层全流程完成 + v1.2.0 本机部署——Phase 16 数据层（area/area_snapshot/V5/F17/F14 含 area + review 抓 2 HIGH：migrate.sh 快照漏 area、cloud 部署顺序先起 api 后迁移，均修）（evidence：commit ca8c617）/ Phase 17 后端全链路（MultiGeometry 解壳+鞋带取最大面/盖戳+护栏+质心清洗/NAME 冲突/导出 #area schema+aabbggrr 分色+自反/权限 scope/冲突 Excel area+road 分桶修复谎报缺陷）（evidence：commit d18d81a，183 passed）/ Phase 18 前端（树 AREA 节点+分色渲染面层垫底+ScopeTree+只读列表+属性面板+ConflictDialog area/road）（evidence：commit ad5fe44）/ Phase 19 部署：v1.2.0 出包（evidence：commit a97aa63），deployer live 冒烟真实导入 NCR_BCA.kmz 158 面全链路（解析→冲突→commit→GET /api/areas 158 全 Smart），主 Agent 独立核查（容器 2026-08-21 12:22 新建/health 200/area 表 158 行 Smart/JS 含 1.2.0）；测试基线 183 passed/1 skipped；**GitHub 网络故障，5 个 commit（d5f6381..a97aa63）在本地待 push**
 - 2026-08-18: [#39] #51 需求文档层完成：Product-Spec.md（F23 行 + 「AREA 区域面图层（F23 · V1.x #51）」节）+ Product-Spec-CHANGELOG.md #51 条目；代码未实现，等样例 KMZ + 开发排期（evidence：Product-Spec.md / Product-Spec-CHANGELOG.md）
 - 2026-08-18: [#38] backlog 全清（#36/#26/#2/#35/#6 五连 DONE）——#36 deploy reset 清单补 RBAC 4 表+site_delete_undo（review 顺手抓出同类遗漏）+README 修订；#26 前端拖拽 document listeners unmount cleanup（三 handler 配平）+rebindSelected 收敛进 refresh（3 处显式调用→0，结构性免疫）；#2 ruff==0.16.3 引入+零风险修复 10 条（存量 118 条列清单不修：UP045×82 大头）；#35 api/ 平铺→feature 包大重构（11 包：core/geo/audit/backups/restore/baseline/imports/sites/roads/lessors/exports，routers/ 消除，纯搬迁零逻辑改动，reviewer 六路攻击击不破+亲跑 151 passed）；#6 V2 评估落 Spec（双工作区搁置/多人冲突不做/单要素删除关闭/邮件派工=最有价值候选/工作空间+点聚合+模糊去重等真实信号）（evidence：commits 09cf8c3 + 17e1c47 + c9c71c9）
 - 2026-08-18: [#37] P0 测试债清零 + 一处缺陷 red-locks 修复——tester 独立补 #47 圆形框选回归测试 17 条（fromCircle 64 段夹具保真/GEOS 严格包含语义含边界排除/全链路+审计不记几何+scope 受限路径；新增 shapely==2.0.6 依赖做不连库的空间谓词代理）（evidence：commit 2a7c942）；tester 顺带发现 export_selection polygon 缺 coordinates 下沉 DB 500 缺陷 → 红测试 3 条锁定 → implementer 修绿（应用层 400 校验）（evidence：commit 674666d）；全量 151 passed/1 skipped；已推远端
@@ -77,6 +77,8 @@ _Last updated: 2026-08-20_
 - Assumption：v1.0.6 离线包 api 脚本已内置 V2+V3 幂等迁移，内网服务器从 v1.0.4 直升 v1.0.6 可安全执行（Confidence：High）
 
 ## Notes（简要要点）
+- 2026-08-21: review 价值实证——#51 两轮 review 抓到 4 个实质问题（migrate.sh 快照漏表[同类清单模式第三次踩]、cloud 部署顺序瘫痪写路径、冲突 Excel 丢 area/road 谎报无冲突、ConflictDialog extras 嵌套取错）；「新表必进所有清单」类 invariant 多处维护点（reset/migrate/F17/F14）漏一处是必然，长期解法=动态枚举
+- 2026-08-21: 已知接受项——AREA_COLS 硬编码小写 extras 键（真实 KMZ 键名待 wenzhao 数据验证）；Globe 蓝与选中高亮同值靠描边粗细区分；conflicts_xlsx 白名单分桶建议加未知 kind 防御收口
 - 2026-08-18: review 发现的重复犯错模式——TRUNCATE reset 清单连续漏新表（V3 site_delete_undo、V4 RBAC 4 表），根因=清单硬编码；长期解法候选：information_schema 动态枚举或建表登记（记 feedback 或留 Notes 供进化引擎扫描）
 - 2026-08-18: 用户反馈「模块化分包」已记录 feedback（.opencode/feedback/feature-modular-package-structure.md）——#50 新代码落地为 api/auth/ + api/admin/ + web/src/components/admin/ 包结构；存量老文件平铺整体重构记 backlog（TODO #35）
 - 2026-08-18: #50 review 接受项留痕——登录锁定 IP 键可被 XFF 轮换绕过（符合 Spec「内网够用即止」威胁模型，已记 DEV-PLAN）；export-only 角色列表框无法勾选（多选列绑 edit_delete，spec 字面如此，框选导出可用）
