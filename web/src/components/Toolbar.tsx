@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { DrawMode } from "../state";
+import { Feature } from "../api";
+import { DrawMode, SearchResults } from "../state";
 import { useLang, useT } from "../i18n";
 import { NP_RADIUS_OPTIONS } from "../utils";
+import SearchDropdown from "./SearchDropdown";
 
 interface Props {
   busy: boolean;
@@ -22,6 +24,9 @@ interface Props {
   onExportSelection: () => void;
   onRefresh: () => void;
   onSearch: (query: string) => void;
+  searchResults: SearchResults | null;
+  onResultClick: (f: Feature) => void;
+  onClearSearch: () => void;
   onClearBaseline: () => void;
   onOpenRestorePoints: () => void;
   onOpenDeleteHistory: () => void;
@@ -33,6 +38,7 @@ export default function Toolbar({
   username, isAdmin, onOpenAdmin, canExport, canEditDelete, canDanger, onLogout,
   onStartDraw, onClearSelection, onExportAll, onExportSelection,
   onRefresh, onSearch, onClearBaseline, onOpenRestorePoints, onOpenDeleteHistory, onChangeNpRadius,
+  searchResults, onResultClick, onClearSearch,
 }: Props) {
   const [openMenu, setOpenMenu] = useState<"export" | "draw" | null>(null);
   const [query, setQuery] = useState("");
@@ -164,6 +170,11 @@ export default function Toolbar({
         <button onClick={submitSearch} disabled={!query.trim()} title={tFn("tb.search.tip")}>
           {tFn("tb.search.btn")}
         </button>
+        <SearchDropdown
+          searchResults={searchResults}
+          onResultClick={onResultClick}
+          onClearSearch={onClearSearch}
+        />
       </div>
 
       {/* #50 Phase 15：danger 权限门控 [清除基线] / [恢复点]；edit_delete 门控 [删除历史] */}

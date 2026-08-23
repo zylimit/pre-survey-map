@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
-import { Feature } from "../api";
 import { I18nKey, useT } from "../i18n";
-import { LogEntry, PANEL_LIMITS, Phase, SearchResults } from "../state";
-import { nameOf } from "../utils";
+import { LogEntry, PANEL_LIMITS, Phase } from "../state";
 import ResizeHandle from "./ResizeHandle";
 
 interface Props {
@@ -13,17 +11,8 @@ interface Props {
   onClearLogs: () => void;
   onResize: (px: number) => void;
   onResizeEnd: () => void;
-  searchResults: SearchResults | null;
-  onResultClick: (f: Feature) => void;
-  onClearSearch: () => void;
   importProgress: { done: number; total: number; pct: number } | null;  // #39
 }
-
-const KIND_LABEL: Record<string, string> = {
-  site: "Site",
-  road: "Road",
-  lessor: "Lessor",
-};
 
 const PHASE_KEY: Record<Phase, I18nKey> = {
   idle:       "phase.idle",
@@ -45,60 +34,9 @@ const PHASE_BUSY: Record<Phase, boolean> = {
   exporting: true,
 };
 
-function kindOf(f: Feature): string {
-  const k = f.properties?.kind;
-  return typeof k === "string" ? k : "unknown";
-}
-
-function fmtCoord(lat: number, lng: number): string {
-  return `(${lat.toFixed(5)}, ${lng.toFixed(5)})`;
-}
-
-function nonEmpty(v: unknown): string | null {
-  if (v == null) return null;
-  const s = String(v).trim();
-  return s === "" ? null : s;
-}
-
-function firstCoord(geom: Feature["geometry"]): { lat: number; lng: number } | null {
-  if (!geom) return null;
-  let c: unknown = geom.coordinates;
-  while (Array.isArray(c) && Array.isArray(c[0])) c = c[0];
-  if (Array.isArray(c) && c.length >= 2) {
-    const lng = Number(c[0]);
-    const lat = Number(c[1]);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-  }
-  return null;
-}
-
-function coreInfo(f: Feature): string {
-  const p = f.properties ?? {};
-  const k = kindOf(f);
-  const segs: string[] = [];
-  if (k === "site") {
-    const status = nonEmpty(p.site_status);
-    const project = nonEmpty(p.project);
-    if (status) segs.push(`Status: ${status}`);
-    if (project) segs.push(`Project: ${project}`);
-    const lat = Number(p.lati);
-    const lng = Number(p.longi);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) segs.push(fmtCoord(lat, lng));
-  } else if (k === "lessor") {
-    const cat = nonEmpty(p.lessor_category);
-    const rel = nonEmpty(p.relationship);
-    if (cat) segs.push(`Cat: ${cat}`);
-    if (rel) segs.push(`Rel: ${rel}`);
-  } else if (k === "road") {
-    const c = firstCoord(f.geometry);
-    if (c) segs.push(`Start: ${fmtCoord(c.lat, c.lng)}`);
-  }
-  return segs.join(" · ");
-}
-
 export default function OutputPanel({
   open, onToggle, logs, phase, onClearLogs, onResize, onResizeEnd,
-  searchResults, onResultClick, onClearSearch, importProgress,
+  importProgress,
 }: Props) {
   const tFn = useT();
   const [dbOk, setDbOk] = useState<boolean | null>(null);
@@ -122,13 +60,6 @@ export default function OutputPanel({
   const dotLabel = dbOk === null ? tFn("op.db.checking") : dbOk ? tFn("op.db.ok") : tFn("op.db.error");
   const latest = logs[logs.length - 1];
   const showBar = phase !== "idle";
-
-  const firstResult = searchResults?.results[0];
-  const onCollapsedSummary = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!open) onToggle();
-    if (firstResult) onResultClick(firstResult);
-  };
 
   return (
     <div className="output">
@@ -166,11 +97,6 @@ export default function OutputPanel({
             })}
           </span>
         )}
-        {!open && searchResults && searchResults.total > 0 && firstResult && (
-          <span className="search-summary-collapsed" onClick={onCollapsedSummary}>
-            {tFn("op.search.summary", { count: searchResults.total })}
-          </span>
-        )}
         {/* #38：软件版本号 + 构建时间（构建时注入，DB 状态圆点旁）*/}
         <span
           className="app-version"
@@ -186,48 +112,6 @@ export default function OutputPanel({
       </div>
       {open && (
         <div className="body">
-          {searchResults && (
-            <div className="search-results">
-              <div className="body-head">
-                <span className="muted">
-                  {tFn("op.search.header")}{searchResults.total > 0 ? `（${searchResults.total}）` : ""}
-                </span>
-                <button
-                  className="clear-btn"
-                  onClick={(e) => { e.stopPropagation(); onClearSearch(); }}
-                  title={tFn("op.search.clear.tip")}
-                >{tFn("op.search.clear.btn")}</button>
-              </div>
-              {searchResults.total === 0 ? (
-                <div className="row error">{tFn("op.search.none")}</div>
-              ) : (
-                <>
-                  <div className="search-summary" onClick={() => firstResult && onResultClick(firstResult)}>
-                    {tFn("op.search.summary", { count: searchResults.total })}
-                  </div>
-                  {searchResults.results.map((f, i) => {
-                    const info = coreInfo(f);
-                    return (
-                      <div
-                        key={`${f.id}-${i}`}
-                        className="search-result-row"
-                        onClick={() => onResultClick(f)}
-                      >
-                        <span className="sr-name">{nameOf(f)}</span>
-                        {info && <span className="sr-info">{info}</span>}
-                        <span className={`sr-badge sr-${kindOf(f)}`}>
-                          {KIND_LABEL[kindOf(f)] ?? "?"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {searchResults.total > searchResults.results.length && (
-                    <div className="row muted">{tFn("op.search.capped", { cap: searchResults.results.length })}</div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
           <div className="body-head">
             <span className="muted">{tFn("op.logs.header")}</span>
             <button

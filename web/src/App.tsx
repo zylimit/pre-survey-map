@@ -60,11 +60,6 @@ export default function App() {
     }
   }, [s.logs]);
 
-  // F16：每次新搜索（searchResults 引用变化）自动展开 Output，确保结果/边界文案可见
-  useEffect(() => {
-    if (s.searchResults) setOutputOpen(true);
-  }, [s.searchResults]);
-
   const onRefresh = useCallback(async () => {
     s.log("info", tFn("log.refresh_start"));
     try {
@@ -145,6 +140,9 @@ export default function App() {
         onExportSelection={() => s.doExportSelection(npRadiusM)}
         onRefresh={onRefresh}
         onSearch={onSearch}
+        searchResults={s.searchResults}
+        onResultClick={s.flyTo}
+        onClearSearch={s.clearSearch}
         onClearBaseline={() => setConfirmingClear(true)}
         onOpenRestorePoints={() => setRestorePointsOpen(true)}
         onOpenDeleteHistory={() => setDeleteHistoryOpen(true)}
@@ -208,9 +206,6 @@ export default function App() {
         onClearLogs={s.clearLogs}
         onResize={onResizeBottom}
         onResizeEnd={onResizeEndBottom}
-        searchResults={s.searchResults}
-        onResultClick={s.flyTo}
-        onClearSearch={s.clearSearch}
         importProgress={s.importProgress}
       />
 

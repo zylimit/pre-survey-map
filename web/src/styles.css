@@ -169,6 +169,7 @@ button, input, select, textarea {
 }
 
 .toolbar .search {
+  position: relative;
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -1241,6 +1242,23 @@ button, input, select, textarea {
   cursor: not-allowed;
 }
 
+.search-dropdown .body-head .clear-btn {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 2px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.search-dropdown .body-head .clear-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .output .body .row {
   padding: 2px 0;
   color: var(--text);
@@ -1260,13 +1278,49 @@ button, input, select, textarea {
 
 /* ---- F16 搜索结果区（独立于日志，封顶 200 条）---- */
 
-.output .search-results {
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+/* ============ F16 搜索结果下拉浮层（Phase 22：从底部 Output 迁至搜索框下方）============ */
+
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 360px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.35));
+  padding: 8px;
+  z-index: 300;
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
-.output .search-summary {
+.search-dropdown .body-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.search-dropdown .muted {
+  color: var(--text-muted);
+}
+
+.search-dropdown .row {
+  padding: 3px 6px;
+}
+
+.search-dropdown .row.error {
+  color: var(--danger, var(--warn));
+}
+
+.search-dropdown .row.muted {
+  color: var(--text-muted);
+}
+
+.search-dropdown .search-summary {
   padding: 4px 6px;
   margin-bottom: 4px;
   color: var(--accent);
@@ -1276,11 +1330,11 @@ button, input, select, textarea {
   font-size: 12px;
 }
 
-.output .search-summary:hover {
+.search-dropdown .search-summary:hover {
   background: var(--accent-bg);
 }
 
-.output .search-result-row {
+.search-dropdown .search-result-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1289,11 +1343,11 @@ button, input, select, textarea {
   border-radius: var(--radius);
 }
 
-.output .search-result-row:hover {
+.search-dropdown .search-result-row:hover {
   background: var(--bg-elevated);
 }
 
-.output .search-result-row .sr-name {
+.search-dropdown .search-result-row .sr-name {
   flex-shrink: 0;
   max-width: 40%;
   overflow: hidden;
@@ -1302,7 +1356,7 @@ button, input, select, textarea {
   color: var(--text);
 }
 
-.output .search-result-row .sr-info {
+.search-dropdown .search-result-row .sr-info {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1310,7 +1364,7 @@ button, input, select, textarea {
   color: var(--text-muted);
 }
 
-.output .search-result-row .sr-badge {
+.search-dropdown .search-result-row .sr-badge {
   flex-shrink: 0;
   padding: 1px 8px;
   border-radius: 10px;
@@ -1322,20 +1376,9 @@ button, input, select, textarea {
   color: var(--text-muted);
 }
 
-.output .search-result-row .sr-badge.sr-site { color: var(--accent); border-color: var(--accent); }
-.output .search-result-row .sr-badge.sr-road { color: var(--warn); border-color: var(--warn); }
-.output .search-result-row .sr-badge.sr-lessor { color: var(--success); border-color: var(--success); }
-
-.output .bar .search-summary-collapsed {
-  flex-shrink: 0;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.output .bar .search-summary-collapsed:hover {
-  text-decoration: underline;
-}
+.search-dropdown .search-result-row .sr-badge.sr-site { color: var(--accent); border-color: var(--accent); }
+.search-dropdown .search-result-row .sr-badge.sr-road { color: var(--warn); border-color: var(--warn); }
+.search-dropdown .search-result-row .sr-badge.sr-lessor { color: var(--success); border-color: var(--success); }
 
 /* ============ Drop overlay ============ */
 
