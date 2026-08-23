@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  Download, SquareDashedMousePointer, RefreshCw, CircleDot, Tag,
+  History, Trash2, Settings, LogOut, Languages, Moon, Sun, TriangleAlert, Search,
+} from "lucide-react";
 import { Feature } from "../api";
 import { DrawMode, SearchResults } from "../state";
 import { useLang, useT } from "../i18n";
@@ -93,10 +97,13 @@ export default function Toolbar({
       {canExport && (
       <div className="dropdown">
         <button
+          className="icon-btn"
           onClick={() => setOpenMenu(openMenu === "export" ? null : "export")}
           disabled={busy}
+          title={tFn("tb.export.tip")}
+          aria-label={tFn("tb.export.label")}
         >
-          {tFn("tb.export.label")}
+          <Download size={16} strokeWidth={1.7} />
         </button>
         {openMenu === "export" && (
           <div className="dropdown-menu">
@@ -119,9 +126,11 @@ export default function Toolbar({
         <button
           onClick={() => setOpenMenu(openMenu === "draw" ? null : "draw")}
           disabled={busy}
-          className={drawMode ? "active" : ""}
+          className={`icon-btn ${drawMode ? "active" : ""}`}
+          title={drawLabel}
+          aria-label={drawLabel}
         >
-          {drawLabel}
+          <SquareDashedMousePointer size={16} strokeWidth={1.7} />
         </button>
         {openMenu === "draw" && (
           <div className="dropdown-menu">
@@ -146,13 +155,16 @@ export default function Toolbar({
         )}
       </div>
 
-      <button onClick={onRefresh} disabled={busy} title={tFn("tb.refresh.tip")}>
-        {tFn("tb.refresh.label")}
+      <button className="icon-btn" onClick={onRefresh} disabled={busy}
+        title={tFn("tb.refresh.tip")} aria-label={tFn("tb.refresh.label")}>
+        <RefreshCw size={16} strokeWidth={1.7} />
       </button>
 
       {/* #45 NP 辐射圈半径下拉（全局唯一入口，仅前端 localStorage，不入库） */}
       <label className="np-radius" title={tFn("tb.np_radius.tip")}>
-        <span>{tFn("tb.np_radius.label")}</span>
+        <span className="np-radius-icon" aria-label={tFn("tb.np_radius.label")}>
+          <CircleDot size={16} strokeWidth={1.7} />
+        </span>
         <select
           value={npRadiusM}
           onChange={e => onChangeNpRadius(Number(e.target.value))}
@@ -165,10 +177,11 @@ export default function Toolbar({
 
       {/* #52 F24 ④：面名称标签全局显隐开关（默认显示，偏好存 localStorage） */}
       <button
-        className={showPolygonLabels ? "active" : ""}
+        className={`icon-btn ${showPolygonLabels ? "active" : ""}`}
         onClick={onTogglePolygonLabels}
         title={tFn("tb.polygon_labels.tip")}
-      >{tFn("tb.polygon_labels.label")}</button>
+        aria-label={tFn("tb.polygon_labels.label")}
+      ><Tag size={16} strokeWidth={1.7} /></button>
 
       <div className="search">
         <input
@@ -177,8 +190,9 @@ export default function Toolbar({
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") submitSearch(); }}
         />
-        <button onClick={submitSearch} disabled={!query.trim()} title={tFn("tb.search.tip")}>
-          {tFn("tb.search.btn")}
+        <button className="icon-btn" onClick={submitSearch} disabled={!query.trim()}
+          title={tFn("tb.search.tip")} aria-label={tFn("tb.search.btn")}>
+          <Search size={16} strokeWidth={1.7} />
         </button>
         <SearchDropdown
           searchResults={searchResults}
@@ -190,51 +204,60 @@ export default function Toolbar({
       {/* #50 Phase 15：danger 权限门控 [清除基线] / [恢复点]；edit_delete 门控 [删除历史] */}
       {canDanger && (
       <button
-        className="danger"
+        className="icon-btn danger"
         disabled={busy}
         onClick={onClearBaseline}
         title={tFn("tb.clear.tip")}
-      >{tFn("tb.clear.label")}</button>
+        aria-label={tFn("tb.clear.label")}
+      ><TriangleAlert size={16} strokeWidth={1.7} /></button>
       )}
 
       {canDanger && (
       <button
+        className="icon-btn"
         onClick={onOpenRestorePoints}
         disabled={busy}
         title={tFn("tb.restore.tip")}
-      >{tFn("tb.restore.label")}</button>
+        aria-label={tFn("tb.restore.label")}
+      ><History size={16} strokeWidth={1.7} /></button>
       )}
 
       {canEditDelete && (
       <button
+        className="icon-btn"
         onClick={onOpenDeleteHistory}
         disabled={busy}
         title={tFn("tb.delhist.tip")}
-      >{tFn("tb.delhist.label")}</button>
+        aria-label={tFn("tb.delhist.label")}
+      ><Trash2 size={16} strokeWidth={1.7} /></button>
       )}
 
       {/* #50：当前用户 + [⚙ 管理]（仅 admin，Phase 14 已接通 AdminModal）+ [登出] */}
       <span className="tb-username" title={username}>{username}</span>
       {isAdmin && (
-        <button onClick={onOpenAdmin} title={tFn("tb.admin.tip")}>{tFn("tb.admin.label")}</button>
+        <button className="icon-btn" onClick={onOpenAdmin} title={tFn("tb.admin.tip")}
+          aria-label={tFn("tb.admin.label")}><Settings size={16} strokeWidth={1.7} /></button>
       )}
-      <button onClick={onLogout} title={tFn("tb.logout.tip")}>
-        {tFn("tb.logout.label")}
+      <button className="icon-btn" onClick={onLogout} title={tFn("tb.logout.tip")}
+        aria-label={tFn("tb.logout.label")}>
+        <LogOut size={16} strokeWidth={1.7} />
       </button>
 
       {/* #19 主题切换 */}
       <button
-        className="theme-toggle"
+        className="icon-btn theme-toggle"
         onClick={toggleTheme}
         title={theme === "dark" ? tFn("tb.theme.to_light") : tFn("tb.theme.to_dark")}
-      >{theme === "dark" ? "☀" : "☾"}</button>
+        aria-label={theme === "dark" ? tFn("tb.theme.to_light") : tFn("tb.theme.to_dark")}
+      >{theme === "dark" ? <Sun size={16} strokeWidth={1.7} /> : <Moon size={16} strokeWidth={1.7} />}</button>
 
       {/* F18 语言切换 */}
       <button
-        className="lang-toggle"
+        className="icon-btn lang-toggle"
         onClick={toggleLang}
         title={tFn("tb.lang.tip")}
-      >{tFn("tb.lang.label")}</button>
+        aria-label={tFn("tb.lang.tip")}
+      ><Languages size={16} strokeWidth={1.7} /></button>
     </div>
   );
 }

@@ -92,15 +92,40 @@ button, input, select, textarea {
 /* #19 双主题切换按钮：固定宽度，切图标不抖动 */
 .toolbar button.theme-toggle {
   min-width: 38px;
-  text-align: center;
-  font-size: 15px;
-  line-height: 1;
 }
 
 .toolbar button.danger:hover:not(:disabled) {
   background: var(--error-bg);
   border-color: var(--error);
   color: var(--error);
+}
+
+/* F24 ⑤ Toolbar 图标化：纯图标按钮——紧凑方正 + 细描边 + hover 发光 */
+.toolbar button.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
+  line-height: 0;
+}
+
+.toolbar button svg {
+  display: block;
+}
+
+.toolbar button.icon-btn:hover:not(:disabled) {
+  box-shadow: var(--glow);  /* 暗色辉光（亮色为 none），科技感 hover 发光 */
+}
+
+/* danger 图标按钮保持红色警示，hover 用红辉光而非 accent 蓝 */
+.toolbar button.icon-btn.danger svg { color: var(--error); }
+.toolbar button.icon-btn.danger:hover:not(:disabled) { box-shadow: none; }
+
+/* NP 半径 label 内图标与 select 对齐 */
+.toolbar .np-radius .np-radius-icon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
 }
 
 .toolbar .dropdown {
