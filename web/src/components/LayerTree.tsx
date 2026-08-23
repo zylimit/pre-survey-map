@@ -6,7 +6,7 @@
  *     📁 Globe / Smart / Dito
  *       📁 存量 / 规划 / 勘测
  *         🔺 站型图层（Macro / Micro NP / …）
- *           🎨 positive 🟢 / negative 🟡 / undermine 🔴 / null ⚪
+ *           🎨 positive 🟢 / negative 🟡 / undetermined 🔴 / null ⚪
  *   🔺 Road
  *     🎨 🟫
  *   🔺 Lessor
@@ -43,7 +43,7 @@ const CATEGORY_TYPES: Readonly<Record<string, readonly string[]>> = {
 };
 const CATEGORIES = ["存量", "规划", "勘测"] as const;
 
-const SITE_STATUSES = ["positive", "negative", "undermine"] as const;
+const SITE_STATUSES = ["positive", "negative", "undetermined"] as const;
 
 // 🎨 样式圆点色统一引用 utils.STATUS_COLOR（单一真源，与 MapView/LayerFeatureList 同源）
 

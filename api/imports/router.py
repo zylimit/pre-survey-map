@@ -99,13 +99,13 @@ def _area_key(name: str) -> str:
 
 def _norm_site_status(v: str | None) -> str | None:
     """源 site_status 统一小写入库（#37：源值可能大写 Negative，前后端枚举均小写）；
-    Unknown → undermine（红色不变，仅改名）。空值返回 None。"""
+    Unknown → undetermined（红色不变，仅改名）。空值返回 None。"""
     if v is None:
         return None
     s = v.strip().lower()
     if not s:
         return None
-    return "undermine" if s == "unknown" else s
+    return "undetermined" if s == "unknown" else s
 
 
 def _norm_relationship(v: str | None) -> str | None:
@@ -124,7 +124,7 @@ def _row_id(kind: str, key: str) -> str:
 
 def _site_dict(s: SiteRow, source: str) -> dict[str, Any]:
     d = {**asdict(s), "source_file": source}
-    d["site_status"] = _norm_site_status(d.get("site_status"))  # F20：Unknown→undermine
+    d["site_status"] = _norm_site_status(d.get("site_status"))  # F20：Unknown→undetermined
     return d
 
 

@@ -24,13 +24,13 @@ export function nameOf(f: Feature): string {
 //    不许再各抄一份色表（收敛 Phase 4 遗留的坑6）。
 
 // 状态 / 关系 / 类型 → 色。键沿用历史口径（LayerTree/LayerFeatureList 原样）：
-//   site_status: positive 绿 / negative 红 / undermine 黄 / ""(空值未知) 灰（#33 红黄对调）
+//   site_status: positive 绿 / negative 红 / undetermined 黄 / ""(空值未知) 灰（#33 红黄对调）
 //   lessor relationship: Unfriendly 红 / Normal 黄（去 Friendly）
 //   road: 单色棕
 export const STATUS_COLOR: Record<string, string> = {
   positive:   "#4caf50",
   negative:   "#f44336",
-  undermine:  "#ffb300",
+  undetermined:  "#ffb300",
   "":         "#9e9e9e",
   Unfriendly: "#f44336",
   Normal:     "#ffb300",
@@ -41,7 +41,7 @@ export const STATUS_COLOR: Record<string, string> = {
 // ⚠️ 单一真源：siteMap 分组、F12 反向定位、LayerFeatureList 过滤三处必须用它，口径一致。
 export function statusBucket(raw: unknown): string {
   const s = String(raw ?? "").toLowerCase();
-  return (s === "positive" || s === "negative" || s === "undermine") ? s : "other";
+  return (s === "positive" || s === "negative" || s === "undetermined") ? s : "other";
 }
 
 // #44：图层默认色（按 category）。状态分色只在勘测用；存量/规划用这套图层色。
@@ -64,12 +64,12 @@ export function areaColor(op: string | null | undefined): string {
   return AREA_COLOR[op ?? ""] ?? STATUS_COLOR[""];
 }
 
-// site_status → 填充色（大小写不敏感；正/负/受损，其余=空值灰）
+// site_status → 填充色（大小写不敏感；正/负/未确定，其余=空值灰）
 export function siteStatusColor(status: string | null | undefined): string {
   const s = (status ?? "").toLowerCase();
   if (s === "positive") return STATUS_COLOR.positive;
   if (s === "negative") return STATUS_COLOR.negative;
-  if (s === "undermine") return STATUS_COLOR.undermine;
+  if (s === "undetermined") return STATUS_COLOR.undetermined;
   return STATUS_COLOR[""];
 }
 

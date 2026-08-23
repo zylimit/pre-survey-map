@@ -310,3 +310,7 @@ CREATE TABLE IF NOT EXISTS auth_session (
     created_at  TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS auth_session_expires_at_idx ON auth_session (expires_at);
+
+-- #52 F24 ③：site_status 拼写纠正 undermine → undetermined（幂等，重跑 init 亦纠错）。
+UPDATE site SET site_status = 'undetermined' WHERE site_status = 'undermine';
+UPDATE site_snapshot SET site_status = 'undetermined' WHERE site_status = 'undermine';
