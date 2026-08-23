@@ -128,6 +128,15 @@ export function readNpRadius(): number {
   return DEFAULT_NP_RADIUS_M;
 }
 
+// #52 F24 ④：面名称标签全局显隐偏好（localStorage），默认显示
+export const POLYGON_LABELS_KEY = "presurvey.polygonLabels";
+export function readPolygonLabels(): boolean {
+  try {
+    const v = localStorage.getItem(POLYGON_LABELS_KEY);
+    return v === null ? true : v === "1";   // 默认 true
+  } catch { return true; }
+}
+
 // 真实地面米 → EPSG:3857 投影半径。
 // Web Mercator 在纬度 φ 处单位被拉伸 1/cos(φ)，故投影半径 = meters / cos(φ)。
 // 用点自身纬度算 → 圈是真实地面半径（当前半径），且因 geometry 用地图单位、缩放时自动正确缩放。

@@ -15,7 +15,7 @@ import Draw, { createBox } from "ol/interaction/Draw";
 import type { DrawEvent } from "ol/interaction/Draw";
 import type { FeatureLike } from "ol/Feature";
 import OlFeature from "ol/Feature";
-import { Polygon, Point, Circle as CircleGeom } from "ol/geom";
+import { Polygon, MultiPolygon, Point, Circle as CircleGeom } from "ol/geom";
 import { fromCircle } from "ol/geom/Polygon";
 
 import { Feature, FeatureCollection, GeoJSONPolygon } from "../api";
@@ -48,6 +48,7 @@ interface Props {
   fitAllEpoch: number;
   layoutEpoch: number;
   npRadiusM: number;            // #45：NP 辐射圈半径（米，全局统一），变化时强制 NP 圈重绘
+  showPolygonLabels: boolean;   // #52 F24 ④：area/lessor 面名称标签全局显隐
   onDropDisabled: () => void;   // #28：地图拖拽导入已禁用，拖入只提示不导入
   onSelectFeature: (f: Feature | null) => void;
   onSelectionDrawn: (polygon: GeoJSONPolygon, mode: DrawMode) => void;
@@ -164,30 +165,65 @@ function roadStyle(_f: FeatureLike, selected: boolean): Style {
   });
 }
 
+// #52 F24 ④：面名称标签——文本叠在面的可视中心（interior point，比几何中心更稳，
+// 凹多边形也落在面内）。白字深描边保证各底色可读；declutter 层负责碰撞避让。
+// Polygon 用 getInteriorPoint()，MultiPolygon 用 getInteriorPoints() 取首点。
+function polygonLabelStyle(text: string): Style {
+  return new Style({
+    text: new TextStyle({
+      text,
+      font: "600 12px sans-serif",
+      fill: new Fill({ color: "#fff" }),
+      stroke: new Stroke({ color: "#0b0f14", width: 3 }),
+      textAlign: "center",
+      textBaseline: "middle",
+      overflow: true,
+    }),
+    geometry: (feat) => {
+      const g = (feat as OlFeature).getGeometry();
+      if (!g) return undefined;
+      const type = g.getType();
+      if (type === "Polygon") return (g as Polygon).getInteriorPoint();
+      if (type === "MultiPolygon") {
+        const pts = (g as MultiPolygon).getInteriorPoints();
+        const coords = pts.getCoordinates();
+        return coords.length ? new Point(coords[0]) : undefined;
+      }
+      return g;
+    },
+  });
+}
+
 // Lessor 面：去 Friendly，只剩 Unfriendly 红 / Normal 黄（线色来自单一真源，面 = 线色 30% 透明）
-function lessorStyle(feature: FeatureLike, selected: boolean): Style {
+function lessorStyle(feature: FeatureLike, selected: boolean, showLabel: boolean): Style[] {
   const rel = feature.get("relationship") as string | undefined;
   const line = lessorLineColor(rel);
-  return new Style({
+  const styles: Style[] = [new Style({
     stroke: new Stroke({ color: selected ? COLOR.selected : line, width: selected ? 4 : 2 }),
     fill: new Fill({ color: withAlpha(line, 0.30) }),
-  });
+  })];
+  const name = feature.get("lessor_name") as string | undefined;
+  if (showLabel && name) styles.push(polygonLabelStyle(name));
+  return styles;
 }
 
 // #51 F23：AREA 面——按运营商分色（AREA_COLOR 单一真源），~35% 透明填充 + 同色 1px 描边；
 // 选中盖高亮蓝加粗（与 lessor 同处理——Globe 蓝与选中蓝同值，靠描边宽度区分）
-function areaStyle(feature: FeatureLike, selected: boolean): Style {
+function areaStyle(feature: FeatureLike, selected: boolean, showLabel: boolean): Style[] {
   const op = feature.get("operator") as string | undefined;
   const color = areaColor(op);
-  return new Style({
+  const styles: Style[] = [new Style({
     stroke: new Stroke({ color: selected ? COLOR.selected : color, width: selected ? 3 : 1 }),
     fill: new Fill({ color: withAlpha(color, 0.35) }),
-  });
+  })];
+  const name = feature.get("name") as string | undefined;
+  if (showLabel && name) styles.push(polygonLabelStyle(name));
+  return styles;
 }
 
 function MapView({
   sites, roads, lessors, areas, selectedId, flyTarget,
-  drawMode, selectionPolygon, hiddenIds, fitAllEpoch, layoutEpoch, npRadiusM,
+  drawMode, selectionPolygon, hiddenIds, fitAllEpoch, layoutEpoch, npRadiusM, showPolygonLabels,
   onDropDisabled, onSelectFeature, onSelectionDrawn, onFitAll,
   scopes, isAdmin,
 }: Props) {
@@ -217,6 +253,8 @@ function MapView({
   const hiddenIdsRef = useRef<Set<string>>(new Set());
   // #45：站点样式闭包在 init effect 里只建一次，靠 ref 读运行时半径（避免闭包锁旧值）
   const npRadiusRef = useRef<number>(npRadiusM);
+  // #52 F24 ④：面标签显隐同理靠 ref 读运行时值（样式闭包只建一次）
+  const showLabelsRef = useRef<boolean>(showPolygonLabels);
   const sitesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const roadsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const lessorsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -236,16 +274,18 @@ function MapView({
     // #51：AREA 面层最先挂 → 渲染在点/线层之下（OL 按 layers 数组序绘制），不遮挡站点
     const areasLayer = new VectorLayer({
       source: areasSrc.current,
+      declutter: true,   // #52 F24 ④：面名称标签碰撞避让
       style: (f) => {
         if (hiddenIdsRef.current.has(String(f.getId()))) return undefined;
-        return areaStyle(f, f.getId() === selectedIdRef.current);
+        return areaStyle(f, f.getId() === selectedIdRef.current, showLabelsRef.current);
       },
     });
     const lessorsLayer = new VectorLayer({
       source: lessorsSrc.current,
+      declutter: true,   // #52 F24 ④：面名称标签碰撞避让
       style: (f) => {
         if (hiddenIdsRef.current.has(String(f.getId()))) return undefined;
-        return lessorStyle(f, f.getId() === selectedIdRef.current);
+        return lessorStyle(f, f.getId() === selectedIdRef.current, showLabelsRef.current);
       },
     });
     const roadsLayer = new VectorLayer({
@@ -401,6 +441,13 @@ function MapView({
     npRadiusRef.current = npRadiusM;
     sitesLayerRef.current?.changed();
   }, [npRadiusM]);
+
+  // #52 F24 ④：面标签显隐变化 → 更新 ref + 强制 area/lessor 两层 restyle
+  useEffect(() => {
+    showLabelsRef.current = showPolygonLabels;
+    areasLayerRef.current?.changed();
+    lessorsLayerRef.current?.changed();
+  }, [showPolygonLabels]);
 
   // 底图切换
   useEffect(() => {

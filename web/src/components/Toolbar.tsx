@@ -31,6 +31,8 @@ interface Props {
   onOpenRestorePoints: () => void;
   onOpenDeleteHistory: () => void;
   onChangeNpRadius: (m: number) => void;
+  showPolygonLabels: boolean;         // #52 F24 ④：面名称标签全局显隐
+  onTogglePolygonLabels: () => void;
 }
 
 export default function Toolbar({
@@ -38,6 +40,7 @@ export default function Toolbar({
   username, isAdmin, onOpenAdmin, canExport, canEditDelete, canDanger, onLogout,
   onStartDraw, onClearSelection, onExportAll, onExportSelection,
   onRefresh, onSearch, onClearBaseline, onOpenRestorePoints, onOpenDeleteHistory, onChangeNpRadius,
+  showPolygonLabels, onTogglePolygonLabels,
   searchResults, onResultClick, onClearSearch,
 }: Props) {
   const [openMenu, setOpenMenu] = useState<"export" | "draw" | null>(null);
@@ -159,6 +162,13 @@ export default function Toolbar({
           ))}
         </select>
       </label>
+
+      {/* #52 F24 ④：面名称标签全局显隐开关（默认显示，偏好存 localStorage） */}
+      <button
+        className={showPolygonLabels ? "active" : ""}
+        onClick={onTogglePolygonLabels}
+        title={tFn("tb.polygon_labels.tip")}
+      >{tFn("tb.polygon_labels.label")}</button>
 
       <div className="search">
         <input

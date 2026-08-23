@@ -15,7 +15,7 @@ import DeleteHistoryPanel from "./components/DeleteHistoryPanel";
 import BaselineStatusBar from "./components/BaselineStatusBar";
 import AdminModal from "./components/admin/AdminModal";
 import { useAppState } from "./state";
-import { NP_RADIUS_KEY, NP_RADIUS_OPTIONS, readNpRadius } from "./utils";
+import { NP_RADIUS_KEY, NP_RADIUS_OPTIONS, readNpRadius, POLYGON_LABELS_KEY, readPolygonLabels } from "./utils";
 
 export default function App() {
   const [outputOpen, setOutputOpen] = useState(false);
@@ -25,6 +25,8 @@ export default function App() {
   // #50 Phase 15：F19 3×ESC 审计入口 / #42 3×B 备份入口已拆除——
   // 审计/备份唯一入口 = Toolbar [⚙ 管理]（AdminModal 内 tab）
   const [npRadiusM, setNpRadiusM] = useState<number>(readNpRadius);
+  // #52 F24 ④：面名称标签全局显隐（默认显示，偏好存 localStorage）
+  const [showPolygonLabels, setShowPolygonLabels] = useState<boolean>(readPolygonLabels);
   const s = useAppState();
   const tFn = useT();
 
@@ -33,6 +35,15 @@ export default function App() {
     if (!(NP_RADIUS_OPTIONS as readonly number[]).includes(m)) return;
     setNpRadiusM(m);
     try { localStorage.setItem(NP_RADIUS_KEY, String(m)); } catch { /* 忽略写入失败 */ }
+  }, []);
+
+  // #52 F24 ④：切换面名称标签显隐 → 写 localStorage + 更新 state（驱动 MapView 重绘）
+  const onTogglePolygonLabels = useCallback(() => {
+    setShowPolygonLabels(prev => {
+      const next = !prev;
+      try { localStorage.setItem(POLYGON_LABELS_KEY, next ? "1" : "0"); } catch { /* 忽略 */ }
+      return next;
+    });
   }, []);
 
   // #50 Phase 13 启动闸门：me 验证未完成 → 启动画面；无 token/验证失败 → 登录页
@@ -147,6 +158,8 @@ export default function App() {
         onOpenRestorePoints={() => setRestorePointsOpen(true)}
         onOpenDeleteHistory={() => setDeleteHistoryOpen(true)}
         onChangeNpRadius={onChangeNpRadius}
+        showPolygonLabels={showPolygonLabels}
+        onTogglePolygonLabels={onTogglePolygonLabels}
       />
       {/* F15 全局基线状态栏（Spec V1.x #15）*/}
       <BaselineStatusBar state={s.baselineState} />
@@ -185,6 +198,7 @@ export default function App() {
         fitAllEpoch={s.fitAllEpoch}
         layoutEpoch={s.layoutEpoch}
         npRadiusM={npRadiusM}
+        showPolygonLabels={showPolygonLabels}
         onDropDisabled={s.notifyDropDisabled}
         onSelectFeature={s.selectFeature}
         onSelectionDrawn={s.onSelectionDrawn}
