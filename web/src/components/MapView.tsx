@@ -6,7 +6,7 @@ import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
 import XYZ from "ol/source/XYZ";
 import GeoJSONFormat from "ol/format/GeoJSON";
-import { Style, Fill, Stroke, Circle as CircleStyle, RegularShape } from "ol/style";
+import { Style, Fill, Stroke, Circle as CircleStyle, RegularShape, Text as TextStyle } from "ol/style";
 import { fromLonLat, toLonLat } from "ol/proj";
 import { defaults as defaultControls, ScaleLine, MousePosition } from "ol/control";
 import { createStringXY } from "ol/coordinate";
@@ -23,7 +23,7 @@ import { DrawMode } from "../state";
 import { useT } from "../i18n";
 import {
   siteStatusColor, siteShape, lessorLineColor, areaColor,
-  metersToProjRadius, withAlpha, STATUS_COLOR, LAYER_COLOR,
+  metersToProjRadius, withAlpha, STATUS_COLOR, LAYER_COLOR, OPERATOR_LETTER,
   type ShapeKind,
 } from "../utils";
 import { filterByScope, type ScopeCtx } from "../scopes";
@@ -134,6 +134,22 @@ function siteStyle(feature: FeatureLike, selected: boolean, npRadiusM: number): 
       },
       stroke: new Stroke({ color, width: 1, lineDash: [4, 3] }),
       fill: new Fill({ color: withAlpha(color, 0.08) }),
+    }));
+  }
+
+  // #52 F24 ①：运营商首字母叠在点中心（白字+深描边，各底色可读；空 operator 不叠）
+  const op = feature.get("operator") as string | undefined;
+  const letter = op ? OPERATOR_LETTER[op] : undefined;
+  if (letter) {
+    styles.push(new Style({
+      text: new TextStyle({
+        text: letter,
+        font: `700 ${selected ? 13 : 11}px sans-serif`,
+        fill: new Fill({ color: "#fff" }),
+        stroke: new Stroke({ color: "#0b0f14", width: 3 }),
+        textAlign: "center",
+        textBaseline: "middle",
+      }),
     }));
   }
   return styles;

@@ -59,6 +59,13 @@ export const AREA_COLOR: Record<string, string> = {
   Dito:  "#ef4444",  // 红
 };
 
+// #52 F24 ①：运营商首字母（site 图标中心叠字，三维编码 形状×颜色×字母）
+export const OPERATOR_LETTER: Record<string, string> = {
+  Globe: "G",
+  Smart: "S",
+  Dito:  "D",
+};
+
 // area operator → 分色；未知运营商退化空值灰（与 site_status 未知同口径）
 export function areaColor(op: string | null | undefined): string {
   return AREA_COLOR[op ?? ""] ?? STATUS_COLOR[""];
