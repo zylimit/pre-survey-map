@@ -75,6 +75,13 @@ function initColors() {
   COLOR.selectionFill = cssVar("--selection-fill");
 }
 
+// #52 修复：高密度下字母/标签糊屏——只在放大到街区级才显示。
+// resolution 越小越放大。EPSG:3857 web mercator，赤道 zoom每+1 resolution减半。
+// zoom 6 (看全菲律宾) resolution≈2445；zoom 13 (城区) ≈19；zoom 15 (街区) ≈4.8。
+// 阈值取 zoom≈13 对应 resolution，站点字母放大到城区级才显；面标签同理略宽松。
+const LETTER_MAX_RESOLUTION = 20;    // 站点运营商字母：resolution < 20（约 zoom≥13）才显
+const POLY_LABEL_MAX_RESOLUTION = 300;  // 面名称标签：resolution < 300（约 zoom≥9）才显（面比点少，可早点显）
+
 // RegularShape 形状参数：三角/正方/菱形（圆走 CircleStyle）。
 // radiusFactor 补偿不同形状的视觉面积差，让各图标看着差不多大。
 const SHAPE_CFG: Record<Exclude<ShapeKind, "circle">, { points: number; angle: number; radiusFactor: number }> = {
@@ -86,7 +93,7 @@ const SHAPE_CFG: Record<Exclude<ShapeKind, "circle">, { points: number; angle: n
 // F20 Phase 5：site 要素 = 形状(type) × 颜色(site_status)
 // 实心=存量 / 空心=规划 / 菱形=勘测；颜色按状态；type 缺失退化为默认圆点。
 // 规划类（Macro NP / Micro NP）额外叠一个透明辐射圈（半径可配 #45，仅渲染不入库）。
-function siteStyle(feature: FeatureLike, selected: boolean, npRadiusM: number): Style[] {
+function siteStyle(feature: FeatureLike, selected: boolean, npRadiusM: number, resolution: number): Style[] {
   const status = feature.get("site_status") as string | undefined;
   const type = feature.get("type") as string | undefined;
   const category = feature.get("category") as string | undefined;
@@ -141,7 +148,7 @@ function siteStyle(feature: FeatureLike, selected: boolean, npRadiusM: number): 
   // #52 F24 ①：运营商首字母叠在点中心（白字+深描边，各底色可读；空 operator 不叠）
   const op = feature.get("operator") as string | undefined;
   const letter = op ? OPERATOR_LETTER[op] : undefined;
-  if (letter) {
+  if (letter && resolution < LETTER_MAX_RESOLUTION) {   // 只在放大到街区级才叠字母
     styles.push(new Style({
       text: new TextStyle({
         text: letter,
@@ -195,7 +202,7 @@ function polygonLabelStyle(text: string): Style {
 }
 
 // Lessor 面：去 Friendly，只剩 Unfriendly 红 / Normal 黄（线色来自单一真源，面 = 线色 30% 透明）
-function lessorStyle(feature: FeatureLike, selected: boolean, showLabel: boolean): Style[] {
+function lessorStyle(feature: FeatureLike, selected: boolean, showLabel: boolean, resolution: number): Style[] {
   const rel = feature.get("relationship") as string | undefined;
   const line = lessorLineColor(rel);
   const styles: Style[] = [new Style({
@@ -203,13 +210,13 @@ function lessorStyle(feature: FeatureLike, selected: boolean, showLabel: boolean
     fill: new Fill({ color: withAlpha(line, 0.30) }),
   })];
   const name = feature.get("lessor_name") as string | undefined;
-  if (showLabel && name) styles.push(polygonLabelStyle(name));
+  if (showLabel && name && resolution < POLY_LABEL_MAX_RESOLUTION) styles.push(polygonLabelStyle(name));
   return styles;
 }
 
 // #51 F23：AREA 面——按运营商分色（AREA_COLOR 单一真源），~35% 透明填充 + 同色 1px 描边；
 // 选中盖高亮蓝加粗（与 lessor 同处理——Globe 蓝与选中蓝同值，靠描边宽度区分）
-function areaStyle(feature: FeatureLike, selected: boolean, showLabel: boolean): Style[] {
+function areaStyle(feature: FeatureLike, selected: boolean, showLabel: boolean, resolution: number): Style[] {
   const op = feature.get("operator") as string | undefined;
   const color = areaColor(op);
   const styles: Style[] = [new Style({
@@ -217,7 +224,7 @@ function areaStyle(feature: FeatureLike, selected: boolean, showLabel: boolean):
     fill: new Fill({ color: withAlpha(color, 0.35) }),
   })];
   const name = feature.get("name") as string | undefined;
-  if (showLabel && name) styles.push(polygonLabelStyle(name));
+  if (showLabel && name && resolution < POLY_LABEL_MAX_RESOLUTION) styles.push(polygonLabelStyle(name));
   return styles;
 }
 
@@ -275,17 +282,17 @@ function MapView({
     const areasLayer = new VectorLayer({
       source: areasSrc.current,
       declutter: true,   // #52 F24 ④：面名称标签碰撞避让
-      style: (f) => {
+      style: (f, resolution) => {
         if (hiddenIdsRef.current.has(String(f.getId()))) return undefined;
-        return areaStyle(f, f.getId() === selectedIdRef.current, showLabelsRef.current);
+        return areaStyle(f, f.getId() === selectedIdRef.current, showLabelsRef.current, resolution);
       },
     });
     const lessorsLayer = new VectorLayer({
       source: lessorsSrc.current,
       declutter: true,   // #52 F24 ④：面名称标签碰撞避让
-      style: (f) => {
+      style: (f, resolution) => {
         if (hiddenIdsRef.current.has(String(f.getId()))) return undefined;
-        return lessorStyle(f, f.getId() === selectedIdRef.current, showLabelsRef.current);
+        return lessorStyle(f, f.getId() === selectedIdRef.current, showLabelsRef.current, resolution);
       },
     });
     const roadsLayer = new VectorLayer({
@@ -297,9 +304,9 @@ function MapView({
     });
     const sitesLayer = new VectorLayer({
       source: sitesSrc.current,
-      style: (f) => {
+      style: (f, resolution) => {
         if (hiddenIdsRef.current.has(String(f.getId()))) return undefined;
-        return siteStyle(f, f.getId() === selectedIdRef.current, npRadiusRef.current);
+        return siteStyle(f, f.getId() === selectedIdRef.current, npRadiusRef.current, resolution);
       },
     });
     sitesLayerRef.current = sitesLayer;

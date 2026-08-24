@@ -272,7 +272,12 @@ function LayerTree({
         ? (lessorMap.get(nodeKey) ?? [])
         : nodeKey.startsWith("area/")
           ? (areaMap.get(nodeKey) ?? [])
-          : (siteMap.get(nodeKey) ?? []);
+          // 运营商节点（Globe/Smart/Dito）：site ids + area ids 并集。
+          // 本机库运营商可能全无 site（如 Globe 只有 area 面），只算 site 会让计数显 0、
+          // checkbox 被禁；并入 area 后计数正确、可勾选、勾选联动 site+area 子层可见性。
+          : (OPERATORS as readonly string[]).includes(nodeKey)
+            ? [...(siteMap.get(nodeKey) ?? []), ...(areaMap.get(`area/${nodeKey}`) ?? [])]
+            : (siteMap.get(nodeKey) ?? []);
     const open = isOpen(nodeKey);
     return (
       <h3
@@ -465,7 +470,6 @@ function LayerTree({
           // #50 Phase 15：无权限运营商子树整棵不渲染
           if (!operatorVisible(scopeCtx, op)) return null;
           const opKey = op;
-          const opIds = siteMap.get(opKey) ?? [];
           // i18n key: "lt.tree.op.Globe" etc.（#36：📁 抽成独立 Folder 图标列，文字去前缀）
           const opLabel = tFn(`lt.tree.op.${op}` as Parameters<typeof tFn>[0]);
 
