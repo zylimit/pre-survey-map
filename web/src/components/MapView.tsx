@@ -22,7 +22,7 @@ import { Feature, FeatureCollection, GeoJSONPolygon } from "../api";
 import { DrawMode } from "../state";
 import { useT } from "../i18n";
 import {
-  siteStatusColor, siteShape, lessorLineColor, areaColor,
+  siteStatusColor, siteShape, lessorLineColor, operatorColor,
   metersToProjRadius, withAlpha, STATUS_COLOR, LAYER_COLOR, OPERATOR_LETTER,
   type ShapeKind,
 } from "../utils";
@@ -49,6 +49,7 @@ interface Props {
   layoutEpoch: number;
   npRadiusM: number;            // #45：NP 辐射圈半径（米，全局统一），变化时强制 NP 圈重绘
   showPolygonLabels: boolean;   // #52 F24 ④：area/lessor 面名称标签全局显隐
+  showOperatorLetters: boolean; // #52 F24 ①：站点运营商字母底牌全局显隐
   onDropDisabled: () => void;   // #28：地图拖拽导入已禁用，拖入只提示不导入
   onSelectFeature: (f: Feature | null) => void;
   onSelectionDrawn: (polygon: GeoJSONPolygon, mode: DrawMode) => void;
@@ -93,7 +94,10 @@ const SHAPE_CFG: Record<Exclude<ShapeKind, "circle">, { points: number; angle: n
 // F20 Phase 5：site 要素 = 形状(type) × 颜色(site_status)
 // 实心=存量 / 空心=规划 / 菱形=勘测；颜色按状态；type 缺失退化为默认圆点。
 // 规划类（Macro NP / Micro NP）额外叠一个透明辐射圈（半径可配 #45，仅渲染不入库）。
-function siteStyle(feature: FeatureLike, selected: boolean, npRadiusM: number, resolution: number): Style[] {
+function siteStyle(
+  feature: FeatureLike, selected: boolean, npRadiusM: number,
+  showLetters: boolean, resolution: number,
+): Style[] {
   const status = feature.get("site_status") as string | undefined;
   const type = feature.get("type") as string | undefined;
   const category = feature.get("category") as string | undefined;
@@ -145,16 +149,31 @@ function siteStyle(feature: FeatureLike, selected: boolean, npRadiusM: number, r
     }));
   }
 
-  // #52 F24 ①：运营商首字母叠在点中心（白字+深描边，各底色可读；空 operator 不叠）
+  // #52 F24 ①：运营商首字母挂在点右侧的圆形小底牌上（运营商色底 + 白字；空 operator 不挂）。
+  // ⚠️ 不再叠在点中心：字母连同描边比 12px 的点还大，会盖死形状与状态色——
+  //    三维编码（形状×颜色×字母）退化成只剩字母，且粗描边糊住 G/S 字腔难以分辨。
+  // 底牌用 CircleStyle 而非 Text 的 backgroundFill：后者只能画直角矩形，圆形才够小且不扎眼。
+  // 圆心用 image.displacement / text.offsetX 对齐（两者 x 正向一致，都是向右）。
   const op = feature.get("operator") as string | undefined;
   const letter = op ? OPERATOR_LETTER[op] : undefined;
-  if (letter && resolution < LETTER_MAX_RESOLUTION) {   // 只在放大到街区级才叠字母
+  // 工具栏开关关掉 → 整块不画；开着也仍受缩放门控，避免小比例尺糊屏
+  if (showLetters && letter && resolution < LETTER_MAX_RESOLUTION) {
+    const badgeR = selected ? 7 : 6;
+    const badgeX = radius + badgeR + 1;   // 贴着点右侧留 1px 缝，随选中放大同步外移
+    styles.push(new Style({
+      image: new CircleStyle({
+        radius: badgeR,
+        fill: new Fill({ color: operatorColor(op) }),
+        stroke: new Stroke({ color: "#0b0f14", width: 1 }),
+        displacement: [badgeX, 0],
+      }),
+    }));
     styles.push(new Style({
       text: new TextStyle({
         text: letter,
-        font: `700 ${selected ? 13 : 11}px sans-serif`,
+        font: `700 ${selected ? 10 : 9}px sans-serif`,
         fill: new Fill({ color: "#fff" }),
-        stroke: new Stroke({ color: "#0b0f14", width: 3 }),
+        offsetX: badgeX,
         textAlign: "center",
         textBaseline: "middle",
       }),
@@ -214,11 +233,11 @@ function lessorStyle(feature: FeatureLike, selected: boolean, showLabel: boolean
   return styles;
 }
 
-// #51 F23：AREA 面——按运营商分色（AREA_COLOR 单一真源），~35% 透明填充 + 同色 1px 描边；
+// #51 F23：AREA 面——按运营商分色（OPERATOR_COLOR 单一真源），~35% 透明填充 + 同色 1px 描边；
 // 选中盖高亮蓝加粗（与 lessor 同处理——Globe 蓝与选中蓝同值，靠描边宽度区分）
 function areaStyle(feature: FeatureLike, selected: boolean, showLabel: boolean, resolution: number): Style[] {
   const op = feature.get("operator") as string | undefined;
-  const color = areaColor(op);
+  const color = operatorColor(op);
   const styles: Style[] = [new Style({
     stroke: new Stroke({ color: selected ? COLOR.selected : color, width: selected ? 3 : 1 }),
     fill: new Fill({ color: withAlpha(color, 0.35) }),
@@ -231,6 +250,7 @@ function areaStyle(feature: FeatureLike, selected: boolean, showLabel: boolean, 
 function MapView({
   sites, roads, lessors, areas, selectedId, flyTarget,
   drawMode, selectionPolygon, hiddenIds, fitAllEpoch, layoutEpoch, npRadiusM, showPolygonLabels,
+  showOperatorLetters,
   onDropDisabled, onSelectFeature, onSelectionDrawn, onFitAll,
   scopes, isAdmin,
 }: Props) {
@@ -262,6 +282,8 @@ function MapView({
   const npRadiusRef = useRef<number>(npRadiusM);
   // #52 F24 ④：面标签显隐同理靠 ref 读运行时值（样式闭包只建一次）
   const showLabelsRef = useRef<boolean>(showPolygonLabels);
+  // #52 F24 ①：站点运营商字母显隐，同上
+  const showLettersRef = useRef<boolean>(showOperatorLetters);
   const sitesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const roadsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const lessorsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -306,7 +328,8 @@ function MapView({
       source: sitesSrc.current,
       style: (f, resolution) => {
         if (hiddenIdsRef.current.has(String(f.getId()))) return undefined;
-        return siteStyle(f, f.getId() === selectedIdRef.current, npRadiusRef.current, resolution);
+        return siteStyle(f, f.getId() === selectedIdRef.current, npRadiusRef.current,
+                         showLettersRef.current, resolution);
       },
     });
     sitesLayerRef.current = sitesLayer;
@@ -455,6 +478,12 @@ function MapView({
     areasLayerRef.current?.changed();
     lessorsLayerRef.current?.changed();
   }, [showPolygonLabels]);
+
+  // #52 F24 ①：运营商字母显隐变化 → 更新 ref + 只重画 site 层
+  useEffect(() => {
+    showLettersRef.current = showOperatorLetters;
+    sitesLayerRef.current?.changed();
+  }, [showOperatorLetters]);
 
   // 底图切换
   useEffect(() => {

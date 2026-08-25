@@ -51,24 +51,25 @@ export const LAYER_COLOR: Record<string, string> = {
   "规划": "#a855f7",  // 紫
 };
 
-// #51 F23：AREA 面按运营商分色（Spec「渲染样式」表：~35% 透明填充 + 同色 1px 描边）。
+// 运营商分色单一真源，两处消费：#51 F23 AREA 面填充（~35% 透明 + 同色 1px 描边）、
+// #52 F24 ① site 字母底牌。同一运营商在面和点上颜色一致。
 // 注意 Globe 蓝与选中高亮蓝(#3b82f6)同值——选中态靠加粗描边区分，与 lessor 同处理。
-export const AREA_COLOR: Record<string, string> = {
+export const OPERATOR_COLOR: Record<string, string> = {
   Globe: "#3b82f6",  // 蓝
   Smart: "#22c55e",  // 绿
   Dito:  "#ef4444",  // 红
 };
 
-// #52 F24 ①：运营商首字母（site 图标中心叠字，三维编码 形状×颜色×字母）
+// #52 F24 ①：运营商首字母（site 图标旁挂字母底牌，三维编码 形状×颜色×字母）
 export const OPERATOR_LETTER: Record<string, string> = {
   Globe: "G",
   Smart: "S",
   Dito:  "D",
 };
 
-// area operator → 分色；未知运营商退化空值灰（与 site_status 未知同口径）
-export function areaColor(op: string | null | undefined): string {
-  return AREA_COLOR[op ?? ""] ?? STATUS_COLOR[""];
+// operator → 分色；未知运营商退化空值灰（与 site_status 未知同口径）
+export function operatorColor(op: string | null | undefined): string {
+  return OPERATOR_COLOR[op ?? ""] ?? STATUS_COLOR[""];
 }
 
 // site_status → 填充色（大小写不敏感；正/负/未确定，其余=空值灰）
@@ -133,6 +134,15 @@ export const POLYGON_LABELS_KEY = "presurvey.polygonLabels";
 export function readPolygonLabels(): boolean {
   try {
     const v = localStorage.getItem(POLYGON_LABELS_KEY);
+    return v === null ? true : v === "1";   // 默认 true
+  } catch { return true; }
+}
+
+// #52 F24 ①：站点运营商字母（G/S/D）底牌全局显隐偏好（localStorage），默认显示
+export const OPERATOR_LETTERS_KEY = "presurvey.operatorLetters";
+export function readOperatorLetters(): boolean {
+  try {
+    const v = localStorage.getItem(OPERATOR_LETTERS_KEY);
     return v === null ? true : v === "1";   // 默认 true
   } catch { return true; }
 }

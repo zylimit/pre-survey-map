@@ -43,6 +43,8 @@ button, input, select, textarea {
 /* ============ Toolbar ============ */
 
 .toolbar {
+  /* 工具栏内所有控件（图标按钮/搜索框/半径下拉）统一高度，避免各自靠内边距凑导致错位 */
+  --tb-control-h: 38px;
   grid-area: toolbar;
   background: var(--bg-panel);
   color: var(--text);
@@ -89,10 +91,7 @@ button, input, select, textarea {
   border-color: var(--border);
 }
 
-/* #19 双主题切换按钮：固定宽度，切图标不抖动 */
-.toolbar button.theme-toggle {
-  min-width: 38px;
-}
+/* #19 双主题切换按钮：宽度已由 .icon-btn 的 min-width 固定，切图标不抖动 */
 
 .toolbar button.danger:hover:not(:disabled) {
   background: var(--error-bg);
@@ -100,12 +99,15 @@ button, input, select, textarea {
   color: var(--error);
 }
 
-/* F24 ⑤ Toolbar 图标化：纯图标按钮——紧凑方正 + 细描边 + hover 发光 */
+/* F24 ⑤ Toolbar 图标化：纯图标按钮——紧凑方正 + 细描边 + hover 发光。
+   定高定宽成正方形，图标居中；切图标（如日夜）不会抖动。 */
 .toolbar button.icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 7px;
+  height: var(--tb-control-h);
+  min-width: var(--tb-control-h);
+  padding: 0;
   line-height: 0;
 }
 
@@ -146,7 +148,8 @@ button, input, select, textarea {
   background: var(--bg-elevated);
   color: var(--text);
   border: 1px solid var(--border);
-  padding: 5px 8px;
+  height: var(--tb-control-h);
+  padding: 0 8px;
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 13px;
@@ -205,11 +208,12 @@ button, input, select, textarea {
   background: var(--bg-input);
   color: var(--text);
   border: 1px solid var(--border);
-  padding: 6px 10px;
+  height: var(--tb-control-h);
+  padding: 0 10px;
   border-radius: var(--radius);
   width: 220px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   transition: border-color var(--transition-fast);
 }
 
@@ -220,10 +224,6 @@ button, input, select, textarea {
 .toolbar .search input:focus {
   outline: none;
   border-color: var(--accent);
-}
-
-.toolbar .search button {
-  padding: 6px 12px;
 }
 
 /* ============ 全局基线状态栏（Spec V1.x #15 · F15）============ */
@@ -2185,22 +2185,26 @@ button, input, select, textarea {
   background: var(--bg-app);
 }
 
+/* 尺寸随视口连续缩放（clamp 取代断点，避免分辨率跨档跳变）：
+   1280px→360px 宽，1920px→约 500px，2560px 及以上封顶 560px。
+   窄窗口用 max-width 兜底，保证两侧始终留边。 */
 .login-card {
   background: var(--bg-panel);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-modal);
-  padding: 28px 24px 24px;
-  width: 320px;
+  padding: clamp(28px, 2.2vw, 48px) clamp(24px, 2vw, 44px) clamp(24px, 2vw, 44px);
+  width: clamp(360px, 26vw, 560px);
+  max-width: calc(100vw - 32px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: clamp(12px, 0.9vw, 18px);
 }
 
 .login-title {
-  margin: 0 0 6px;
-  font-size: 17px;
+  margin: 0 0 clamp(6px, 0.5vw, 12px);
+  font-size: clamp(20px, 1.3vw, 28px);
   font-weight: 600;
   text-align: center;
   color: var(--text);
@@ -2230,9 +2234,16 @@ button, input, select, textarea {
   cursor: not-allowed;
 }
 
+/* 输入框/按钮跟随卡片一起放大；force-pw modal 宽度固定，仍用上面的基准尺寸 */
+.login-card input,
+.login-btn {
+  padding: clamp(11px, 0.8vw, 17px) clamp(12px, 0.9vw, 18px);
+  font-size: clamp(15px, 0.85vw, 19px);
+}
+
 .login-err {
   color: var(--error);
-  font-size: 12px;
+  font-size: clamp(12px, 0.7vw, 15px);
 }
 
 .login-btn {
@@ -2240,8 +2251,6 @@ button, input, select, textarea {
   color: var(--bg-app);
   border: none;
   border-radius: var(--radius);
-  padding: 10px 12px;
-  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: background var(--transition-fast);

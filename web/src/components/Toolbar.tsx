@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Download, SquareDashedMousePointer, RefreshCw, CircleDot, Tag,
-  History, Trash2, Settings, LogOut, Languages, Moon, Sun, TriangleAlert, Search,
+  History, Trash2, Settings, LogOut, Languages, Moon, Sun, TriangleAlert, Search, Type,
 } from "lucide-react";
 import { Feature } from "../api";
 import { DrawMode, SearchResults } from "../state";
 import { useLang, useT } from "../i18n";
 import { NP_RADIUS_OPTIONS } from "../utils";
 import SearchDropdown from "./SearchDropdown";
+
+/** Toolbar 图标统一尺寸——改这里整条工具栏一起缩放（按钮内边距见 styles.css .icon-btn） */
+const ICON = 20;
 
 interface Props {
   busy: boolean;
@@ -37,6 +40,8 @@ interface Props {
   onChangeNpRadius: (m: number) => void;
   showPolygonLabels: boolean;         // #52 F24 ④：面名称标签全局显隐
   onTogglePolygonLabels: () => void;
+  showOperatorLetters: boolean;       // #52 F24 ①：站点运营商字母底牌全局显隐
+  onToggleOperatorLetters: () => void;
 }
 
 export default function Toolbar({
@@ -45,6 +50,7 @@ export default function Toolbar({
   onStartDraw, onClearSelection, onExportAll, onExportSelection,
   onRefresh, onSearch, onClearBaseline, onOpenRestorePoints, onOpenDeleteHistory, onChangeNpRadius,
   showPolygonLabels, onTogglePolygonLabels,
+  showOperatorLetters, onToggleOperatorLetters,
   searchResults, onResultClick, onClearSearch,
 }: Props) {
   const [openMenu, setOpenMenu] = useState<"export" | "draw" | null>(null);
@@ -103,7 +109,7 @@ export default function Toolbar({
           title={tFn("tb.export.tip")}
           aria-label={tFn("tb.export.label")}
         >
-          <Download size={16} strokeWidth={1.7} />
+          <Download size={ICON} strokeWidth={1.7} />
         </button>
         {openMenu === "export" && (
           <div className="dropdown-menu">
@@ -130,7 +136,7 @@ export default function Toolbar({
           title={drawLabel}
           aria-label={drawLabel}
         >
-          <SquareDashedMousePointer size={16} strokeWidth={1.7} />
+          <SquareDashedMousePointer size={ICON} strokeWidth={1.7} />
         </button>
         {openMenu === "draw" && (
           <div className="dropdown-menu">
@@ -157,13 +163,13 @@ export default function Toolbar({
 
       <button className="icon-btn" onClick={onRefresh} disabled={busy}
         title={tFn("tb.refresh.tip")} aria-label={tFn("tb.refresh.label")}>
-        <RefreshCw size={16} strokeWidth={1.7} />
+        <RefreshCw size={ICON} strokeWidth={1.7} />
       </button>
 
       {/* #45 NP 辐射圈半径下拉（全局唯一入口，仅前端 localStorage，不入库） */}
       <label className="np-radius" title={tFn("tb.np_radius.tip")}>
         <span className="np-radius-icon" aria-label={tFn("tb.np_radius.label")}>
-          <CircleDot size={16} strokeWidth={1.7} />
+          <CircleDot size={ICON} strokeWidth={1.7} />
         </span>
         <select
           value={npRadiusM}
@@ -181,7 +187,15 @@ export default function Toolbar({
         onClick={onTogglePolygonLabels}
         title={tFn("tb.polygon_labels.tip")}
         aria-label={tFn("tb.polygon_labels.label")}
-      ><Tag size={16} strokeWidth={1.7} /></button>
+      ><Tag size={ICON} strokeWidth={1.7} /></button>
+
+      {/* #52 F24 ①：站点运营商字母 G/S/D 全局显隐开关（默认显示，偏好存 localStorage） */}
+      <button
+        className={`icon-btn ${showOperatorLetters ? "active" : ""}`}
+        onClick={onToggleOperatorLetters}
+        title={tFn("tb.operator_letters.tip")}
+        aria-label={tFn("tb.operator_letters.label")}
+      ><Type size={ICON} strokeWidth={1.7} /></button>
 
       <div className="search">
         <input
@@ -192,7 +206,7 @@ export default function Toolbar({
         />
         <button className="icon-btn" onClick={submitSearch} disabled={!query.trim()}
           title={tFn("tb.search.tip")} aria-label={tFn("tb.search.btn")}>
-          <Search size={16} strokeWidth={1.7} />
+          <Search size={ICON} strokeWidth={1.7} />
         </button>
         <SearchDropdown
           searchResults={searchResults}
@@ -209,7 +223,7 @@ export default function Toolbar({
         onClick={onClearBaseline}
         title={tFn("tb.clear.tip")}
         aria-label={tFn("tb.clear.label")}
-      ><TriangleAlert size={16} strokeWidth={1.7} /></button>
+      ><TriangleAlert size={ICON} strokeWidth={1.7} /></button>
       )}
 
       {canDanger && (
@@ -219,7 +233,7 @@ export default function Toolbar({
         disabled={busy}
         title={tFn("tb.restore.tip")}
         aria-label={tFn("tb.restore.label")}
-      ><History size={16} strokeWidth={1.7} /></button>
+      ><History size={ICON} strokeWidth={1.7} /></button>
       )}
 
       {canEditDelete && (
@@ -229,18 +243,18 @@ export default function Toolbar({
         disabled={busy}
         title={tFn("tb.delhist.tip")}
         aria-label={tFn("tb.delhist.label")}
-      ><Trash2 size={16} strokeWidth={1.7} /></button>
+      ><Trash2 size={ICON} strokeWidth={1.7} /></button>
       )}
 
       {/* #50：当前用户 + [⚙ 管理]（仅 admin，Phase 14 已接通 AdminModal）+ [登出] */}
       <span className="tb-username" title={username}>{username}</span>
       {isAdmin && (
         <button className="icon-btn" onClick={onOpenAdmin} title={tFn("tb.admin.tip")}
-          aria-label={tFn("tb.admin.label")}><Settings size={16} strokeWidth={1.7} /></button>
+          aria-label={tFn("tb.admin.label")}><Settings size={ICON} strokeWidth={1.7} /></button>
       )}
       <button className="icon-btn" onClick={onLogout} title={tFn("tb.logout.tip")}
         aria-label={tFn("tb.logout.label")}>
-        <LogOut size={16} strokeWidth={1.7} />
+        <LogOut size={ICON} strokeWidth={1.7} />
       </button>
 
       {/* #19 主题切换 */}
@@ -249,7 +263,7 @@ export default function Toolbar({
         onClick={toggleTheme}
         title={theme === "dark" ? tFn("tb.theme.to_light") : tFn("tb.theme.to_dark")}
         aria-label={theme === "dark" ? tFn("tb.theme.to_light") : tFn("tb.theme.to_dark")}
-      >{theme === "dark" ? <Sun size={16} strokeWidth={1.7} /> : <Moon size={16} strokeWidth={1.7} />}</button>
+      >{theme === "dark" ? <Sun size={ICON} strokeWidth={1.7} /> : <Moon size={ICON} strokeWidth={1.7} />}</button>
 
       {/* F18 语言切换 */}
       <button
@@ -257,7 +271,7 @@ export default function Toolbar({
         onClick={toggleLang}
         title={tFn("tb.lang.tip")}
         aria-label={tFn("tb.lang.tip")}
-      ><Languages size={16} strokeWidth={1.7} /></button>
+      ><Languages size={ICON} strokeWidth={1.7} /></button>
     </div>
   );
 }

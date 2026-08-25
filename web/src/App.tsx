@@ -15,7 +15,11 @@ import DeleteHistoryPanel from "./components/DeleteHistoryPanel";
 import BaselineStatusBar from "./components/BaselineStatusBar";
 import AdminModal from "./components/admin/AdminModal";
 import { useAppState } from "./state";
-import { NP_RADIUS_KEY, NP_RADIUS_OPTIONS, readNpRadius, POLYGON_LABELS_KEY, readPolygonLabels } from "./utils";
+import {
+  NP_RADIUS_KEY, NP_RADIUS_OPTIONS, readNpRadius,
+  POLYGON_LABELS_KEY, readPolygonLabels,
+  OPERATOR_LETTERS_KEY, readOperatorLetters,
+} from "./utils";
 
 export default function App() {
   const [outputOpen, setOutputOpen] = useState(false);
@@ -27,6 +31,8 @@ export default function App() {
   const [npRadiusM, setNpRadiusM] = useState<number>(readNpRadius);
   // #52 F24 ④：面名称标签全局显隐（默认显示，偏好存 localStorage）
   const [showPolygonLabels, setShowPolygonLabels] = useState<boolean>(readPolygonLabels);
+  // #52 F24 ①：站点运营商字母底牌全局显隐（默认显示，偏好存 localStorage）
+  const [showOperatorLetters, setShowOperatorLetters] = useState<boolean>(readOperatorLetters);
   const s = useAppState();
   const tFn = useT();
 
@@ -42,6 +48,15 @@ export default function App() {
     setShowPolygonLabels(prev => {
       const next = !prev;
       try { localStorage.setItem(POLYGON_LABELS_KEY, next ? "1" : "0"); } catch { /* 忽略 */ }
+      return next;
+    });
+  }, []);
+
+  // #52 F24 ①：切换运营商字母显隐 → 写 localStorage + 更新 state（驱动 MapView 重绘）
+  const onToggleOperatorLetters = useCallback(() => {
+    setShowOperatorLetters(prev => {
+      const next = !prev;
+      try { localStorage.setItem(OPERATOR_LETTERS_KEY, next ? "1" : "0"); } catch { /* 忽略 */ }
       return next;
     });
   }, []);
@@ -160,6 +175,8 @@ export default function App() {
         onChangeNpRadius={onChangeNpRadius}
         showPolygonLabels={showPolygonLabels}
         onTogglePolygonLabels={onTogglePolygonLabels}
+        showOperatorLetters={showOperatorLetters}
+        onToggleOperatorLetters={onToggleOperatorLetters}
       />
       {/* F15 全局基线状态栏（Spec V1.x #15）*/}
       <BaselineStatusBar state={s.baselineState} />
@@ -199,6 +216,7 @@ export default function App() {
         layoutEpoch={s.layoutEpoch}
         npRadiusM={npRadiusM}
         showPolygonLabels={showPolygonLabels}
+        showOperatorLetters={showOperatorLetters}
         onDropDisabled={s.notifyDropDisabled}
         onSelectFeature={s.selectFeature}
         onSelectionDrawn={s.onSelectionDrawn}
